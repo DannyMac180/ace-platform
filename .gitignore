@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Results and logs
+results/
+logs/
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# Database
+*.db
+*.sqlite3
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Docker (local overrides)
+docker-compose.override.yml
+
+# Secrets (extra protection)
+*.pem
+*.key
+credentials.json
+secrets.json
