@@ -11,21 +11,70 @@ dependencies = [
     "tiktoken>=0.5.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.65.0",
-    
-    # Your platform dependencies
+
+    # Web framework
     "fastapi>=0.109.0",
-    "uvicorn>=0.27.0",
-    "sqlalchemy>=2.0.0",
+    "uvicorn[standard]>=0.27.0",
+
+    # Database - Async (for API/MCP)
+    "sqlalchemy[asyncio]>=2.0.0",
+    "asyncpg>=0.29.0",
+
+    # Database - Sync (for workers)
+    "psycopg2-binary>=2.9.0",
+
+    # Migrations
     "alembic>=1.13.0",
-    "psycopg2-binary>=2.9.9",
-    "stripe>=8.0.0",
-    "mcp>=0.1.0",  # Check actual package name
-    "celery>=5.3.0",  # For background jobs
+
+    # Background tasks
+    "celery[redis]>=5.3.0",
     "redis>=5.0.0",
+
+    # Auth
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "python-multipart>=0.0.6",
+
+    # MCP
+    "mcp>=1.0.0",
+
+    # Billing (optional)
+    "stripe>=7.0.0",
+
+    # Templates
+    "jinja2>=3.1.0",
+
+    # HTTP client
+    "httpx>=0.26.0",
+
+    # Utilities
+    "pydantic-settings>=2.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "ruff>=0.2.0",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "httpx>=0.26.0",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["ace_platform*", "ace_core*"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
