@@ -5,16 +5,17 @@ A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capabili
 ## Architecture Overview
 
 - **ace_core/**: Core ACE implementation (Generator, Reflector, Curator agents)
-- **platform/**: Hosted platform layer (FastAPI API, MCP server, Celery workers)
+- **ace_platform/**: Hosted platform layer (FastAPI API, MCP server, Celery workers)
 - **web/**: Dashboard frontend
 - **playbooks/**: Starter playbook templates
+- **docs/ARCHITECTURE.md**: Detailed project architecture mermaid diagram
 
 ## Development Setup
 
 ### Prerequisites
 
 - Python 3.10+
-- Docker & Docker Compose (for PostgreSQL and Redis)
+- Podman & Podman Compose for local development (Docker in production)
 - OpenAI API key
 
 ### Quick Start
@@ -23,8 +24,8 @@ A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capabili
 # 1. Clone and enter the project
 cd ace-platform
 
-# 2. Start infrastructure services
-docker-compose up -d postgres redis
+# 2. Start infrastructure services (use podman locally, docker in production)
+podman compose up -d postgres redis
 
 # 3. Create and activate virtual environment
 python -m venv venv
@@ -41,9 +42,9 @@ cp .env.example .env
 alembic upgrade head
 
 # 7. Start the development servers (in separate terminals)
-uvicorn platform.api.main:app --reload          # API server (port 8000)
-python -m platform.mcp.server                    # MCP server
-celery -A platform.workers.celery_app worker -l info  # Background worker
+uvicorn ace_platform.api.main:app --reload          # API server (port 8000)
+python -m ace_platform.mcp.server                    # MCP server
+celery -A ace_platform.workers.celery_app worker -l info  # Background worker
 ```
 
 ### Environment Variables
@@ -82,7 +83,7 @@ pytest tests/test_mcp/ -v      # MCP server tests
 pytest tests/test_evolution/ -v # Evolution logic tests
 
 # With coverage
-pytest --cov=platform tests/
+pytest --cov=ace_platform tests/
 ```
 
 ### Code Quality
@@ -99,12 +100,12 @@ ruff format .
 
 | Command | Description |
 |---------|-------------|
-| `docker-compose up -d` | Start PostgreSQL and Redis |
+| `podman compose up -d` | Start PostgreSQL and Redis (local dev) |
 | `alembic upgrade head` | Run database migrations |
 | `alembic revision --autogenerate -m "msg"` | Create new migration |
-| `uvicorn platform.api.main:app --reload` | Start API server |
-| `python -m platform.mcp.server` | Start MCP server |
-| `celery -A platform.workers.celery_app worker -l info` | Start Celery worker |
+| `uvicorn ace_platform.api.main:app --reload` | Start API server |
+| `python -m ace_platform.mcp.server` | Start MCP server |
+| `celery -A ace_platform.workers.celery_app worker -l info` | Start Celery worker |
 | `pytest tests/ -v` | Run tests |
 
 ---
