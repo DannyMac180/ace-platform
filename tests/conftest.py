@@ -32,8 +32,8 @@ def db_session(db_engine):
     # Create all tables
     Base.metadata.create_all(bind=db_engine)
 
-    Session = sessionmaker(bind=db_engine)
-    session = Session()
+    session_factory = sessionmaker(bind=db_engine)
+    session = session_factory()
 
     yield session
 
