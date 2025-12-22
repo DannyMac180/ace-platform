@@ -2,6 +2,18 @@
 
 A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capability Enhancement) three-agent architecture.
 
+## Claude Code Instructions
+
+**Virtual Environment:** Always activate the venv before running Python, pip, pytest, alembic, or any Python-based commands:
+```bash
+source venv/bin/activate && <command>
+```
+
+**Package Installation:** Always install packages into the venv, never globally:
+```bash
+source venv/bin/activate && pip install <package>
+```
+
 ## Architecture Overview
 
 - **ace_core/**: Core ACE implementation (Generator, Reflector, Curator agents)
