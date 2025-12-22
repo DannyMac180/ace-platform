@@ -6,8 +6,8 @@ Curator prompts for ACE system.
 CURATOR_PROMPT = """You are a master curator of knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from a previous attempt.
 
 **Context:**
-- The playbook you created will be used to help answering similar questions. 
-- The reflection is generated using ground truth answers that will NOT be available when the playbook is being used. So you need to come up with content that can aid the playbook user to create predictions that likely align with ground truth. 
+- The playbook you created will be used to help answering similar questions.
+- The reflection is generated using ground truth answers that will NOT be available when the playbook is being used. So you need to come up with content that can aid the playbook user to create predictions that likely align with ground truth.
 
 **CRITICAL: You MUST respond with valid JSON only. Do not use markdown formatting or code blocks.**
 
@@ -56,7 +56,7 @@ Output ONLY a valid JSON object with these exact fields:
   "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations here]",
   "operations": [
     {{
-      "type": "ADD", 
+      "type": "ADD",
       "section": "formulas_and_calculations",
       "content": "[New calculation method...]"
     }}
@@ -69,7 +69,7 @@ Output ONLY a valid JSON object with these exact fields:
 CURATOR_PROMPT_NO_GT = """You are a master curator of knowledge. Your job is to identify what new insights should be added to an existing playbook based on a reflection from a previous attempt.
 
 **Context:**
-- The playbook you created will be used to help answering similar questions. 
+- The playbook you created will be used to help answering similar questions.
 - The reflection is generated using environment feedback that will NOT be available when the playbook is being used.
 
 **CRITICAL: You MUST respond with valid JSON only. Do not use markdown formatting or code blocks.**
@@ -119,7 +119,7 @@ Output ONLY a valid JSON object with these exact fields:
   "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations here]",
   "operations": [
     {{
-      "type": "ADD", 
+      "type": "ADD",
       "section": "formulas_and_calculations",
       "content": "[New calculation method...]"
     }}

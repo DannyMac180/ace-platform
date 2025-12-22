@@ -33,8 +33,8 @@ Your output should be a json object, which contains the following fields:
 
 **Answer in this exact JSON format:**
 {{
-  "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations]",  
-  "bullet_ids": ["calc-00001", "fin-00002"],  
+  "reasoning": "[Your chain of thought / reasoning / thinking process, detailed analysis and calculations]",
+  "bullet_ids": ["calc-00001", "fin-00002"],
   "final_answer": "[Your concise final answer here]"
 }}
 

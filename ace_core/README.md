@@ -212,7 +212,7 @@ results/
     ├── bullet_usage_log.jsonl         # Bullet usage tracking
     ├── curator_operations_diff.jsonl  # Curator operation tracking
     ├── detailed_llm_logs/             # Detailed LLM call logs
-    └── intermediate_playbooks/        # Intermediate playbooks 
+    └── intermediate_playbooks/        # Intermediate playbooks
 ```
 
 ### Understanding Playbook Format
@@ -277,11 +277,11 @@ class DataProcessor:
     def process_task_data(self, raw_data):
         # Convert your data format to standardized format
         return [{"context": ..., "question": ..., "target": ..., "others": {...}}]
-    
+
     def answer_is_correct(self, predicted, ground_truth):
         # Your comparison logic
         return predicted.strip() == ground_truth.strip()
-    
+
     def evaluate_accuracy(self, predictions, ground_truths):
         # Calculate accuracy
         return sum(self.answer_is_correct(p, g) for p, g in zip(predictions, ground_truths)) / len(predictions)
@@ -305,13 +305,13 @@ If you use ACE in your research, please cite our paper:
 
 ```bibtex
 @misc{zhang2025agenticcontextengineeringevolving,
-      title={Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models}, 
+      title={Agentic Context Engineering: Evolving Contexts for Self-Improving Language Models},
       author={Qizheng Zhang and Changran Hu and Shubhangi Upasani and Boyuan Ma and Fenglu Hong and Vamsidhar Kamanuru and Jay Rainton and Chen Wu and Mengmeng Ji and Hanchen Li and Urmish Thakker and James Zou and Kunle Olukotun},
       year={2025},
       eprint={2510.04618},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2510.04618}, 
+      url={https://arxiv.org/abs/2510.04618},
 }
 ```
 
@@ -340,7 +340,7 @@ This work builds upon insights from Dynamic Cheatsheet and incorporates ideas fr
 
 ## 📚 Additional Resources
 
-- **Blog Posts**: 
+- **Blog Posts**:
   - [Medium: Agentic Context Engineering](https://medium.com/@bingqian/agentic-context-engineering-teaching-language-models-to-learn-from-experience-706c31a872ca)
   - [MarkTechPost Coverage](https://www.marktechpost.com/2025/10/10/agentic-context-engineering-ace-self-improving-llms-via-evolving-contexts-not-fine-tuning/)
   - [InfoQ Article](https://www.infoq.com/news/2025/10/agentic-context-eng/)
