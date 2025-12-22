@@ -79,9 +79,7 @@ class User(Base):
 
     __tablename__ = "users"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -114,9 +112,7 @@ class Playbook(Base):
 
     __tablename__ = "playbooks"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -170,9 +166,7 @@ class PlaybookVersion(Base):
 
     __tablename__ = "playbook_versions"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     playbook_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("playbooks.id", ondelete="CASCADE"),
@@ -215,9 +209,7 @@ class Outcome(Base):
 
     __tablename__ = "outcomes"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     playbook_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("playbooks.id", ondelete="CASCADE"),
@@ -225,9 +217,7 @@ class Outcome(Base):
         index=True,
     )
     task_description: Mapped[str] = mapped_column(Text, nullable=False)
-    outcome_status: Mapped[OutcomeStatus] = mapped_column(
-        Enum(OutcomeStatus), nullable=False
-    )
+    outcome_status: Mapped[OutcomeStatus] = mapped_column(Enum(OutcomeStatus), nullable=False)
     reasoning_trace: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     reflection_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -237,9 +227,7 @@ class Outcome(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
-    processed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     evolution_job_id: Mapped[UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("evolution_jobs.id", ondelete="SET NULL"),
@@ -253,9 +241,7 @@ class Outcome(Base):
     )
 
     # Index for finding unprocessed outcomes
-    __table_args__ = (
-        Index("ix_outcomes_playbook_unprocessed", "playbook_id", "processed_at"),
-    )
+    __table_args__ = (Index("ix_outcomes_playbook_unprocessed", "playbook_id", "processed_at"),)
 
     def __repr__(self) -> str:
         return f"<Outcome {self.id} ({self.outcome_status.value})>"
@@ -266,9 +252,7 @@ class EvolutionJob(Base):
 
     __tablename__ = "evolution_jobs"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     playbook_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("playbooks.id", ondelete="CASCADE"),
@@ -289,12 +273,8 @@ class EvolutionJob(Base):
         nullable=True,
     )
     outcomes_processed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     token_totals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     ace_core_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -342,9 +322,7 @@ class UsageRecord(Base):
 
     __tablename__ = "usage_records"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -381,9 +359,7 @@ class UsageRecord(Base):
     )
 
     # Index for billing aggregation
-    __table_args__ = (
-        Index("ix_usage_records_user_created", "user_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_usage_records_user_created", "user_id", "created_at"),)
 
     def __repr__(self) -> str:
         return f"<UsageRecord {self.operation} {self.total_tokens} tokens>"
@@ -394,9 +370,7 @@ class ApiKey(Base):
 
     __tablename__ = "api_keys"
 
-    id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid4
-    )
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -410,12 +384,8 @@ class ApiKey(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    last_used_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    revoked_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="api_keys")
