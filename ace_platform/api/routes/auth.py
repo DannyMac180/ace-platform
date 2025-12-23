@@ -14,6 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AuthenticationError, RequiredUser
@@ -102,8 +103,17 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+# Dummy hash used for timing-safe authentication
+# This prevents timing attacks that could enumerate valid emails
+_DUMMY_HASH = "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/X4.PrJWC/3fQVT7eG"
+
+
 async def authenticate_user(db: AsyncSession, email: str, password: str) -> User | None:
     """Authenticate a user by email and password.
+
+    This function is timing-safe: it always performs a password hash
+    verification, even when the user doesn't exist, to prevent timing
+    attacks that could enumerate valid email addresses.
 
     Args:
         db: Database session.
@@ -115,6 +125,8 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> User
     """
     user = await get_user_by_email(db, email)
     if not user:
+        # Always verify against dummy hash to prevent timing attacks
+        verify_password(password, _DUMMY_HASH)
         return None
     if not verify_password(password, user.hashed_password):
         return None
@@ -175,7 +187,17 @@ async def register(
         hashed_password=hash_password(request.password),
     )
     db.add(user)
-    await db.commit()
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Race condition: another request registered this email between our check and commit
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
+        )
+
     await db.refresh(user)
 
     # Return tokens
@@ -228,8 +250,9 @@ async def refresh_token(
         payload = decode_refresh_token(request.refresh_token)
     except TokenExpiredError:
         raise AuthenticationError("Refresh token has expired")
-    except InvalidTokenError as e:
-        raise AuthenticationError(str(e))
+    except InvalidTokenError:
+        # Use generic message to avoid leaking token parsing details
+        raise AuthenticationError("Invalid refresh token")
 
     user_id_str = payload.get("sub")
     if not user_id_str:

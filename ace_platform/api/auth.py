@@ -286,8 +286,9 @@ async def get_optional_user(
         payload = decode_access_token(token)
     except TokenExpiredError:
         raise AuthenticationError("Token has expired")
-    except InvalidTokenError as e:
-        raise AuthenticationError(str(e))
+    except InvalidTokenError:
+        # Use generic message to avoid leaking token parsing details
+        raise AuthenticationError("Invalid token")
 
     user_id_str = payload.get("sub")
     if not user_id_str:
@@ -337,11 +338,13 @@ async def require_active_user(
 ) -> User:
     """Require an active user for a route.
 
-    This is an alias for require_user since we already check is_active
-    in get_optional_user, but it makes the intent clearer in route definitions.
+    Note: This is functionally equivalent to require_user since is_active
+    is already checked in get_optional_user. This dependency exists for
+    semantic clarity in route definitions - use it when the route's logic
+    specifically requires an active account status.
 
     Args:
-        user: The authenticated user.
+        user: The authenticated user (already verified as active).
 
     Returns:
         The authenticated active User.

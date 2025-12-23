@@ -1,6 +1,6 @@
 """Tests for JWT authentication and security utilities."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -200,15 +200,23 @@ class TestAuthDependencies:
 
     @pytest.fixture
     def mock_user(self):
-        """Create a mock user for testing."""
+        """Create a mock user for testing.
+
+        Note: We explicitly set created_at and updated_at because server_default
+        only applies when persisting to the database, not when creating
+        model instances directly.
+        """
         from ace_platform.db.models import User
 
+        now = datetime.now(timezone.utc)
         user = User(
             id=uuid4(),
             email="test@example.com",
             hashed_password=hash_password("password123"),
             is_active=True,
             email_verified=False,
+            created_at=now,
+            updated_at=now,
         )
         return user
 
