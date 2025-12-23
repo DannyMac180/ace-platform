@@ -11,6 +11,12 @@ Usage:
     python -m ace_platform.mcp.server sse
 """
 
+from ace_platform.mcp.auth import (
+    MCPAuthErrorCode,
+    MCPAuthResult,
+    authenticate_mcp_request,
+    require_playbook_access,
+)
 from ace_platform.mcp.server import mcp, run_server
 from ace_platform.mcp.tools import DEFAULT_SCOPES, MCPScope, validate_scopes
 
@@ -20,4 +26,8 @@ __all__ = [
     "MCPScope",
     "DEFAULT_SCOPES",
     "validate_scopes",
+    "MCPAuthResult",
+    "MCPAuthErrorCode",
+    "authenticate_mcp_request",
+    "require_playbook_access",
 ]

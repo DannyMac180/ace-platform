@@ -3,7 +3,10 @@
 This module provides common dependencies for route handlers:
 - Database session injection
 - Correlation ID access
-- Authentication (to be added)
+- Authentication (via auth.py)
+
+For authentication dependencies, import from ace_platform.api.auth:
+    from ace_platform.api.auth import require_auth, require_scope, AuthContext
 """
 
 from typing import Annotated
