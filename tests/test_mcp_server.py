@@ -396,7 +396,7 @@ class TestMCPToolsE2E:
         for i in range(3):
             outcome_result = await record_outcome(
                 playbook_id=str(test_playbook.id),
-                task_description=f"Task {i+1}",
+                task_description=f"Task {i + 1}",
                 outcome="success",
                 api_key=test_api_key.full_key,
                 ctx=mock_ctx,
