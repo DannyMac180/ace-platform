@@ -241,7 +241,9 @@ class TestCORSMiddleware:
         assert response.status_code == 200
         # Check that our custom headers are exposed
         exposed_headers = response.headers.get("access-control-expose-headers", "")
-        assert "X-Correlation-ID" in exposed_headers or "x-correlation-id" in exposed_headers.lower()
+        assert (
+            "X-Correlation-ID" in exposed_headers or "x-correlation-id" in exposed_headers.lower()
+        )
 
 
 class TestAppConfiguration:
