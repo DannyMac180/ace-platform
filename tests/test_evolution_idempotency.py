@@ -34,6 +34,7 @@ from ace_platform.db.models import (
 
 # PostgreSQL test database URL - requires running PostgreSQL
 # Uses environment variable or defaults to test database
+RUN_IDEMPOTENCY_TESTS = os.environ.get("RUN_EVOLUTION_IDEMPOTENCY_TESTS") == "1"
 TEST_DATABASE_URL_ASYNC = os.environ.get(
     "TEST_DATABASE_URL_ASYNC",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test",
@@ -41,6 +42,11 @@ TEST_DATABASE_URL_ASYNC = os.environ.get(
 TEST_DATABASE_URL_SYNC = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/ace_platform_test",
+)
+
+pytestmark = pytest.mark.skipif(
+    not RUN_IDEMPOTENCY_TESTS,
+    reason="Set RUN_EVOLUTION_IDEMPOTENCY_TESTS=1 to run PostgreSQL idempotency tests.",
 )
 
 

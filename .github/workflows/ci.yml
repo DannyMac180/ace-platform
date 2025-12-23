@@ -10,6 +10,7 @@ env:
   PYTHON_VERSION: "3.11"
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ace_platform_test
   REDIS_URL: redis://localhost:6379/0
+  RUN_EVOLUTION_IDEMPOTENCY_TESTS: "1"
 
 jobs:
   lint:
