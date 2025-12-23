@@ -221,6 +221,10 @@ def _register_routes(app: FastAPI) -> None:
     Args:
         app: The FastAPI application to register routes on.
     """
+    from ace_platform.api.routes import auth_router
+
+    # Include API routers
+    app.include_router(auth_router)
 
     @app.get("/health", tags=["Health"])
     async def health_check():
