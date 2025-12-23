@@ -4,14 +4,17 @@ This module sets up the FastAPI application with:
 - CORS middleware for cross-origin requests
 - Correlation ID middleware for request tracing
 - Request timing middleware for performance monitoring
+- Global error handling
 - Health check endpoints
 """
 
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from ace_platform.config import get_settings
 from ace_platform.db.session import close_async_db
@@ -19,6 +22,7 @@ from ace_platform.db.session import close_async_db
 from .middleware import (
     CorrelationIdMiddleware,
     RequestTimingMiddleware,
+    get_correlation_id,
     setup_logging_with_correlation_id,
 )
 
@@ -84,10 +88,127 @@ def create_app() -> FastAPI:
     # The correlation ID remains available until after all inner middleware complete
     app.add_middleware(CorrelationIdMiddleware)
 
+    # Register exception handlers
+    _register_exception_handlers(app)
+
     # Register routes
     _register_routes(app)
 
     return app
+
+
+def _register_exception_handlers(app: FastAPI) -> None:
+    """Register global exception handlers.
+
+    Args:
+        app: The FastAPI application to register handlers on.
+    """
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        """Handle HTTP exceptions with consistent error format.
+
+        Args:
+            request: The incoming request.
+            exc: The HTTP exception raised.
+
+        Returns:
+            JSONResponse with error details.
+        """
+        correlation_id = get_correlation_id() or "unknown"
+        logger.warning(
+            f"[{correlation_id}] HTTP {exc.status_code}: {exc.detail}",
+            extra={"correlation_id": correlation_id, "status_code": exc.status_code},
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "error": {
+                    "type": "http_error",
+                    "message": exc.detail,
+                    "status_code": exc.status_code,
+                },
+                "correlation_id": correlation_id,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Handle request validation errors with detailed feedback.
+
+        Args:
+            request: The incoming request.
+            exc: The validation exception raised.
+
+        Returns:
+            JSONResponse with validation error details.
+        """
+        correlation_id = get_correlation_id() or "unknown"
+        errors = []
+        for error in exc.errors():
+            field = ".".join(str(loc) for loc in error["loc"])
+            errors.append(
+                {
+                    "field": field,
+                    "message": error["msg"],
+                    "type": error["type"],
+                }
+            )
+
+        logger.warning(
+            f"[{correlation_id}] Validation error: {len(errors)} field(s) invalid",
+            extra={"correlation_id": correlation_id, "validation_errors": errors},
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": {
+                    "type": "validation_error",
+                    "message": "Request validation failed",
+                    "details": errors,
+                },
+                "correlation_id": correlation_id,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        """Handle unhandled exceptions with safe error response.
+
+        This handler catches all exceptions not handled by more specific handlers.
+        It logs the full exception but returns a generic error message to avoid
+        leaking sensitive information.
+
+        Args:
+            request: The incoming request.
+            exc: The unhandled exception.
+
+        Returns:
+            JSONResponse with generic error message.
+        """
+        correlation_id = get_correlation_id() or "unknown"
+        logger.exception(
+            f"[{correlation_id}] Unhandled exception: {type(exc).__name__}",
+            extra={"correlation_id": correlation_id},
+        )
+
+        # Don't leak exception details in production
+        message = "An unexpected error occurred"
+        if settings.debug:
+            message = f"{type(exc).__name__}: {str(exc)}"
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": {
+                    "type": "internal_error",
+                    "message": message,
+                },
+                "correlation_id": correlation_id,
+            },
+        )
 
 
 def _register_routes(app: FastAPI) -> None:
