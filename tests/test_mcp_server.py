@@ -190,6 +190,71 @@ async def test_playbook(async_session: AsyncSession, test_user: User):
 
 
 @pytest.fixture
+async def test_playbook_with_versions(async_session: AsyncSession, test_user: User):
+    """Create a test playbook with multiple versions."""
+    playbook = Playbook(
+        user_id=test_user.id,
+        name="Multi-Version Playbook",
+        description="A playbook with version history",
+        status=PlaybookStatus.ACTIVE,
+        source=PlaybookSource.USER_CREATED,
+    )
+    async_session.add(playbook)
+    await async_session.flush()
+
+    # Add version 1
+    version1 = PlaybookVersion(
+        playbook_id=playbook.id,
+        version_number=1,
+        content="""# Multi-Version Playbook
+
+## Getting Started
+
+- Step 1: Initial setup
+- Step 2: Configure settings
+
+## Advanced Topics
+
+- Advanced topic 1
+- Advanced topic 2
+""",
+        bullet_count=4,
+    )
+    async_session.add(version1)
+    await async_session.flush()
+
+    # Add version 2
+    version2 = PlaybookVersion(
+        playbook_id=playbook.id,
+        version_number=2,
+        content="""# Multi-Version Playbook
+
+## Getting Started
+
+- Step 1: Initial setup (updated)
+- Step 2: Configure settings
+- Step 3: New step added in v2
+
+## Advanced Topics
+
+- Advanced topic 1
+- Advanced topic 2
+- Advanced topic 3 (new)
+""",
+        bullet_count=6,
+    )
+    async_session.add(version2)
+    await async_session.flush()
+
+    # Set version 2 as current
+    playbook.current_version_id = version2.id
+    await async_session.commit()
+    await async_session.refresh(playbook)
+
+    return playbook
+
+
+@pytest.fixture
 async def test_api_key(async_session: AsyncSession, test_user: User):
     """Create a test API key with default scopes."""
     result = await create_api_key_async(
@@ -200,6 +265,112 @@ async def test_api_key(async_session: AsyncSession, test_user: User):
     )
     await async_session.commit()
     return result
+
+
+class TestExtractSection:
+    """Tests for _extract_section helper function."""
+
+    def test_extract_section_exact_match(self):
+        """Test extracting section with exact heading match."""
+        from ace_platform.mcp.server import _extract_section
+
+        content = """# Main Title
+
+Introduction text.
+
+## Getting Started
+
+Step 1: Do this
+Step 2: Do that
+
+## Advanced Topics
+
+More complex stuff here.
+"""
+        result = _extract_section(content, "Getting Started")
+        assert "## Getting Started" in result
+        assert "Step 1: Do this" in result
+        assert "Step 2: Do that" in result
+        assert "Advanced Topics" not in result
+
+    def test_extract_section_case_insensitive(self):
+        """Test that section matching is case insensitive."""
+        from ace_platform.mcp.server import _extract_section
+
+        content = """# Title
+
+## My Section
+
+Content here.
+
+## Other Section
+
+Other content.
+"""
+        result = _extract_section(content, "MY SECTION")
+        assert "## My Section" in result
+        assert "Content here" in result
+        assert "Other Section" not in result
+
+    def test_extract_section_partial_match(self):
+        """Test extracting section with partial heading match."""
+        from ace_platform.mcp.server import _extract_section
+
+        content = """# Title
+
+## Error Handling Best Practices
+
+Handle errors gracefully.
+
+## Logging
+
+Log everything.
+"""
+        result = _extract_section(content, "error handling")
+        assert "## Error Handling Best Practices" in result
+        assert "Handle errors gracefully" in result
+        assert "Logging" not in result
+
+    def test_extract_section_not_found(self):
+        """Test that non-existent section returns empty string."""
+        from ace_platform.mcp.server import _extract_section
+
+        content = """# Title
+
+## Section One
+
+Content.
+"""
+        result = _extract_section(content, "Nonexistent Section")
+        assert result == ""
+
+    def test_extract_section_nested_headings(self):
+        """Test that nested headings are included."""
+        from ace_platform.mcp.server import _extract_section
+
+        content = """# Title
+
+## Parent Section
+
+Intro text.
+
+### Child Section
+
+Child content.
+
+### Another Child
+
+More child content.
+
+## Sibling Section
+
+Different section.
+"""
+        result = _extract_section(content, "Parent Section")
+        assert "## Parent Section" in result
+        assert "### Child Section" in result
+        assert "### Another Child" in result
+        assert "Sibling Section" not in result
 
 
 @pytestmark_integration
@@ -257,6 +428,113 @@ class TestMCPToolsIntegration:
 
         assert "Error: Playbook" in result
         assert "not found" in result
+
+    async def test_get_playbook_specific_version(
+        self, async_session: AsyncSession, test_playbook_with_versions: Playbook, test_api_key
+    ):
+        """Test getting a specific version of a playbook."""
+        from ace_platform.mcp.server import get_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        # Get version 1 (older version)
+        result = await get_playbook(
+            playbook_id=str(test_playbook_with_versions.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+            version=1,
+        )
+
+        assert "Multi-Version Playbook" in result
+        assert "(v1)" in result
+        assert "Step 1: Initial setup" in result
+        # Version 1 should NOT have the v2 additions
+        assert "New step added in v2" not in result
+
+    async def test_get_playbook_version_not_found(
+        self, async_session: AsyncSession, test_playbook_with_versions: Playbook, test_api_key
+    ):
+        """Test getting a non-existent version returns error."""
+        from ace_platform.mcp.server import get_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_playbook(
+            playbook_id=str(test_playbook_with_versions.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+            version=99,
+        )
+
+        assert "Error: Version 99 not found" in result
+
+    async def test_get_playbook_section_filter(
+        self, async_session: AsyncSession, test_playbook_with_versions: Playbook, test_api_key
+    ):
+        """Test filtering playbook content to a specific section."""
+        from ace_platform.mcp.server import get_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_playbook(
+            playbook_id=str(test_playbook_with_versions.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+            section="Getting Started",
+        )
+
+        assert "Multi-Version Playbook" in result
+        assert "Getting Started" in result
+        assert "Step 1" in result
+        # Should NOT include other sections
+        assert "Advanced Topics" not in result
+
+    async def test_get_playbook_section_not_found(
+        self, async_session: AsyncSession, test_playbook_with_versions: Playbook, test_api_key
+    ):
+        """Test that non-existent section returns error."""
+        from ace_platform.mcp.server import get_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_playbook(
+            playbook_id=str(test_playbook_with_versions.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+            section="Nonexistent Section",
+        )
+
+        assert "Error: Section 'Nonexistent Section' not found" in result
+
+    async def test_get_playbook_version_and_section_combined(
+        self, async_session: AsyncSession, test_playbook_with_versions: Playbook, test_api_key
+    ):
+        """Test getting a specific version filtered to a section."""
+        from ace_platform.mcp.server import get_playbook
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        # Get version 1's Getting Started section
+        result = await get_playbook(
+            playbook_id=str(test_playbook_with_versions.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+            version=1,
+            section="Getting Started",
+        )
+
+        assert "(v1)" in result
+        assert "Getting Started" in result
+        assert "Step 1: Initial setup" in result
+        # Should not have v2 content
+        assert "New step added in v2" not in result
+        # Should not have other sections
+        assert "Advanced Topics" not in result
 
     async def test_list_playbooks_success(
         self, async_session: AsyncSession, test_playbook: Playbook, test_api_key

@@ -69,12 +69,26 @@ async def get_playbook(
     playbook_id: Annotated[str, "UUID of the playbook to retrieve"],
     api_key: Annotated[str, "API key for authentication"],
     ctx: Context,
+    version: Annotated[int | None, "Specific version number to retrieve (default: current)"] = None,
+    section: Annotated[str | None, "Filter to a specific section by heading"] = None,
 ) -> str:
-    """Get a playbook's current content by ID.
+    """Get a playbook's content by ID.
 
-    Returns the playbook name, description, and current version content.
+    Returns the playbook name, description, and version content.
+    Optionally retrieve a specific version or filter to a section.
     Requires a valid API key with 'playbooks:read' scope.
+
+    Args:
+        playbook_id: UUID of the playbook to retrieve.
+        api_key: API key for authentication.
+        version: Specific version number (default: current version).
+        section: Filter content to section matching this heading.
+
+    Returns:
+        Playbook content as structured markdown text.
     """
+    from ace_platform.db.models import PlaybookVersion
+
     db = get_db(ctx)
 
     # Authenticate
@@ -104,14 +118,38 @@ async def get_playbook(
     if playbook.user_id != user.id:
         return "Error: Access denied - playbook belongs to another user"
 
-    # Get current version content
+    # Get requested version
     content = ""
-    if playbook.current_version_id:
-        await db.refresh(playbook, ["current_version"])
-        if playbook.current_version:
-            content = playbook.current_version.content
+    version_info = ""
 
-    return f"""# {playbook.name}
+    if version is not None:
+        # Get specific version by version_number
+        result = await db.execute(
+            select(PlaybookVersion).where(
+                PlaybookVersion.playbook_id == pb_uuid,
+                PlaybookVersion.version_number == version,
+            )
+        )
+        playbook_version = result.scalar_one_or_none()
+        if not playbook_version:
+            return f"Error: Version {version} not found for playbook {playbook_id}"
+        content = playbook_version.content
+        version_info = f" (v{version})"
+    else:
+        # Get current version
+        if playbook.current_version_id:
+            await db.refresh(playbook, ["current_version"])
+            if playbook.current_version:
+                content = playbook.current_version.content
+                version_info = f" (v{playbook.current_version.version_number})"
+
+    # Filter by section if requested
+    if section and content:
+        content = _extract_section(content, section)
+        if not content:
+            return f"Error: Section '{section}' not found in playbook"
+
+    return f"""# {playbook.name}{version_info}
 
 {playbook.description or "No description"}
 
@@ -119,6 +157,48 @@ async def get_playbook(
 
 {content or "No content yet - add outcomes to evolve the playbook."}
 """
+
+
+def _extract_section(content: str, section_name: str) -> str:
+    """Extract a specific section from markdown content.
+
+    Finds a section by its heading (any level) and returns all content
+    until the next heading of the same or higher level.
+
+    Args:
+        content: Full markdown content.
+        section_name: Section heading to find (case-insensitive).
+
+    Returns:
+        Section content including the heading, or empty string if not found.
+    """
+    lines = content.split("\n")
+    result_lines = []
+    in_section = False
+    section_level = 0
+
+    section_name_lower = section_name.lower().strip()
+
+    for line in lines:
+        # Check if this is a heading
+        if line.startswith("#"):
+            # Count heading level
+            level = len(line) - len(line.lstrip("#"))
+            heading_text = line.lstrip("#").strip().lower()
+
+            if in_section:
+                # Check if we've hit another heading at same or higher level
+                if level <= section_level:
+                    break  # End of section
+            elif heading_text == section_name_lower or section_name_lower in heading_text:
+                # Found our section
+                in_section = True
+                section_level = level
+
+        if in_section:
+            result_lines.append(line)
+
+    return "\n".join(result_lines).strip()
 
 
 @mcp.tool()
