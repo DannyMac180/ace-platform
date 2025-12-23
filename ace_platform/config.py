@@ -94,6 +94,32 @@ class Settings(BaseSettings):
         description="Hours since last evolution to trigger (with at least 1 outcome)",
     )
 
+    # Evolution LLM settings
+    evolution_api_provider: str = Field(
+        default="openai",
+        description="LLM provider for evolution (openai, anthropic, together)",
+    )
+    evolution_generator_model: str = Field(
+        default="gpt-4o",
+        description="Model for Generator agent",
+    )
+    evolution_reflector_model: str = Field(
+        default="gpt-4o",
+        description="Model for Reflector agent",
+    )
+    evolution_curator_model: str = Field(
+        default="gpt-4o",
+        description="Model for Curator agent",
+    )
+    evolution_max_tokens: int = Field(
+        default=4096,
+        description="Max tokens per LLM call in evolution",
+    )
+    evolution_playbook_token_budget: int = Field(
+        default=80000,
+        description="Max tokens allowed for playbook content",
+    )
+
     # API Server
     api_host: str = Field(
         default="0.0.0.0",
