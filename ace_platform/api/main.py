@@ -60,7 +60,14 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
     )
 
-    # Add CORS middleware first (outermost layer for responses)
+    # Middleware execution order: last added = outermost (first for requests, last for responses)
+    # Request flow:  CorrelationId → Timing → CORS → Route
+    # Response flow: Route → CORS → Timing → CorrelationId
+    #
+    # This ensures the correlation ID context is available throughout the entire
+    # request lifecycle, including when Timing middleware logs slow requests.
+
+    # CORS middleware (innermost - handles preflight requests)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -70,10 +77,11 @@ def create_app() -> FastAPI:
         expose_headers=["X-Correlation-ID", "X-Process-Time"],
     )
 
-    # Add request timing middleware
+    # Request timing middleware (middle layer - can access correlation ID)
     app.add_middleware(RequestTimingMiddleware)
 
-    # Add correlation ID middleware (innermost, runs first for requests)
+    # Correlation ID middleware (outermost - added last so context wraps everything)
+    # The correlation ID remains available until after all inner middleware complete
     app.add_middleware(CorrelationIdMiddleware)
 
     # Register routes
