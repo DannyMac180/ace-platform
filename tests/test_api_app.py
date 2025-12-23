@@ -35,6 +35,7 @@ class TestHealthEndpoints:
 
     def test_readiness_check_with_db_connected(self, client):
         """Test /ready endpoint when database is connected."""
+        # Note: Patches at definition site; works because import is inside the route handler
         with patch("ace_platform.db.session.async_session_context") as mock_session:
             mock_db = AsyncMock()
             mock_db.execute = AsyncMock()
@@ -48,6 +49,7 @@ class TestHealthEndpoints:
 
     def test_readiness_check_with_db_disconnected(self, client):
         """Test /ready endpoint when database is not available."""
+        # Note: Patches at definition site; works because import is inside the route handler
         with patch("ace_platform.db.session.async_session_context") as mock_session:
             mock_session.return_value.__aenter__.side_effect = Exception("Connection failed")
 
@@ -161,7 +163,47 @@ class TestExceptionHandlers:
         assert data["error"]["type"] == "internal_error"
         assert "correlation_id" in data
         # Should not leak exception details in non-debug mode
-        assert "ValueError" not in data["error"]["message"] or "Something went wrong" not in data["error"]["message"]
+        assert data["error"]["message"] == "An unexpected error occurred"
+
+    def test_generic_exception_shows_details_in_debug_mode(self):
+        """Test that debug mode shows exception details in error response."""
+        with patch("ace_platform.api.main.settings") as mock_settings:
+            mock_settings.debug = True
+            mock_settings.cors_origins = ["http://localhost:3000"]
+
+            test_app = create_app()
+
+            @test_app.get("/raise-debug-error")
+            async def raise_debug_error():
+                raise ValueError("Detailed error info")
+
+            client = TestClient(test_app, raise_server_exceptions=False)
+            response = client.get("/raise-debug-error")
+
+            assert response.status_code == 500
+            data = response.json()
+            # In debug mode, should include exception type and message
+            assert "ValueError" in data["error"]["message"]
+            assert "Detailed error info" in data["error"]["message"]
+
+    def test_http_exception_preserves_headers(self):
+        """Test that HTTP exception headers are preserved in response."""
+        test_app = create_app()
+
+        @test_app.get("/raise-401-with-header")
+        async def raise_401_with_header():
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Bearer realm='api'"},
+            )
+
+        client = TestClient(test_app, raise_server_exceptions=False)
+        response = client.get("/raise-401-with-header")
+
+        assert response.status_code == 401
+        assert "WWW-Authenticate" in response.headers
+        assert response.headers["WWW-Authenticate"] == "Bearer realm='api'"
 
     def test_error_response_includes_correlation_id_header(self, client):
         """Test that error responses include correlation ID in headers."""

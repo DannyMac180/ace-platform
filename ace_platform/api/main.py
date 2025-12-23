@@ -120,7 +120,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
             f"[{correlation_id}] HTTP {exc.status_code}: {exc.detail}",
             extra={"correlation_id": correlation_id, "status_code": exc.status_code},
         )
-        return JSONResponse(
+        response = JSONResponse(
             status_code=exc.status_code,
             content={
                 "error": {
@@ -131,6 +131,10 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 "correlation_id": correlation_id,
             },
         )
+        # Preserve any headers from the exception (e.g., WWW-Authenticate for 401)
+        if exc.headers:
+            response.headers.update(exc.headers)
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
