@@ -373,6 +373,7 @@ Different section.
         assert "Sibling Section" not in result
 
 
+@pytestmark_integration
 class TestMCPToolsIntegration:
     """Integration tests for MCP tools with database."""
 
