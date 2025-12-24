@@ -403,3 +403,157 @@ class TestOutcomesEndpointIntegration:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             status.HTTP_401_UNAUTHORIZED,
         ]
+
+
+class TestEvolutionJobSchemas:
+    """Tests for evolution job response schemas."""
+
+    def test_evolution_job_response_valid(self):
+        """Test valid evolution job response schema."""
+        from ace_platform.api.routes.playbooks import EvolutionJobResponse
+        from ace_platform.db.models import EvolutionJobStatus
+
+        now = datetime.now(timezone.utc)
+        response = EvolutionJobResponse(
+            id=uuid4(),
+            status=EvolutionJobStatus.COMPLETED,
+            from_version_id=uuid4(),
+            to_version_id=uuid4(),
+            outcomes_processed=5,
+            error_message=None,
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+        )
+
+        assert response.status == EvolutionJobStatus.COMPLETED
+        assert response.outcomes_processed == 5
+        assert response.error_message is None
+
+    def test_evolution_job_response_failed(self):
+        """Test evolution job response for failed job."""
+        from ace_platform.api.routes.playbooks import EvolutionJobResponse
+        from ace_platform.db.models import EvolutionJobStatus
+
+        now = datetime.now(timezone.utc)
+        response = EvolutionJobResponse(
+            id=uuid4(),
+            status=EvolutionJobStatus.FAILED,
+            from_version_id=uuid4(),
+            to_version_id=None,
+            outcomes_processed=0,
+            error_message="Evolution failed due to API error",
+            created_at=now,
+            started_at=now,
+            completed_at=now,
+        )
+
+        assert response.status == EvolutionJobStatus.FAILED
+        assert response.to_version_id is None
+        assert response.error_message == "Evolution failed due to API error"
+
+    def test_evolution_job_response_queued(self):
+        """Test evolution job response for queued job."""
+        from ace_platform.api.routes.playbooks import EvolutionJobResponse
+        from ace_platform.db.models import EvolutionJobStatus
+
+        now = datetime.now(timezone.utc)
+        response = EvolutionJobResponse(
+            id=uuid4(),
+            status=EvolutionJobStatus.QUEUED,
+            from_version_id=uuid4(),
+            to_version_id=None,
+            outcomes_processed=0,
+            error_message=None,
+            created_at=now,
+            started_at=None,
+            completed_at=None,
+        )
+
+        assert response.status == EvolutionJobStatus.QUEUED
+        assert response.started_at is None
+        assert response.completed_at is None
+
+    def test_paginated_evolution_job_response(self):
+        """Test paginated evolution job response."""
+        from ace_platform.api.routes.playbooks import (
+            EvolutionJobResponse,
+            PaginatedEvolutionJobResponse,
+        )
+        from ace_platform.db.models import EvolutionJobStatus
+
+        now = datetime.now(timezone.utc)
+        items = [
+            EvolutionJobResponse(
+                id=uuid4(),
+                status=EvolutionJobStatus.COMPLETED,
+                from_version_id=uuid4(),
+                to_version_id=uuid4(),
+                outcomes_processed=i + 1,
+                error_message=None,
+                created_at=now,
+                started_at=now,
+                completed_at=now,
+            )
+            for i in range(3)
+        ]
+
+        response = PaginatedEvolutionJobResponse(
+            items=items,
+            total=10,
+            page=1,
+            page_size=5,
+            total_pages=2,
+        )
+
+        assert len(response.items) == 3
+        assert response.total == 10
+        assert response.total_pages == 2
+
+
+class TestEvolutionsEndpointIntegration:
+    """Integration tests for playbook evolutions endpoint."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app."""
+        from ace_platform.api.main import create_app
+
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_evolutions_route_registered(self, app):
+        """Test that evolutions route is registered."""
+        routes = [route.path for route in app.routes]
+        assert "/playbooks/{playbook_id}/evolutions" in routes
+
+    def test_list_evolutions_requires_auth(self, client):
+        """Test that listing evolutions requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.get(f"/playbooks/{playbook_id}/evolutions")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_evolutions_with_invalid_token(self, client):
+        """Test listing evolutions with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.get(
+            f"/playbooks/{playbook_id}/evolutions",
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_evolutions_invalid_uuid(self, client):
+        """Test listing evolutions with invalid UUID."""
+        response = client.get(
+            "/playbooks/not-a-uuid/evolutions",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_401_UNAUTHORIZED,
+        ]

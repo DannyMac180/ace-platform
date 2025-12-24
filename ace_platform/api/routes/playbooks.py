@@ -7,6 +7,7 @@ This module provides REST API endpoints for playbook management:
 - PUT /playbooks/{id} - Update a playbook
 - DELETE /playbooks/{id} - Delete a playbook
 - GET /playbooks/{id}/outcomes - List outcomes for a playbook
+- GET /playbooks/{id}/evolutions - List evolution history for a playbook
 """
 
 from datetime import datetime
@@ -22,6 +23,8 @@ from sqlalchemy.orm import selectinload
 from ace_platform.api.auth import require_user
 from ace_platform.api.deps import get_db
 from ace_platform.db.models import (
+    EvolutionJob,
+    EvolutionJobStatus,
     Outcome,
     OutcomeStatus,
     Playbook,
@@ -127,6 +130,32 @@ class PaginatedOutcomeResponse(BaseModel):
     """Paginated response for outcome list."""
 
     items: list[OutcomeResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class EvolutionJobResponse(BaseModel):
+    """Response schema for an evolution job."""
+
+    id: UUID
+    status: EvolutionJobStatus
+    from_version_id: UUID | None
+    to_version_id: UUID | None
+    outcomes_processed: int
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedEvolutionJobResponse(BaseModel):
+    """Paginated response for evolution job list."""
+
+    items: list[EvolutionJobResponse]
     total: int
     page: int
     page_size: int
@@ -466,6 +495,77 @@ async def list_playbook_outcomes(
     total_pages = (total + page_size - 1) // page_size if total > 0 else 0
 
     return PaginatedOutcomeResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.get("/{playbook_id}/evolutions", response_model=PaginatedEvolutionJobResponse)
+async def list_playbook_evolutions(
+    db: DbSession,
+    current_user: CurrentUser,
+    playbook_id: UUID,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    status_filter: EvolutionJobStatus | None = Query(None, description="Filter by job status"),
+) -> PaginatedEvolutionJobResponse:
+    """List evolution jobs for a playbook.
+
+    Returns paginated list of evolution jobs with optional status filtering.
+    """
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Build base query
+    base_query = select(EvolutionJob).where(EvolutionJob.playbook_id == playbook_id)
+
+    if status_filter:
+        base_query = base_query.where(EvolutionJob.status == status_filter)
+
+    # Get total count
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Get paginated results
+    offset = (page - 1) * page_size
+    query = base_query.order_by(EvolutionJob.created_at.desc()).offset(offset).limit(page_size)
+
+    result = await db.execute(query)
+    jobs = result.scalars().all()
+
+    # Build response items
+    items = [
+        EvolutionJobResponse(
+            id=job.id,
+            status=job.status,
+            from_version_id=job.from_version_id,
+            to_version_id=job.to_version_id,
+            outcomes_processed=job.outcomes_processed,
+            error_message=job.error_message,
+            created_at=job.created_at,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+        )
+        for job in jobs
+    ]
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return PaginatedEvolutionJobResponse(
         items=items,
         total=total,
         page=page,
