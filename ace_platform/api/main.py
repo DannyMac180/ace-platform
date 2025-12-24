@@ -246,10 +246,16 @@ def _register_routes(app: FastAPI) -> None:
     Args:
         app: The FastAPI application to register routes on.
     """
-    from ace_platform.api.routes import auth_router, playbooks_router, usage_router
+    from ace_platform.api.routes import (
+        auth_router,
+        billing_router,
+        playbooks_router,
+        usage_router,
+    )
 
     # Include API routers
     app.include_router(auth_router)
+    app.include_router(billing_router)
     app.include_router(playbooks_router)
     app.include_router(usage_router)
 
