@@ -273,3 +273,133 @@ class TestPlaybookVersionResponse:
         assert version.version_number == 1
         assert version.content == "# Playbook Content"
         assert version.bullet_count == 0
+
+
+class TestOutcomeSchemas:
+    """Tests for outcome response schemas."""
+
+    def test_outcome_response_valid(self):
+        """Test valid outcome response schema."""
+        from ace_platform.api.routes.playbooks import OutcomeResponse
+        from ace_platform.db.models import OutcomeStatus
+
+        now = datetime.now(timezone.utc)
+        response = OutcomeResponse(
+            id=uuid4(),
+            task_description="Test task",
+            outcome_status=OutcomeStatus.SUCCESS,
+            notes="Some notes",
+            reasoning_trace="Reasoning here",
+            created_at=now,
+            processed_at=now,
+            evolution_job_id=uuid4(),
+        )
+
+        assert response.task_description == "Test task"
+        assert response.outcome_status == OutcomeStatus.SUCCESS
+        assert response.notes == "Some notes"
+
+    def test_outcome_response_optional_fields(self):
+        """Test outcome response with optional fields as None."""
+        from ace_platform.api.routes.playbooks import OutcomeResponse
+        from ace_platform.db.models import OutcomeStatus
+
+        now = datetime.now(timezone.utc)
+        response = OutcomeResponse(
+            id=uuid4(),
+            task_description="Test task",
+            outcome_status=OutcomeStatus.FAILURE,
+            notes=None,
+            reasoning_trace=None,
+            created_at=now,
+            processed_at=None,
+            evolution_job_id=None,
+        )
+
+        assert response.notes is None
+        assert response.processed_at is None
+        assert response.evolution_job_id is None
+
+    def test_paginated_outcome_response(self):
+        """Test paginated outcome response."""
+        from ace_platform.api.routes.playbooks import (
+            OutcomeResponse,
+            PaginatedOutcomeResponse,
+        )
+        from ace_platform.db.models import OutcomeStatus
+
+        now = datetime.now(timezone.utc)
+        items = [
+            OutcomeResponse(
+                id=uuid4(),
+                task_description=f"Task {i}",
+                outcome_status=OutcomeStatus.SUCCESS,
+                notes=None,
+                reasoning_trace=None,
+                created_at=now,
+                processed_at=None,
+                evolution_job_id=None,
+            )
+            for i in range(3)
+        ]
+
+        response = PaginatedOutcomeResponse(
+            items=items,
+            total=15,
+            page=2,
+            page_size=5,
+            total_pages=3,
+        )
+
+        assert len(response.items) == 3
+        assert response.total == 15
+        assert response.page == 2
+        assert response.total_pages == 3
+
+
+class TestOutcomesEndpointIntegration:
+    """Integration tests for playbook outcomes endpoint."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app."""
+        from ace_platform.api.main import create_app
+
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_outcomes_route_registered(self, app):
+        """Test that outcomes route is registered."""
+        routes = [route.path for route in app.routes]
+        assert "/playbooks/{playbook_id}/outcomes" in routes
+
+    def test_list_outcomes_requires_auth(self, client):
+        """Test that listing outcomes requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.get(f"/playbooks/{playbook_id}/outcomes")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_outcomes_with_invalid_token(self, client):
+        """Test listing outcomes with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.get(
+            f"/playbooks/{playbook_id}/outcomes",
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_outcomes_invalid_uuid(self, client):
+        """Test listing outcomes with invalid UUID."""
+        response = client.get(
+            "/playbooks/not-a-uuid/outcomes",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
