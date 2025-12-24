@@ -1,11 +1,18 @@
 """Authentication dependencies for FastAPI and MCP.
 
 This module provides authentication middleware and dependencies for:
-- API key authentication (for MCP and API routes)
+- JWT bearer token authentication (for user sessions)
+- API key authentication (for MCP and programmatic access)
 - Scope-based authorization
 - Proper HTTP error responses (401/403)
 
 Usage in FastAPI routes:
+    # JWT-based auth (for web/mobile clients)
+    @app.get("/me")
+    async def get_current_user(user: User = Depends(require_user)):
+        return {"email": user.email}
+
+    # API key auth (for MCP/programmatic access)
     @app.get("/playbooks")
     async def list_playbooks(auth: AuthContext = Depends(require_auth)):
         return {"user_id": str(auth.user.id)}
@@ -20,11 +27,18 @@ Usage in FastAPI routes:
 
 from dataclasses import dataclass
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import Depends, Header, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.core.api_keys import authenticate_api_key_async, check_scope
+from ace_platform.core.security import (
+    InvalidTokenError,
+    TokenExpiredError,
+    decode_access_token,
+)
 from ace_platform.db.models import ApiKey, User
 
 from .deps import get_db
@@ -220,3 +234,147 @@ def require_any_scope(*required_scopes: str):
 # Type aliases for cleaner dependency injection
 OptionalAuth = Annotated[AuthContext | None, Depends(get_optional_auth)]
 RequiredAuth = Annotated[AuthContext, Depends(require_auth)]
+
+
+# =============================================================================
+# JWT-based User Authentication
+# =============================================================================
+# These dependencies are for JWT bearer token authentication, typically used
+# by web/mobile clients after login. For MCP/programmatic access, use the
+# API key-based authentication above.
+
+
+def extract_bearer_token(
+    authorization: str | None = Header(None, alias=AUTHORIZATION_HEADER),
+) -> str | None:
+    """Extract JWT bearer token from Authorization header.
+
+    Args:
+        authorization: Value from Authorization header.
+
+    Returns:
+        The bearer token if found, None otherwise.
+    """
+    if authorization and authorization.startswith(BEARER_PREFIX):
+        return authorization[len(BEARER_PREFIX) :]
+    return None
+
+
+async def get_optional_user(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    token: Annotated[str | None, Depends(extract_bearer_token)],
+) -> User | None:
+    """Get the current user from JWT token if provided.
+
+    This dependency does not require authentication - it returns None
+    if no token is provided. Use `require_user` for mandatory auth.
+
+    Args:
+        db: Database session.
+        token: JWT token from Authorization header.
+
+    Returns:
+        User if authenticated, None if no token provided.
+
+    Raises:
+        AuthenticationError: If token is provided but invalid/expired.
+    """
+    if not token:
+        return None
+
+    try:
+        payload = decode_access_token(token)
+    except TokenExpiredError:
+        raise AuthenticationError("Token has expired")
+    except InvalidTokenError:
+        # Use generic message to avoid leaking token parsing details
+        raise AuthenticationError("Invalid token")
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise AuthenticationError("Invalid token: missing subject")
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        raise AuthenticationError("Invalid token: malformed user ID")
+
+    # Fetch user from database
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if not user:
+        raise AuthenticationError("User not found")
+
+    if not user.is_active:
+        raise AuthenticationError("User account is disabled")
+
+    return user
+
+
+async def require_user(
+    user: Annotated[User | None, Depends(get_optional_user)],
+) -> User:
+    """Require JWT authentication for a route.
+
+    Use this dependency to protect routes that require user authentication.
+
+    Args:
+        user: Optional user from get_optional_user.
+
+    Returns:
+        The authenticated User.
+
+    Raises:
+        AuthenticationError: If no valid token is provided.
+    """
+    if not user:
+        raise AuthenticationError("Authentication required")
+    return user
+
+
+async def require_active_user(
+    user: Annotated[User, Depends(require_user)],
+) -> User:
+    """Require an active user for a route.
+
+    Note: This is functionally equivalent to require_user since is_active
+    is already checked in get_optional_user. This dependency exists for
+    semantic clarity in route definitions - use it when the route's logic
+    specifically requires an active account status.
+
+    Args:
+        user: The authenticated user (already verified as active).
+
+    Returns:
+        The authenticated active User.
+    """
+    return user
+
+
+async def require_verified_user(
+    user: Annotated[User, Depends(require_user)],
+) -> User:
+    """Require a verified user for a route.
+
+    Use this for routes that require email verification.
+
+    Args:
+        user: The authenticated user.
+
+    Returns:
+        The authenticated verified User.
+
+    Raises:
+        AuthorizationError: If user's email is not verified.
+    """
+    if not user.email_verified:
+        raise AuthorizationError("Email verification required")
+    return user
+
+
+# Type aliases for JWT-based auth
+OptionalUser = Annotated[User | None, Depends(get_optional_user)]
+RequiredUser = Annotated[User, Depends(require_user)]
+ActiveUser = Annotated[User, Depends(require_active_user)]
+VerifiedUser = Annotated[User, Depends(require_verified_user)]
