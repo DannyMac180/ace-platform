@@ -13,6 +13,7 @@ Usage:
 """
 
 from celery import Celery
+from celery.schedules import crontab
 
 from ace_platform.config import get_settings
 
@@ -64,6 +65,15 @@ celery_app.autodiscover_tasks(
         "ace_platform.workers",
     ]
 )
+
+# Beat schedule for periodic tasks
+celery_app.conf.beat_schedule = {
+    "check-auto-evolution": {
+        "task": "ace_platform.workers.auto_evolution.check_auto_evolution",
+        "schedule": crontab(minute="*/5"),  # Run every 5 minutes
+        "options": {"queue": "default"},
+    },
+}
 
 
 @celery_app.task(bind=True, name="ace_platform.health_check")
