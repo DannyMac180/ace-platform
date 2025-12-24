@@ -6,6 +6,7 @@ This module provides REST API endpoints for playbook management:
 - GET /playbooks/{id} - Get a specific playbook
 - PUT /playbooks/{id} - Update a playbook
 - DELETE /playbooks/{id} - Delete a playbook
+- GET /playbooks/{id}/outcomes - List outcomes for a playbook
 """
 
 from datetime import datetime
@@ -21,6 +22,8 @@ from sqlalchemy.orm import selectinload
 from ace_platform.api.auth import require_user
 from ace_platform.api.deps import get_db
 from ace_platform.db.models import (
+    Outcome,
+    OutcomeStatus,
     Playbook,
     PlaybookSource,
     PlaybookStatus,
@@ -99,6 +102,31 @@ class PaginatedPlaybookResponse(BaseModel):
     """Paginated response for playbook list."""
 
     items: list[PlaybookListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class OutcomeResponse(BaseModel):
+    """Response schema for an outcome."""
+
+    id: UUID
+    task_description: str
+    outcome_status: OutcomeStatus
+    notes: str | None
+    reasoning_trace: str | None
+    created_at: datetime
+    processed_at: datetime | None
+    evolution_job_id: UUID | None
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedOutcomeResponse(BaseModel):
+    """Paginated response for outcome list."""
+
+    items: list[OutcomeResponse]
     total: int
     page: int
     page_size: int
@@ -367,3 +395,80 @@ async def delete_playbook(
 
     await db.delete(playbook)
     await db.commit()
+
+
+@router.get("/{playbook_id}/outcomes", response_model=PaginatedOutcomeResponse)
+async def list_playbook_outcomes(
+    db: DbSession,
+    current_user: CurrentUser,
+    playbook_id: UUID,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    status_filter: OutcomeStatus | None = Query(None, description="Filter by outcome status"),
+    processed: bool | None = Query(None, description="Filter by processed state"),
+) -> PaginatedOutcomeResponse:
+    """List outcomes for a playbook.
+
+    Returns paginated list of outcomes with optional filtering.
+    """
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Build base query
+    base_query = select(Outcome).where(Outcome.playbook_id == playbook_id)
+
+    if status_filter:
+        base_query = base_query.where(Outcome.outcome_status == status_filter)
+
+    if processed is not None:
+        if processed:
+            base_query = base_query.where(Outcome.processed_at.isnot(None))
+        else:
+            base_query = base_query.where(Outcome.processed_at.is_(None))
+
+    # Get total count
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Get paginated results
+    offset = (page - 1) * page_size
+    query = base_query.order_by(Outcome.created_at.desc()).offset(offset).limit(page_size)
+
+    result = await db.execute(query)
+    outcomes = result.scalars().all()
+
+    # Build response items
+    items = [
+        OutcomeResponse(
+            id=o.id,
+            task_description=o.task_description,
+            outcome_status=o.outcome_status,
+            notes=o.notes,
+            reasoning_trace=o.reasoning_trace,
+            created_at=o.created_at,
+            processed_at=o.processed_at,
+            evolution_job_id=o.evolution_job_id,
+        )
+        for o in outcomes
+    ]
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return PaginatedOutcomeResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
