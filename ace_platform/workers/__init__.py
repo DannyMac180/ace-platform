@@ -1,7 +1,8 @@
 """ACE Platform background workers.
 
 This package contains Celery workers for background task processing:
-- evolution_worker: Handles playbook evolution tasks
+- celery_app: Main Celery application configuration
+- evolution_task: Playbook evolution processing task
 
 Usage:
     # Start worker for all queues
@@ -12,5 +13,6 @@ Usage:
 """
 
 from ace_platform.workers.celery_app import celery_app
+from ace_platform.workers.evolution_task import process_evolution_job
 
-__all__ = ["celery_app"]
+__all__ = ["celery_app", "process_evolution_job"]

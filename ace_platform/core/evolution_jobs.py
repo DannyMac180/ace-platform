@@ -80,6 +80,11 @@ async def trigger_evolution_async(
         db.add(new_job)
         await db.flush()  # Get the ID without committing
 
+        # Queue the Celery task
+        from ace_platform.workers.evolution_task import process_evolution_job
+
+        process_evolution_job.delay(str(new_job.id))
+
         return TriggerEvolutionResult(
             job_id=new_job.id,
             is_new=True,
@@ -174,6 +179,11 @@ def trigger_evolution_sync(
         )
         db.add(new_job)
         db.flush()  # Get the ID without committing
+
+        # Queue the Celery task
+        from ace_platform.workers.evolution_task import process_evolution_job
+
+        process_evolution_job.delay(str(new_job.id))
 
         return TriggerEvolutionResult(
             job_id=new_job.id,
