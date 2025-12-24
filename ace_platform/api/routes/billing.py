@@ -5,13 +5,14 @@ This module provides REST API endpoints for billing and subscriptions:
 - POST /billing/subscribe - Subscribe to a plan
 - GET /billing/usage - Get usage summary for billing
 - POST /billing/portal - Create Stripe billing portal session
+- POST /billing/webhook - Handle Stripe webhook events
 """
 
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -292,4 +293,63 @@ async def create_billing_portal(
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=result.error or "Failed to create billing portal session",
+    )
+
+
+class WebhookResponse(BaseModel):
+    """Response schema for webhook endpoint."""
+
+    received: bool
+    message: str
+
+
+@router.post("/webhook", response_model=WebhookResponse)
+async def handle_stripe_webhook(
+    request: Request,
+    db: DbSession,
+    stripe_signature: str = Header(None, alias="Stripe-Signature"),
+) -> WebhookResponse:
+    """Handle Stripe webhook events.
+
+    This endpoint receives webhook events from Stripe for subscription lifecycle
+    events (created, updated, cancelled, payment failed/succeeded).
+
+    The endpoint verifies the webhook signature before processing.
+    """
+    from ace_platform.core.webhooks import (
+        handle_webhook_event,
+        verify_webhook_signature,
+    )
+
+    # Get raw request body for signature verification
+    payload = await request.body()
+
+    if not stripe_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing Stripe-Signature header",
+        )
+
+    # Verify webhook signature
+    event = verify_webhook_signature(payload, stripe_signature)
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid webhook signature",
+        )
+
+    # Process the event
+    result = await handle_webhook_event(db, event)
+
+    if not result.success:
+        # Log the error but return 200 to acknowledge receipt
+        # Stripe will retry if we return an error status
+        return WebhookResponse(
+            received=True,
+            message=f"Event received but processing failed: {result.message}",
+        )
+
+    return WebhookResponse(
+        received=True,
+        message=result.message,
     )
