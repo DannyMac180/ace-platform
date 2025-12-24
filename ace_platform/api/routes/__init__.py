@@ -7,5 +7,6 @@ This package contains FastAPI routers for different resource types:
 """
 
 from .auth import router as auth_router
+from .playbooks import router as playbooks_router
 
-__all__ = ["auth_router"]
+__all__ = ["auth_router", "playbooks_router"]
