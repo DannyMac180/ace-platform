@@ -198,10 +198,13 @@ async def subscribe(
     """Subscribe to a plan.
 
     For free tier, immediately activates.
-    For paid tiers, returns a Stripe checkout URL (when Stripe is configured).
+    For paid tiers, returns a Stripe checkout URL for payment.
     """
+    from ace_platform.core.billing import create_checkout_session
+
     # Handle free tier subscription
     if request.tier == SubscriptionTier.FREE:
+        limits = get_tier_limits(SubscriptionTier.FREE)
         return SubscribeResponse(
             success=True,
             message="You are now on the Free plan",
@@ -211,32 +214,50 @@ async def subscribe(
                 current_period_start=get_billing_period_start(),
                 current_period_end=_get_current_period_end(),
                 limits=TierLimitsResponse(
-                    monthly_requests=100,
-                    monthly_tokens=100_000,
-                    monthly_cost_usd=Decimal("1.00"),
-                    max_playbooks=3,
-                    max_evolutions_per_day=5,
-                    can_use_premium_models=False,
-                    can_export_data=False,
-                    priority_support=False,
+                    monthly_requests=limits.monthly_requests,
+                    monthly_tokens=limits.monthly_tokens,
+                    monthly_cost_usd=limits.monthly_cost_usd,
+                    max_playbooks=limits.max_playbooks,
+                    max_evolutions_per_day=limits.max_evolutions_per_day,
+                    can_use_premium_models=limits.can_use_premium_models,
+                    can_export_data=limits.can_export_data,
+                    priority_support=limits.priority_support,
                 ),
                 stripe_customer_id=current_user.stripe_customer_id,
             ),
         )
 
-    # For paid tiers, we need Stripe integration
-    # TODO: Implement Stripe checkout session creation
+    # For paid tiers, create a Stripe checkout session
     if request.tier in [
         SubscriptionTier.STARTER,
         SubscriptionTier.PROFESSIONAL,
-        SubscriptionTier.ENTERPRISE,
     ]:
-        # For now, return a placeholder response
-        # In production, this would create a Stripe checkout session
+        result = await create_checkout_session(
+            db=db,
+            user=current_user,
+            tier=request.tier,
+        )
+
+        if result.success:
+            return SubscribeResponse(
+                success=True,
+                message=f"Checkout session created for {request.tier.value} tier",
+                subscription=None,
+                checkout_url=result.checkout_url,
+            )
+        else:
+            return SubscribeResponse(
+                success=False,
+                message=result.error or "Failed to create checkout session",
+                subscription=None,
+                checkout_url=None,
+            )
+
+    # Enterprise requires custom handling
+    if request.tier == SubscriptionTier.ENTERPRISE:
         return SubscribeResponse(
             success=False,
-            message=f"Stripe integration required for {request.tier.value} tier. "
-            "Please contact support to upgrade.",
+            message="Enterprise tier requires custom pricing. Please contact sales.",
             subscription=None,
             checkout_url=None,
         )
@@ -255,15 +276,20 @@ async def create_billing_portal(
 
     Returns a URL to redirect the user to manage their subscription.
     """
+    from ace_platform.core.billing import create_billing_portal_session
+
     if not current_user.stripe_customer_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No billing account found. Please subscribe to a plan first.",
         )
 
-    # TODO: Create Stripe billing portal session
-    # For now, return a placeholder
+    result = await create_billing_portal_session(user=current_user)
+
+    if result.success and result.portal_url:
+        return PortalResponse(url=result.portal_url)
+
     raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Stripe billing portal not yet configured. Please contact support.",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=result.error or "Failed to create billing portal session",
     )
