@@ -74,6 +74,16 @@ class EvolutionJobStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class SubscriptionStatus(str, enum.Enum):
+    """Status of a user's subscription."""
+
+    NONE = "none"  # No subscription (free tier)
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+    UNPAID = "unpaid"
+
+
 class User(Base):
     """Platform user."""
 
@@ -85,6 +95,14 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    subscription_tier: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    subscription_status: Mapped[SubscriptionStatus] = mapped_column(
+        Enum(SubscriptionStatus), default=SubscriptionStatus.NONE, nullable=False
+    )
+    subscription_current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
