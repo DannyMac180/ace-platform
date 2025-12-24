@@ -41,11 +41,36 @@ async def lifespan(app: FastAPI):
     setup_logging_with_correlation_id(level=log_level)
     logger.info("ACE Platform API starting up")
 
+    # Seed starter playbooks
+    await _seed_starter_playbooks()
+
     yield
 
     # Shutdown
     logger.info("ACE Platform API shutting down")
     await close_async_db()
+
+
+async def _seed_starter_playbooks() -> None:
+    """Seed starter playbooks on startup.
+
+    This runs during application startup to ensure starter playbooks
+    are available in the database. It's idempotent - existing playbooks
+    are skipped.
+    """
+    from ace_platform.db.seed import seed_starter_playbooks
+    from ace_platform.db.session import async_session_context
+
+    try:
+        async with async_session_context() as db:
+            results = await seed_starter_playbooks(db)
+            if results["created"]:
+                logger.info(f"Seeded {len(results['created'])} starter playbook(s)")
+            if results["errors"]:
+                logger.warning(f"Failed to seed {len(results['errors'])} playbook(s)")
+    except Exception as e:
+        # Don't fail startup if seeding fails
+        logger.error(f"Error seeding starter playbooks: {e}")
 
 
 def create_app() -> FastAPI:
