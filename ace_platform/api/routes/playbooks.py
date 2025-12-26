@@ -20,8 +20,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ace_platform.api.auth import require_user
+from ace_platform.api.auth import (
+    SubscriptionError,
+    get_user_tier,
+    require_active_subscription,
+    require_user,
+)
 from ace_platform.api.deps import get_db
+from ace_platform.core.limits import get_tier_limits
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
@@ -165,6 +171,7 @@ class PaginatedEvolutionJobResponse(BaseModel):
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(require_user)]
+SubscribedUser = Annotated[User, Depends(require_active_subscription)]
 
 
 # Route handlers
@@ -234,13 +241,32 @@ async def list_playbooks(
 @router.post("", response_model=PlaybookResponse, status_code=status.HTTP_201_CREATED)
 async def create_playbook(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: SubscribedUser,
     data: PlaybookCreate,
 ) -> PlaybookResponse:
     """Create a new playbook.
 
     Optionally include initial content to create the first version.
+    Requires active subscription and enforces max_playbooks limit.
     """
+    # Check max_playbooks limit for user's tier
+    user_tier = get_user_tier(current_user)
+    limits = get_tier_limits(user_tier)
+
+    if limits.max_playbooks is not None:
+        # Count existing playbooks
+        count_query = select(func.count()).select_from(
+            select(Playbook).where(Playbook.user_id == current_user.id).subquery()
+        )
+        current_count = await db.scalar(count_query) or 0
+
+        if current_count >= limits.max_playbooks:
+            raise SubscriptionError(
+                f"You have reached the maximum number of playbooks ({limits.max_playbooks}) "
+                f"for your {user_tier.value} subscription. Please upgrade to create more playbooks.",
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
     # Create playbook
     playbook = Playbook(
         user_id=current_user.id,
@@ -344,13 +370,14 @@ async def get_playbook(
 @router.put("/{playbook_id}", response_model=PlaybookResponse)
 async def update_playbook(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: SubscribedUser,
     playbook_id: UUID,
     data: PlaybookUpdate,
 ) -> PlaybookResponse:
     """Update a playbook's metadata.
 
     Only updates provided fields. Does not modify version content.
+    Requires active subscription.
     """
     query = (
         select(Playbook)
@@ -403,13 +430,14 @@ async def update_playbook(
 @router.delete("/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_playbook(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: SubscribedUser,
     playbook_id: UUID,
 ) -> None:
     """Delete a playbook.
 
     This permanently removes the playbook and all associated data
     including versions, outcomes, and evolution jobs.
+    Requires active subscription.
     """
     query = select(Playbook).where(Playbook.id == playbook_id, Playbook.user_id == current_user.id)
 

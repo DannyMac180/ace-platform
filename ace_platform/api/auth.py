@@ -34,12 +34,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.core.api_keys import authenticate_api_key_async, check_scope
+from ace_platform.core.limits import SubscriptionTier, get_tier_limits
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
     decode_access_token,
 )
-from ace_platform.db.models import ApiKey, User
+from ace_platform.db.models import ApiKey, SubscriptionStatus, User
 
 from .deps import get_db
 
@@ -378,3 +379,173 @@ OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 RequiredUser = Annotated[User, Depends(require_user)]
 ActiveUser = Annotated[User, Depends(require_active_user)]
 VerifiedUser = Annotated[User, Depends(require_verified_user)]
+
+
+# =============================================================================
+# Subscription Validation
+# =============================================================================
+# These dependencies check subscription status and enforce tier-based limits.
+# They build on top of JWT auth to add billing/subscription checks.
+
+
+class SubscriptionError(HTTPException):
+    """Raised when subscription check fails (402 Payment Required or 403)."""
+
+    def __init__(self, detail: str, status_code: int = status.HTTP_403_FORBIDDEN):
+        super().__init__(
+            status_code=status_code,
+            detail=detail,
+        )
+
+
+def get_user_tier(user: User) -> SubscriptionTier:
+    """Get the subscription tier for a user.
+
+    Args:
+        user: The user to check.
+
+    Returns:
+        The user's subscription tier, defaulting to FREE.
+    """
+    if not user.subscription_tier:
+        return SubscriptionTier.FREE
+    try:
+        return SubscriptionTier(user.subscription_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+async def require_active_subscription(
+    user: Annotated[User, Depends(require_user)],
+) -> User:
+    """Require an active subscription or free tier.
+
+    This dependency allows:
+    - Users with subscription_status = NONE (free tier)
+    - Users with subscription_status = ACTIVE
+
+    It rejects:
+    - Users with PAST_DUE, CANCELED, or UNPAID subscriptions
+
+    Args:
+        user: The authenticated user.
+
+    Returns:
+        The user if subscription is valid.
+
+    Raises:
+        SubscriptionError: If subscription is in a bad state.
+    """
+    # Free tier (NONE) is always allowed
+    if user.subscription_status == SubscriptionStatus.NONE:
+        return user
+
+    # Active subscriptions are allowed
+    if user.subscription_status == SubscriptionStatus.ACTIVE:
+        return user
+
+    # All other statuses require action
+    if user.subscription_status == SubscriptionStatus.PAST_DUE:
+        raise SubscriptionError(
+            "Your subscription payment is past due. Please update your payment method.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+    elif user.subscription_status == SubscriptionStatus.CANCELED:
+        raise SubscriptionError(
+            "Your subscription has been canceled. Please resubscribe to continue.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+    elif user.subscription_status == SubscriptionStatus.UNPAID:
+        raise SubscriptionError(
+            "Your subscription is unpaid. Please update your payment method.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+    else:
+        raise SubscriptionError("Invalid subscription status")
+
+    return user
+
+
+def require_tier(minimum_tier: SubscriptionTier):
+    """Create a dependency that requires a minimum subscription tier.
+
+    Use this factory to protect routes that require specific tier levels.
+
+    Args:
+        minimum_tier: The minimum tier required.
+
+    Returns:
+        A FastAPI dependency function.
+
+    Usage:
+        @app.post("/premium-feature")
+        async def premium_feature(user: User = Depends(require_tier(SubscriptionTier.STARTER))):
+            ...
+    """
+    tier_order = [
+        SubscriptionTier.FREE,
+        SubscriptionTier.STARTER,
+        SubscriptionTier.PROFESSIONAL,
+        SubscriptionTier.ENTERPRISE,
+    ]
+
+    async def tier_checker(
+        user: Annotated[User, Depends(require_active_subscription)],
+    ) -> User:
+        """Check that the user has at least the minimum required tier."""
+        user_tier = get_user_tier(user)
+
+        user_tier_index = tier_order.index(user_tier)
+        min_tier_index = tier_order.index(minimum_tier)
+
+        if user_tier_index < min_tier_index:
+            raise SubscriptionError(
+                f"This feature requires a {minimum_tier.value} subscription or higher. "
+                f"Your current tier is {user_tier.value}.",
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+        return user
+
+    return tier_checker
+
+
+def require_feature(feature: str):
+    """Create a dependency that requires a specific feature.
+
+    Use this to check tier-based feature flags like:
+    - can_use_premium_models
+    - can_export_data
+    - priority_support
+
+    Args:
+        feature: The feature name to check.
+
+    Returns:
+        A FastAPI dependency function.
+
+    Usage:
+        @app.post("/export")
+        async def export_data(user: User = Depends(require_feature("can_export_data"))):
+            ...
+    """
+
+    async def feature_checker(
+        user: Annotated[User, Depends(require_active_subscription)],
+    ) -> User:
+        """Check that the user's tier has the required feature."""
+        user_tier = get_user_tier(user)
+        limits = get_tier_limits(user_tier)
+
+        if not getattr(limits, feature, False):
+            raise SubscriptionError(
+                f"This feature requires an upgraded subscription. "
+                f"Your current tier ({user_tier.value}) does not include {feature.replace('_', ' ')}.",
+                status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+        return user
+
+    return feature_checker
+
+
+# Type aliases for subscription-based auth
+SubscribedUser = Annotated[User, Depends(require_active_subscription)]
