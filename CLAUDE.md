@@ -30,7 +30,9 @@ source venv/bin/activate && pip install <package>
 - Podman & Podman Compose for local development (Docker in production)
 - OpenAI API key
 
-### Quick Start
+### Quick Start (Hybrid - Recommended)
+
+Run infrastructure in containers, application locally for hot-reload:
 
 ```bash
 # 1. Clone and enter the project
@@ -57,6 +59,33 @@ alembic upgrade head
 uvicorn ace_platform.api.main:app --reload          # API server (port 8000)
 python -m ace_platform.mcp.server                    # MCP server
 celery -A ace_platform.workers.celery_app worker -l info  # Background worker
+```
+
+### Quick Start (Full Docker Stack)
+
+Run everything in containers:
+
+```bash
+# 1. Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys (especially OPENAI_API_KEY)
+
+# 2. Start complete stack (uses --profile full)
+podman compose --profile full up -d
+
+# This starts: postgres, redis, migrate, api, mcp, worker, beat
+
+# 3. View logs
+podman compose logs -f api       # API server logs
+podman compose logs -f worker    # Worker logs
+
+# 4. Stop everything
+podman compose --profile full down
+```
+
+For minimal infrastructure only (postgres + redis):
+```bash
+podman compose up -d postgres redis
 ```
 
 ### Environment Variables
@@ -112,12 +141,14 @@ ruff format .
 
 | Command | Description |
 |---------|-------------|
-| `podman compose up -d` | Start PostgreSQL and Redis (local dev) |
+| `podman compose up -d postgres redis` | Start infrastructure only |
+| `podman compose --profile full up -d` | Start complete Docker stack |
+| `podman compose --profile full down` | Stop complete Docker stack |
 | `alembic upgrade head` | Run database migrations |
 | `alembic revision --autogenerate -m "msg"` | Create new migration |
-| `uvicorn ace_platform.api.main:app --reload` | Start API server |
-| `python -m ace_platform.mcp.server` | Start MCP server |
-| `celery -A ace_platform.workers.celery_app worker -l info` | Start Celery worker |
+| `uvicorn ace_platform.api.main:app --reload` | Start API server (local) |
+| `python -m ace_platform.mcp.server` | Start MCP server (local) |
+| `celery -A ace_platform.workers.celery_app worker -l info` | Start Celery worker (local) |
 | `pytest tests/ -v` | Run tests |
 
 ---
