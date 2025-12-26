@@ -308,6 +308,100 @@ async def record_outcome(
 
 
 @mcp.tool()
+async def get_evolution_status(
+    job_id: Annotated[str, "UUID of the evolution job to check"],
+    api_key: Annotated[str, "API key for authentication"],
+    ctx: Context,
+) -> str:
+    """Get the status of an evolution job.
+
+    Returns the job status, progress, timing, and any error information.
+    Requires a valid API key with 'evolution:read' scope.
+
+    Use this to poll for job completion after triggering evolution.
+
+    Args:
+        job_id: UUID of the evolution job to check.
+        api_key: API key for authentication.
+
+    Returns:
+        Job status information as structured text.
+    """
+    from ace_platform.db.models import EvolutionJob
+
+    db = get_db(ctx)
+
+    # Authenticate
+    auth_result = await authenticate_api_key_async(db, api_key)
+    if not auth_result:
+        return "Error: Invalid or revoked API key"
+
+    api_key_record, user = auth_result
+
+    # Check scope
+    from ace_platform.core.api_keys import check_scope
+
+    if not check_scope(api_key_record, "evolution:read"):
+        return "Error: API key lacks 'evolution:read' scope"
+
+    try:
+        job_uuid = UUID(job_id)
+    except ValueError:
+        return f"Error: Invalid job ID format: {job_id}"
+
+    # Get evolution job
+    job = await db.get(EvolutionJob, job_uuid)
+    if not job:
+        return f"Error: Evolution job {job_id} not found"
+
+    # Get the associated playbook to verify ownership
+    playbook = await db.get(Playbook, job.playbook_id)
+    if not playbook or playbook.user_id != user.id:
+        return "Error: Access denied - job belongs to another user"
+
+    # Format timestamps
+    started = job.started_at.isoformat() if job.started_at else "Not started"
+    completed = job.completed_at.isoformat() if job.completed_at else "Not completed"
+
+    # Build response
+    lines = [
+        "# Evolution Job Status",
+        "",
+        f"**Job ID:** {job.id}",
+        f"**Status:** {job.status.value}",
+        f"**Playbook:** {playbook.name} (`{job.playbook_id}`)",
+        f"**Outcomes Processed:** {job.outcomes_processed}",
+        "",
+        "## Timing",
+        f"- **Created:** {job.created_at.isoformat()}",
+        f"- **Started:** {started}",
+        f"- **Completed:** {completed}",
+    ]
+
+    # Add error message if present
+    if job.error_message:
+        lines.extend(
+            [
+                "",
+                "## Error",
+                "```",
+                f"{job.error_message}",
+                "```",
+            ]
+        )
+
+    # Add version info if available
+    if job.from_version_id or job.to_version_id:
+        lines.extend(["", "## Versions"])
+        if job.from_version_id:
+            lines.append(f"- **From Version:** {job.from_version_id}")
+        if job.to_version_id:
+            lines.append(f"- **To Version:** {job.to_version_id}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
 async def trigger_evolution(
     playbook_id: Annotated[str, "UUID of the playbook to evolve"],
     api_key: Annotated[str, "API key for authentication"],

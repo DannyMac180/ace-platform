@@ -19,6 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from ace_platform.core.api_keys import create_api_key_async
 from ace_platform.db.models import (
     Base,
+    EvolutionJob,
+    EvolutionJobStatus,
     Playbook,
     PlaybookSource,
     PlaybookStatus,
@@ -261,10 +263,47 @@ async def test_api_key(async_session: AsyncSession, test_user: User):
         async_session,
         test_user.id,
         "Test MCP Key",
-        scopes=["playbooks:read", "outcomes:write", "evolution:write"],
+        scopes=["playbooks:read", "outcomes:write", "evolution:write", "evolution:read"],
     )
     await async_session.commit()
     return result
+
+
+@pytest.fixture
+async def test_evolution_job(async_session: AsyncSession, test_playbook: Playbook):
+    """Create a test evolution job."""
+    from datetime import UTC, datetime
+
+    job = EvolutionJob(
+        playbook_id=test_playbook.id,
+        status=EvolutionJobStatus.COMPLETED,
+        outcomes_processed=5,
+        started_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+        completed_at=datetime(2024, 1, 1, 12, 5, 0, tzinfo=UTC),
+    )
+    async_session.add(job)
+    await async_session.commit()
+    await async_session.refresh(job)
+    return job
+
+
+@pytest.fixture
+async def test_evolution_job_failed(async_session: AsyncSession, test_playbook: Playbook):
+    """Create a failed evolution job."""
+    from datetime import UTC, datetime
+
+    job = EvolutionJob(
+        playbook_id=test_playbook.id,
+        status=EvolutionJobStatus.FAILED,
+        outcomes_processed=3,
+        started_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+        completed_at=datetime(2024, 1, 1, 12, 2, 0, tzinfo=UTC),
+        error_message="Evolution failed: Model rate limit exceeded",
+    )
+    async_session.add(job)
+    await async_session.commit()
+    await async_session.refresh(job)
+    return job
 
 
 class TestExtractSection:
@@ -636,6 +675,166 @@ class TestMCPToolsIntegration:
 
         assert "Error: API key lacks 'evolution:write' scope" in result
 
+    async def test_get_evolution_status_success(
+        self,
+        async_session: AsyncSession,
+        test_evolution_job: EvolutionJob,
+        test_api_key,
+    ):
+        """Test getting evolution status with valid API key."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(test_evolution_job.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Evolution Job Status" in result
+        assert str(test_evolution_job.id) in result
+        assert "completed" in result
+        assert "Outcomes Processed:** 5" in result
+
+    async def test_get_evolution_status_failed_job(
+        self,
+        async_session: AsyncSession,
+        test_evolution_job_failed: EvolutionJob,
+        test_api_key,
+    ):
+        """Test getting status of a failed evolution job shows error."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(test_evolution_job_failed.id),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "failed" in result
+        assert "## Error" in result
+        assert "Model rate limit exceeded" in result
+
+    async def test_get_evolution_status_invalid_key(
+        self, async_session: AsyncSession, test_evolution_job: EvolutionJob
+    ):
+        """Test getting evolution status with invalid API key."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(test_evolution_job.id),
+            api_key="ace_invalid_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Error: Invalid or revoked API key" in result
+
+    async def test_get_evolution_status_no_scope(
+        self,
+        async_session: AsyncSession,
+        test_evolution_job: EvolutionJob,
+        test_user: User,
+    ):
+        """Test getting evolution status without required scope."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        # Create key without evolution:read scope
+        key_result = await create_api_key_async(
+            async_session,
+            test_user.id,
+            "Limited Key",
+            scopes=["playbooks:read"],
+        )
+        await async_session.commit()
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(test_evolution_job.id),
+            api_key=key_result.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Error: API key lacks 'evolution:read' scope" in result
+
+    async def test_get_evolution_status_not_found(self, async_session: AsyncSession, test_api_key):
+        """Test getting status of non-existent job."""
+        from uuid import uuid4
+
+        from ace_platform.mcp.server import get_evolution_status
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(uuid4()),
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Error: Evolution job" in result
+        assert "not found" in result
+
+    async def test_get_evolution_status_invalid_uuid(
+        self, async_session: AsyncSession, test_api_key
+    ):
+        """Test getting evolution status with invalid job ID format."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id="not-a-valid-uuid",
+            api_key=test_api_key.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Error: Invalid job ID format" in result
+
+    async def test_get_evolution_status_access_denied(
+        self, async_session: AsyncSession, test_evolution_job: EvolutionJob
+    ):
+        """Test that users cannot access other users' evolution jobs."""
+        from ace_platform.mcp.server import get_evolution_status
+
+        # Create a different user and API key
+        other_user = User(
+            email="other_user@example.com",
+            hashed_password="hashed_password_here",
+        )
+        async_session.add(other_user)
+        await async_session.commit()
+        await async_session.refresh(other_user)
+
+        other_key = await create_api_key_async(
+            async_session,
+            other_user.id,
+            "Other User Key",
+            scopes=["evolution:read"],
+        )
+        await async_session.commit()
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        result = await get_evolution_status(
+            job_id=str(test_evolution_job.id),
+            api_key=other_key.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Error: Access denied" in result
+
 
 @pytestmark_integration
 class TestMCPToolsE2E:
@@ -644,8 +843,9 @@ class TestMCPToolsE2E:
     async def test_full_mcp_workflow(
         self, async_session: AsyncSession, test_playbook: Playbook, test_api_key
     ):
-        """Test complete MCP workflow: list -> get -> record -> trigger."""
+        """Test complete MCP workflow: list -> get -> record -> trigger -> status."""
         from ace_platform.mcp.server import (
+            get_evolution_status,
             get_playbook,
             list_playbooks,
             record_outcome,
@@ -691,3 +891,18 @@ class TestMCPToolsE2E:
             "Evolution job queued" in evolution_result
             or "Evolution already in progress" in evolution_result
         )
+
+        # Step 5: Check evolution status (extract job ID from result)
+        # The trigger result contains the job ID
+        import re
+
+        job_id_match = re.search(r"Job ID: ([a-f0-9-]+)", evolution_result)
+        if job_id_match:
+            job_id = job_id_match.group(1)
+            status_result = await get_evolution_status(
+                job_id=job_id,
+                api_key=test_api_key.full_key,
+                ctx=mock_ctx,
+            )
+            assert "Evolution Job Status" in status_result
+            assert job_id in status_result
