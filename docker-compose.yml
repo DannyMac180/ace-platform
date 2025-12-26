@@ -1,4 +1,18 @@
+# Local Development Docker Compose for ACE Platform
+# Usage: docker-compose up -d
+#
+# For a minimal setup (just infrastructure):
+#   docker-compose up -d postgres redis
+#
+# For complete stack:
+#   docker-compose up -d
+#
+# Note: Create a .env file from .env.example before running
+
 services:
+  # ==========================================================================
+  # Infrastructure Services
+  # ==========================================================================
   postgres:
     image: postgres:16-alpine
     container_name: ace-postgres
@@ -15,6 +29,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - ace-network
 
   redis:
     image: redis:7-alpine
@@ -28,6 +44,160 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - ace-network
+
+  # ==========================================================================
+  # Database Migrations (runs once on startup)
+  # ==========================================================================
+  migrate:
+    build:
+      context: .
+      target: migrate
+    container_name: ace-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ace_platform
+    networks:
+      - ace-network
+    restart: "no"
+    profiles:
+      - full
+
+  # ==========================================================================
+  # Application Services (use 'full' profile to include these)
+  # ==========================================================================
+  api:
+    build:
+      context: .
+      target: api
+    container_name: ace-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ace_platform
+      DATABASE_URL_ASYNC: postgresql+asyncpg://postgres:postgres@postgres:5432/ace_platform
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-...}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
+      BILLING_ENABLED: ${BILLING_ENABLED:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      ENVIRONMENT: development
+      DEBUG: "true"
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8000"]'
+    volumes:
+      - ./ace_platform:/app/ace_platform:ro
+      - ./ace_core:/app/ace_core:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - ace-network
+    profiles:
+      - full
+
+  mcp:
+    build:
+      context: .
+      target: mcp
+    container_name: ace-mcp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${MCP_SERVER_PORT:-8001}:8001"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ace_platform
+      DATABASE_URL_ASYNC: postgresql+asyncpg://postgres:postgres@postgres:5432/ace_platform
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-...}
+      ENVIRONMENT: development
+      DEBUG: "true"
+    volumes:
+      - ./ace_platform:/app/ace_platform:ro
+      - ./ace_core:/app/ace_core:ro
+    networks:
+      - ace-network
+    profiles:
+      - full
+
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: ace-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ace_platform
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-...}
+      ENVIRONMENT: development
+      DEBUG: "true"
+    volumes:
+      - ./ace_platform:/app/ace_platform:ro
+      - ./ace_core:/app/ace_core:ro
+    networks:
+      - ace-network
+    profiles:
+      - full
+
+  beat:
+    build:
+      context: .
+      target: beat
+    container_name: ace-beat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ace_platform
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      DEBUG: "true"
+    volumes:
+      - ./ace_platform:/app/ace_platform:ro
+      - ./ace_core:/app/ace_core:ro
+    networks:
+      - ace-network
+    profiles:
+      - full
+
+# ==========================================================================
+# Networks and Volumes
+# ==========================================================================
+networks:
+  ace-network:
+    driver: bridge
 
 volumes:
   postgres_data:
