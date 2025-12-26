@@ -1,0 +1,185 @@
+# Production Docker Compose for ACE Platform
+# Usage: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  # ==========================================================================
+  # Infrastructure Services
+  # ==========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ace-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}
+      POSTGRES_DB: ${POSTGRES_DB:-ace_platform}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ace-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ace-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ace-network
+
+  # ==========================================================================
+  # Database Migrations (runs once on startup)
+  # ==========================================================================
+  migrate:
+    build:
+      context: .
+      target: migrate
+    container_name: ace-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+    networks:
+      - ace-network
+    restart: "no"
+
+  # ==========================================================================
+  # Application Services
+  # ==========================================================================
+  api:
+    build:
+      context: .
+      target: api
+    container_name: ace-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      DATABASE_URL_ASYNC: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      # API Keys (required)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY required}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?JWT_SECRET_KEY required}
+      # Billing (optional)
+      BILLING_ENABLED: ${BILLING_ENABLED:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Stripe Products (optional)
+      STRIPE_STARTER_PRODUCT_ID: ${STRIPE_STARTER_PRODUCT_ID:-}
+      STRIPE_STARTER_MONTHLY_PRICE_ID: ${STRIPE_STARTER_MONTHLY_PRICE_ID:-}
+      STRIPE_PROFESSIONAL_PRODUCT_ID: ${STRIPE_PROFESSIONAL_PRODUCT_ID:-}
+      STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID: ${STRIPE_PROFESSIONAL_MONTHLY_PRICE_ID:-}
+      # Environment
+      ENVIRONMENT: production
+      DEBUG: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:3000"]}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - ace-network
+
+  mcp:
+    build:
+      context: .
+      target: mcp
+    container_name: ace-mcp
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${MCP_SERVER_PORT:-8001}:8001"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      DATABASE_URL_ASYNC: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ENVIRONMENT: production
+      DEBUG: "false"
+    networks:
+      - ace-network
+
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: ace-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ENVIRONMENT: production
+      DEBUG: "false"
+    networks:
+      - ace-network
+    deploy:
+      replicas: ${WORKER_REPLICAS:-2}
+
+  beat:
+    build:
+      context: .
+      target: beat
+    container_name: ace-beat
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ace_platform}
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: production
+      DEBUG: "false"
+    networks:
+      - ace-network
+
+# ==========================================================================
+# Networks and Volumes
+# ==========================================================================
+networks:
+  ace-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
