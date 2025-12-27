@@ -144,6 +144,16 @@ class Settings(BaseSettings):
         description="Enable debug mode",
     )
 
+    # Logging
+    log_level: str = Field(
+        default="",
+        description="Override log level (DEBUG, INFO, WARNING, ERROR). If empty, auto-determined.",
+    )
+    log_format: str = Field(
+        default="auto",
+        description="Log format: 'json' for structured, 'text' for readable, 'auto' for environment-based",
+    )
+
     @field_validator("database_url_async", mode="before")
     @classmethod
     def derive_async_url(cls, v: str | None, info) -> str:

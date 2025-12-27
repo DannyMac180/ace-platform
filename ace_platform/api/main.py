@@ -17,17 +17,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from ace_platform.config import get_settings
+from ace_platform.core.logging import get_logger, setup_logging
 from ace_platform.db.session import close_async_db
 
 from .middleware import (
     CorrelationIdMiddleware,
     RequestTimingMiddleware,
     get_correlation_id,
-    setup_logging_with_correlation_id,
 )
 
 settings = get_settings()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -36,10 +36,17 @@ async def lifespan(app: FastAPI):
 
     Sets up resources on startup and cleans up on shutdown.
     """
-    # Startup
-    log_level = logging.DEBUG if settings.debug else logging.INFO
-    setup_logging_with_correlation_id(level=log_level)
-    logger.info("ACE Platform API starting up")
+    # Startup - configure structured logging
+    log_level = None
+    if settings.log_level:
+        log_level = getattr(logging, settings.log_level.upper(), None)
+
+    json_format = None
+    if settings.log_format != "auto":
+        json_format = settings.log_format == "json"
+
+    setup_logging(level=log_level, json_format=json_format)
+    logger.info("ACE Platform API starting up", extra={"environment": settings.environment})
 
     # Seed starter playbooks
     await _seed_starter_playbooks()
