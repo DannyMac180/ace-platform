@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,6 +31,7 @@ from ace_platform.api.auth import (
 )
 from ace_platform.api.deps import get_db
 from ace_platform.core.limits import get_tier_limits
+from ace_platform.core.rate_limit import rate_limit_outcome
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
@@ -706,8 +707,10 @@ async def list_playbook_outcomes(
     "/{playbook_id}/outcomes",
     response_model=OutcomeCreateResponse,
     status_code=status.HTTP_201_CREATED,
+    responses={429: {"description": "Rate limit exceeded"}},
 )
 async def create_outcome(
+    request: Request,
     db: DbSession,
     current_user: SubscribedUser,
     playbook_id: UUID,
@@ -716,8 +719,10 @@ async def create_outcome(
     """Create a new outcome for a playbook.
 
     Records a task outcome (success, failure, or partial) for evolution feedback.
-    Requires active subscription.
+    Requires active subscription. Rate limited to 100 outcomes per hour per user.
     """
+    # Apply rate limiting (100/hour per user)
+    await rate_limit_outcome(request, str(current_user.id))
     # Verify playbook exists and belongs to user
     playbook = await db.get(Playbook, playbook_id)
     if not playbook:

@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
+from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
 from ace_platform.db.models import Outcome, OutcomeStatus, Playbook
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
@@ -442,6 +443,22 @@ async def trigger_evolution(
 
     if playbook.user_id != user.id:
         return "Error: Access denied - playbook belongs to another user"
+
+    # Check rate limit (10/hour per playbook)
+    limiter = RateLimiter()
+    try:
+        config = RATE_LIMITS["evolution"]
+        rate_result = await limiter.is_allowed(
+            "evolution",
+            playbook_id,
+            limit=config["limit"],
+            window_seconds=config["window_seconds"],
+        )
+        if not rate_result.allowed:
+            return f"Error: Rate limit exceeded. Evolution can be triggered at most {config['limit']} times per hour. Try again later."
+    except Exception:
+        # If Redis unavailable, allow the request
+        pass
 
     # Trigger evolution
     from ace_platform.core.evolution_jobs import trigger_evolution_async

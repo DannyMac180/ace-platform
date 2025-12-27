@@ -25,6 +25,7 @@ from ace_platform.core.api_keys import (
     list_api_keys_async,
     revoke_api_key_async,
 )
+from ace_platform.core.rate_limit import RateLimitLogin
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -253,15 +254,18 @@ async def register(
     summary="Login with email and password",
     responses={
         401: {"description": "Invalid credentials"},
+        429: {"description": "Rate limit exceeded"},
     },
 )
 async def login(
     request: UserLoginRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rate_limit: RateLimitLogin,
 ) -> TokenResponse:
     """Authenticate a user and return JWT tokens.
 
     Validates the email and password, then returns access and refresh tokens.
+    Rate limited to 5 attempts per minute per IP address.
     """
     user = await authenticate_user(db, request.email, request.password)
     if not user:
