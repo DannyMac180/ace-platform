@@ -32,6 +32,14 @@ from ace_platform.api.auth import (
 from ace_platform.api.deps import get_db
 from ace_platform.core.limits import get_tier_limits
 from ace_platform.core.rate_limit import rate_limit_outcome
+from ace_platform.core.validation import (
+    MAX_NOTES_SIZE,
+    MAX_PLAYBOOK_CONTENT_SIZE,
+    MAX_PLAYBOOK_DESCRIPTION_SIZE,
+    MAX_PLAYBOOK_NAME_SIZE,
+    MAX_REASONING_TRACE_SIZE,
+    MAX_TASK_DESCRIPTION_SIZE,
+)
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
@@ -53,18 +61,28 @@ router = APIRouter(prefix="/playbooks", tags=["playbooks"])
 class PlaybookCreate(BaseModel):
     """Request schema for creating a playbook."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Playbook name")
-    description: str | None = Field(None, max_length=2000, description="Playbook description")
+    name: str = Field(
+        ..., min_length=1, max_length=MAX_PLAYBOOK_NAME_SIZE, description="Playbook name"
+    )
+    description: str | None = Field(
+        None, max_length=MAX_PLAYBOOK_DESCRIPTION_SIZE, description="Playbook description"
+    )
     initial_content: str | None = Field(
-        None, max_length=100000, description="Initial playbook content (markdown)"
+        None,
+        max_length=MAX_PLAYBOOK_CONTENT_SIZE,
+        description="Initial playbook content (markdown, max 100KB)",
     )
 
 
 class PlaybookUpdate(BaseModel):
     """Request schema for updating a playbook."""
 
-    name: str | None = Field(None, min_length=1, max_length=255, description="Playbook name")
-    description: str | None = Field(None, max_length=2000, description="Playbook description")
+    name: str | None = Field(
+        None, min_length=1, max_length=MAX_PLAYBOOK_NAME_SIZE, description="Playbook name"
+    )
+    description: str | None = Field(
+        None, max_length=MAX_PLAYBOOK_DESCRIPTION_SIZE, description="Playbook description"
+    )
     status: PlaybookStatus | None = Field(None, description="Playbook status")
 
 
@@ -164,13 +182,18 @@ class OutcomeCreate(BaseModel):
     """Request schema for creating an outcome."""
 
     task_description: str = Field(
-        ..., min_length=1, max_length=10000, description="Description of the task"
+        ...,
+        min_length=1,
+        max_length=MAX_TASK_DESCRIPTION_SIZE,
+        description="Description of the task",
     )
     outcome: OutcomeStatus = Field(..., description="Outcome status: success, failure, or partial")
     reasoning_trace: str | None = Field(
-        None, max_length=10240, description="Optional reasoning trace (max 10KB)"
+        None, max_length=MAX_REASONING_TRACE_SIZE, description="Optional reasoning trace (max 10KB)"
     )
-    notes: str | None = Field(None, max_length=2048, description="Optional notes (max 2KB)")
+    notes: str | None = Field(
+        None, max_length=MAX_NOTES_SIZE, description="Optional notes (max 2KB)"
+    )
 
 
 class OutcomeCreateResponse(BaseModel):

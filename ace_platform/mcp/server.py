@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
+from ace_platform.core.validation import validate_outcome_inputs
 from ace_platform.db.models import Outcome, OutcomeStatus, Playbook
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
@@ -259,7 +260,17 @@ async def record_outcome(
 
     After recording enough outcomes, the playbook will automatically evolve
     to incorporate lessons learned. Requires 'outcomes:write' scope.
+
+    Size limits:
+    - task_description: 10KB max
+    - notes: 2KB max
+    - reasoning_trace: 10KB max
     """
+    # Validate input sizes
+    validation_error = validate_outcome_inputs(task_description, notes, reasoning_trace)
+    if validation_error:
+        return f"Error: {validation_error}"
+
     db = get_db(ctx)
 
     # Authenticate
