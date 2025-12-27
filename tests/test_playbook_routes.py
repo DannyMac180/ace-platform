@@ -557,3 +557,168 @@ class TestEvolutionsEndpointIntegration:
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             status.HTTP_401_UNAUTHORIZED,
         ]
+
+
+class TestVersionSchemas:
+    """Tests for playbook version schemas."""
+
+    def test_version_detail_response(self):
+        """Test version detail response schema."""
+        from ace_platform.api.routes.playbooks import PlaybookVersionDetailResponse
+
+        now = datetime.now(timezone.utc)
+        version = PlaybookVersionDetailResponse(
+            id=uuid4(),
+            version_number=2,
+            content="# Updated Playbook\n\n- New step",
+            bullet_count=1,
+            diff_summary="Added new step for error handling",
+            created_by_job_id=uuid4(),
+            created_at=now,
+        )
+
+        assert version.version_number == 2
+        assert version.diff_summary == "Added new step for error handling"
+        assert version.created_by_job_id is not None
+
+    def test_version_detail_response_without_evolution(self):
+        """Test version detail for initial version (no evolution job)."""
+        from ace_platform.api.routes.playbooks import PlaybookVersionDetailResponse
+
+        now = datetime.now(timezone.utc)
+        version = PlaybookVersionDetailResponse(
+            id=uuid4(),
+            version_number=1,
+            content="# Initial Playbook",
+            bullet_count=0,
+            diff_summary=None,
+            created_by_job_id=None,
+            created_at=now,
+        )
+
+        assert version.version_number == 1
+        assert version.diff_summary is None
+        assert version.created_by_job_id is None
+
+    def test_paginated_version_response(self):
+        """Test paginated version response."""
+        from ace_platform.api.routes.playbooks import (
+            PaginatedVersionResponse,
+            PlaybookVersionDetailResponse,
+        )
+
+        now = datetime.now(timezone.utc)
+        items = [
+            PlaybookVersionDetailResponse(
+                id=uuid4(),
+                version_number=3 - i,  # Descending order
+                content=f"# Version {3 - i}",
+                bullet_count=i,
+                diff_summary=f"Changes for v{3 - i}" if i > 0 else None,
+                created_by_job_id=uuid4() if i > 0 else None,
+                created_at=now,
+            )
+            for i in range(3)
+        ]
+
+        response = PaginatedVersionResponse(
+            items=items,
+            total=5,
+            page=1,
+            page_size=3,
+            total_pages=2,
+        )
+
+        assert len(response.items) == 3
+        assert response.items[0].version_number == 3
+        assert response.total == 5
+        assert response.total_pages == 2
+
+
+class TestVersionsEndpointIntegration:
+    """Integration tests for playbook versions endpoints."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app."""
+        from ace_platform.api.main import create_app
+
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_versions_routes_registered(self, app):
+        """Test that version routes are registered."""
+        routes = [route.path for route in app.routes]
+        assert "/playbooks/{playbook_id}/versions" in routes
+        assert "/playbooks/{playbook_id}/versions/{version_number}" in routes
+
+    def test_list_versions_requires_auth(self, client):
+        """Test that listing versions requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.get(f"/playbooks/{playbook_id}/versions")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_get_version_requires_auth(self, client):
+        """Test that getting a version requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.get(f"/playbooks/{playbook_id}/versions/1")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_versions_with_invalid_token(self, client):
+        """Test listing versions with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.get(
+            f"/playbooks/{playbook_id}/versions",
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_get_version_with_invalid_token(self, client):
+        """Test getting version with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.get(
+            f"/playbooks/{playbook_id}/versions/1",
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_list_versions_invalid_uuid(self, client):
+        """Test listing versions with invalid UUID."""
+        response = client.get(
+            "/playbooks/not-a-uuid/versions",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_get_version_invalid_uuid(self, client):
+        """Test getting version with invalid playbook UUID."""
+        response = client.get(
+            "/playbooks/not-a-uuid/versions/1",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_get_version_invalid_version_number(self, client):
+        """Test getting version with invalid version number."""
+        playbook_id = str(uuid4())
+        response = client.get(
+            f"/playbooks/{playbook_id}/versions/abc",
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
