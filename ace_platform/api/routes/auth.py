@@ -5,6 +5,7 @@ This module provides REST API endpoints for:
 - User login (POST /auth/login) - see issue ace-platform-26
 - Current user info (GET /auth/me) - see issue ace-platform-27
 - Token refresh (POST /auth/refresh) - see issue ace-platform-72
+- API key management (POST/GET/DELETE /auth/api-keys) - see issue ace-platform-71
 """
 
 from datetime import datetime
@@ -19,6 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AuthenticationError, RequiredUser
 from ace_platform.api.deps import get_db
+from ace_platform.core.api_keys import (
+    create_api_key_async,
+    list_api_keys_async,
+    revoke_api_key_async,
+)
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -82,6 +88,43 @@ class MessageResponse(BaseModel):
     """Simple message response."""
 
     message: str
+
+
+# =============================================================================
+# API Key Schemas
+# =============================================================================
+
+
+class CreateApiKeyRequest(BaseModel):
+    """Request body for creating an API key."""
+
+    name: str = Field(..., min_length=1, max_length=100, description="Name for the API key")
+    scopes: list[str] = Field(
+        default=[],
+        description="Permission scopes (e.g., ['playbooks:read', 'outcomes:write'])",
+    )
+
+
+class ApiKeyResponse(BaseModel):
+    """Response for API key creation (includes full key - only shown once!)."""
+
+    id: UUID = Field(..., description="API key ID")
+    name: str = Field(..., description="API key name")
+    key: str = Field(..., description="Full API key (save this - shown only once!)")
+    key_prefix: str = Field(..., description="Key prefix for identification")
+    scopes: list[str] = Field(..., description="Permission scopes")
+
+
+class ApiKeyInfo(BaseModel):
+    """Response for listing API keys (no full key, only prefix)."""
+
+    id: UUID = Field(..., description="API key ID")
+    name: str = Field(..., description="API key name")
+    key_prefix: str = Field(..., description="Key prefix for identification")
+    scopes: list[str] = Field(..., description="Permission scopes")
+    created_at: datetime = Field(..., description="When the key was created")
+    last_used_at: datetime | None = Field(None, description="When the key was last used")
+    is_active: bool = Field(..., description="Whether the key is active")
 
 
 # =============================================================================
@@ -287,3 +330,118 @@ async def refresh_token(
 async def get_current_user(user: RequiredUser) -> UserResponse:
     """Get the current authenticated user's information."""
     return UserResponse.model_validate(user)
+
+
+# =============================================================================
+# API Key Management Routes
+# =============================================================================
+
+
+@router.post(
+    "/api-keys",
+    response_model=ApiKeyResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new API key",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def create_api_key(
+    request: CreateApiKeyRequest,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ApiKeyResponse:
+    """Create a new API key for the authenticated user.
+
+    **Important:** The full API key is only returned once in this response.
+    Store it securely - it cannot be retrieved again.
+    """
+    result = await create_api_key_async(
+        db=db,
+        user_id=user.id,
+        name=request.name,
+        scopes=request.scopes,
+    )
+    await db.commit()
+
+    return ApiKeyResponse(
+        id=result.key_id,
+        name=result.name,
+        key=result.full_key,
+        key_prefix=result.key_prefix,
+        scopes=result.scopes,
+    )
+
+
+@router.get(
+    "/api-keys",
+    response_model=list[ApiKeyInfo],
+    summary="List API keys",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def list_api_keys(
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    include_revoked: bool = False,
+) -> list[ApiKeyInfo]:
+    """List all API keys for the authenticated user.
+
+    By default, only active keys are returned. Set `include_revoked=true`
+    to also include revoked keys.
+
+    **Note:** Only the key prefix is shown, not the full key.
+    """
+    keys = await list_api_keys_async(
+        db=db,
+        user_id=user.id,
+        include_revoked=include_revoked,
+    )
+
+    return [
+        ApiKeyInfo(
+            id=key.key_id,
+            name=key.name,
+            key_prefix=key.key_prefix,
+            scopes=key.scopes,
+            created_at=key.created_at,
+            last_used_at=key.last_used_at,
+            is_active=key.is_active,
+        )
+        for key in keys
+    ]
+
+
+@router.delete(
+    "/api-keys/{key_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke an API key",
+    responses={
+        401: {"description": "Not authenticated"},
+        404: {"description": "API key not found"},
+    },
+)
+async def revoke_api_key(
+    key_id: UUID,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    """Revoke an API key.
+
+    Once revoked, the key can no longer be used for authentication.
+    This action cannot be undone.
+    """
+    revoked = await revoke_api_key_async(
+        db=db,
+        key_id=key_id,
+        user_id=user.id,
+    )
+
+    if not revoked:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="API key not found or already revoked",
+        )
+
+    await db.commit()
