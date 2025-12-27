@@ -40,7 +40,7 @@ class InputSizeError(ValueError):
         self.max_size = max_size
         self.actual_size = actual_size
         super().__init__(
-            f"{field} exceeds maximum size: {actual_size:,} characters " f"(max: {max_size:,})"
+            f"{field} exceeds maximum size: {actual_size:,} characters (max: {max_size:,})"
         )
 
 
@@ -69,9 +69,7 @@ def validate_size(
 
     actual_size = len(value)
     if actual_size > max_size:
-        return (
-            f"{field_name} exceeds maximum size: {actual_size:,} characters " f"(max: {max_size:,})"
-        )
+        return f"{field_name} exceeds maximum size: {actual_size:,} characters (max: {max_size:,})"
 
     return None
 

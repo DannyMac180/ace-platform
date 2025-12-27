@@ -8,7 +8,6 @@ These tests verify:
 5. Edge cases (None values, exact limits, etc.)
 """
 
-
 from ace_platform.core.validation import (
     MAX_NOTES_SIZE,
     MAX_PLAYBOOK_CONTENT_SIZE,
