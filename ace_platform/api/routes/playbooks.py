@@ -6,6 +6,8 @@ This module provides REST API endpoints for playbook management:
 - GET /playbooks/{id} - Get a specific playbook
 - PUT /playbooks/{id} - Update a playbook
 - DELETE /playbooks/{id} - Delete a playbook
+- GET /playbooks/{id}/versions - List version history for a playbook
+- GET /playbooks/{id}/versions/{version_number} - Get specific version content
 - GET /playbooks/{id}/outcomes - List outcomes for a playbook
 - GET /playbooks/{id}/evolutions - List evolution history for a playbook
 """
@@ -65,7 +67,7 @@ class PlaybookUpdate(BaseModel):
 
 
 class PlaybookVersionResponse(BaseModel):
-    """Response schema for playbook version."""
+    """Response schema for playbook version (basic, used in playbook response)."""
 
     id: UUID
     version_number: int
@@ -74,6 +76,30 @@ class PlaybookVersionResponse(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class PlaybookVersionDetailResponse(BaseModel):
+    """Response schema for playbook version with full details."""
+
+    id: UUID
+    version_number: int
+    content: str
+    bullet_count: int
+    diff_summary: str | None = None
+    created_by_job_id: UUID | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PaginatedVersionResponse(BaseModel):
+    """Paginated response for version list."""
+
+    items: list[PlaybookVersionDetailResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class PlaybookResponse(BaseModel):
@@ -452,6 +478,127 @@ async def delete_playbook(
 
     await db.delete(playbook)
     await db.commit()
+
+
+@router.get("/{playbook_id}/versions", response_model=PaginatedVersionResponse)
+async def list_playbook_versions(
+    db: DbSession,
+    current_user: CurrentUser,
+    playbook_id: UUID,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+) -> PaginatedVersionResponse:
+    """List version history for a playbook.
+
+    Returns paginated list of all versions, ordered by version number descending.
+    Each evolution creates a new version with a diff_summary.
+    """
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Build base query
+    base_query = select(PlaybookVersion).where(PlaybookVersion.playbook_id == playbook_id)
+
+    # Get total count
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total = await db.scalar(count_query) or 0
+
+    # Get paginated results ordered by version number descending
+    offset = (page - 1) * page_size
+    query = (
+        base_query.order_by(PlaybookVersion.version_number.desc()).offset(offset).limit(page_size)
+    )
+
+    result = await db.execute(query)
+    versions = result.scalars().all()
+
+    # Build response items
+    items = [
+        PlaybookVersionDetailResponse(
+            id=v.id,
+            version_number=v.version_number,
+            content=v.content,
+            bullet_count=v.bullet_count,
+            diff_summary=v.diff_summary,
+            created_by_job_id=v.created_by_job_id,
+            created_at=v.created_at,
+        )
+        for v in versions
+    ]
+
+    total_pages = (total + page_size - 1) // page_size if total > 0 else 0
+
+    return PaginatedVersionResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.get(
+    "/{playbook_id}/versions/{version_number}", response_model=PlaybookVersionDetailResponse
+)
+async def get_playbook_version(
+    db: DbSession,
+    current_user: CurrentUser,
+    playbook_id: UUID,
+    version_number: int,
+) -> PlaybookVersionDetailResponse:
+    """Get a specific version of a playbook.
+
+    Returns the version content and metadata for the specified version number.
+    """
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Get specific version
+    query = select(PlaybookVersion).where(
+        PlaybookVersion.playbook_id == playbook_id,
+        PlaybookVersion.version_number == version_number,
+    )
+
+    result = await db.execute(query)
+    version = result.scalar_one_or_none()
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Version {version_number} not found for this playbook",
+        )
+
+    return PlaybookVersionDetailResponse(
+        id=version.id,
+        version_number=version.version_number,
+        content=version.content,
+        bullet_count=version.bullet_count,
+        diff_summary=version.diff_summary,
+        created_by_job_id=version.created_by_job_id,
+        created_at=version.created_at,
+    )
 
 
 @router.get("/{playbook_id}/outcomes", response_model=PaginatedOutcomeResponse)
