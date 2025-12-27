@@ -6,7 +6,8 @@ These tests verify:
 3. Playbook get endpoint
 4. Playbook update endpoint
 5. Playbook delete endpoint
-6. Authentication and authorization
+6. Outcome creation endpoint
+7. Authentication and authorization
 """
 
 from datetime import datetime, timezone
@@ -145,7 +146,7 @@ class TestPlaybookRoutesIntegration:
         )
         # Returns 422 for invalid path parameter before checking auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
 
@@ -356,6 +357,74 @@ class TestOutcomeSchemas:
         assert response.page == 2
         assert response.total_pages == 3
 
+    def test_outcome_create_valid(self):
+        """Test valid outcome create schema."""
+        from ace_platform.api.routes.playbooks import OutcomeCreate
+        from ace_platform.db.models import OutcomeStatus
+
+        data = OutcomeCreate(
+            task_description="Test task description",
+            outcome=OutcomeStatus.SUCCESS,
+            reasoning_trace="Some reasoning",
+            notes="Some notes",
+        )
+
+        assert data.task_description == "Test task description"
+        assert data.outcome == OutcomeStatus.SUCCESS
+        assert data.reasoning_trace == "Some reasoning"
+        assert data.notes == "Some notes"
+
+    def test_outcome_create_minimal(self):
+        """Test outcome create with only required fields."""
+        from ace_platform.api.routes.playbooks import OutcomeCreate
+        from ace_platform.db.models import OutcomeStatus
+
+        data = OutcomeCreate(
+            task_description="Minimal task",
+            outcome=OutcomeStatus.FAILURE,
+        )
+
+        assert data.task_description == "Minimal task"
+        assert data.outcome == OutcomeStatus.FAILURE
+        assert data.reasoning_trace is None
+        assert data.notes is None
+
+    def test_outcome_create_partial_outcome(self):
+        """Test outcome create with partial outcome status."""
+        from ace_platform.api.routes.playbooks import OutcomeCreate
+        from ace_platform.db.models import OutcomeStatus
+
+        data = OutcomeCreate(
+            task_description="Partial success task",
+            outcome=OutcomeStatus.PARTIAL,
+        )
+
+        assert data.outcome == OutcomeStatus.PARTIAL
+
+    def test_outcome_create_response(self):
+        """Test outcome create response schema."""
+        from ace_platform.api.routes.playbooks import OutcomeCreateResponse
+
+        response = OutcomeCreateResponse(
+            outcome_id=uuid4(),
+            status="recorded",
+            pending_outcomes=5,
+        )
+
+        assert response.status == "recorded"
+        assert response.pending_outcomes == 5
+
+    def test_outcome_create_empty_task_description_rejected(self):
+        """Test that empty task description is rejected."""
+        from ace_platform.api.routes.playbooks import OutcomeCreate
+        from ace_platform.db.models import OutcomeStatus
+
+        with pytest.raises(ValueError):
+            OutcomeCreate(
+                task_description="",
+                outcome=OutcomeStatus.SUCCESS,
+            )
+
 
 class TestOutcomesEndpointIntegration:
     """Integration tests for playbook outcomes endpoint."""
@@ -400,7 +469,97 @@ class TestOutcomesEndpointIntegration:
         )
         # Returns 422 for invalid path parameter or 401 for auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_outcome_requires_auth(self, client):
+        """Test that creating outcome requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/outcomes",
+            json={
+                "task_description": "Test task",
+                "outcome": "success",
+            },
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_outcome_with_invalid_token(self, client):
+        """Test creating outcome with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/outcomes",
+            json={
+                "task_description": "Test task",
+                "outcome": "success",
+            },
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_outcome_invalid_uuid(self, client):
+        """Test creating outcome with invalid playbook UUID."""
+        response = client.post(
+            "/playbooks/not-a-uuid/outcomes",
+            json={
+                "task_description": "Test task",
+                "outcome": "success",
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_outcome_invalid_outcome_status(self, client):
+        """Test creating outcome with invalid outcome status."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/outcomes",
+            json={
+                "task_description": "Test task",
+                "outcome": "invalid_status",
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_outcome_missing_task_description(self, client):
+        """Test creating outcome without task description."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/outcomes",
+            json={
+                "outcome": "success",
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_outcome_missing_outcome_status(self, client):
+        """Test creating outcome without outcome status."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/outcomes",
+            json={
+                "task_description": "Test task",
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
 
@@ -554,7 +713,7 @@ class TestEvolutionsEndpointIntegration:
         )
         # Returns 422 for invalid path parameter or 401 for auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
 
@@ -694,7 +853,7 @@ class TestVersionsEndpointIntegration:
         )
         # Returns 422 for invalid path parameter or 401 for auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
 
@@ -706,7 +865,7 @@ class TestVersionsEndpointIntegration:
         )
         # Returns 422 for invalid path parameter or 401 for auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
 
@@ -719,6 +878,6 @@ class TestVersionsEndpointIntegration:
         )
         # Returns 422 for invalid path parameter or 401 for auth
         assert response.status_code in [
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]

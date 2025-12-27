@@ -9,6 +9,7 @@ This module provides REST API endpoints for playbook management:
 - GET /playbooks/{id}/versions - List version history for a playbook
 - GET /playbooks/{id}/versions/{version_number} - Get specific version content
 - GET /playbooks/{id}/outcomes - List outcomes for a playbook
+- POST /playbooks/{id}/outcomes - Create a new outcome for a playbook
 - GET /playbooks/{id}/evolutions - List evolution history for a playbook
 """
 
@@ -156,6 +157,29 @@ class OutcomeResponse(BaseModel):
     evolution_job_id: UUID | None
 
     model_config = {"from_attributes": True}
+
+
+class OutcomeCreate(BaseModel):
+    """Request schema for creating an outcome."""
+
+    task_description: str = Field(
+        ..., min_length=1, max_length=10000, description="Description of the task"
+    )
+    outcome: OutcomeStatus = Field(..., description="Outcome status: success, failure, or partial")
+    reasoning_trace: str | None = Field(
+        None, max_length=10240, description="Optional reasoning trace (max 10KB)"
+    )
+    notes: str | None = Field(None, max_length=2048, description="Optional notes (max 2KB)")
+
+
+class OutcomeCreateResponse(BaseModel):
+    """Response schema for outcome creation."""
+
+    outcome_id: UUID = Field(..., description="ID of the created outcome")
+    status: str = Field(default="recorded", description="Status of the outcome creation")
+    pending_outcomes: int = Field(
+        ..., description="Number of unprocessed outcomes for this playbook"
+    )
 
 
 class PaginatedOutcomeResponse(BaseModel):
@@ -675,6 +699,64 @@ async def list_playbook_outcomes(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+    )
+
+
+@router.post(
+    "/{playbook_id}/outcomes",
+    response_model=OutcomeCreateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_outcome(
+    db: DbSession,
+    current_user: SubscribedUser,
+    playbook_id: UUID,
+    data: OutcomeCreate,
+) -> OutcomeCreateResponse:
+    """Create a new outcome for a playbook.
+
+    Records a task outcome (success, failure, or partial) for evolution feedback.
+    Requires active subscription.
+    """
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Create the outcome
+    outcome = Outcome(
+        playbook_id=playbook_id,
+        task_description=data.task_description,
+        outcome_status=data.outcome,
+        reasoning_trace=data.reasoning_trace,
+        notes=data.notes,
+    )
+    db.add(outcome)
+    await db.flush()
+
+    # Count pending (unprocessed) outcomes for this playbook
+    pending_query = select(func.count()).select_from(
+        select(Outcome)
+        .where(Outcome.playbook_id == playbook_id, Outcome.processed_at.is_(None))
+        .subquery()
+    )
+    pending_count = await db.scalar(pending_query) or 0
+
+    await db.commit()
+
+    return OutcomeCreateResponse(
+        outcome_id=outcome.id,
+        status="recorded",
+        pending_outcomes=pending_count,
     )
 
 
