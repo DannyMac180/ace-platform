@@ -781,6 +781,11 @@ async def create_outcome(
 
     await db.commit()
 
+    # Record outcome metric
+    from ace_platform.core.metrics import increment_outcome
+
+    increment_outcome(status=data.outcome.value, playbook_id=str(playbook_id))
+
     return OutcomeCreateResponse(
         outcome_id=outcome.id,
         status="recorded",

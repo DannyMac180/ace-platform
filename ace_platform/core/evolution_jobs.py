@@ -80,6 +80,11 @@ async def trigger_evolution_async(
         db.add(new_job)
         await db.flush()  # Get the ID without committing
 
+        # Record trigger metric
+        from ace_platform.core.metrics import increment_evolution_triggered
+
+        increment_evolution_triggered(trigger_type="manual")
+
         # Queue the Celery task
         from ace_platform.workers.evolution_task import process_evolution_job
 

@@ -7,12 +7,18 @@ This task handles background playbook evolution:
 4. Updates job and outcome records
 """
 
+import time
 from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select
 
 from ace_platform.core.evolution import EvolutionService, OutcomeData
+from ace_platform.core.metrics import (
+    decrement_active_jobs,
+    increment_active_jobs,
+    observe_evolution,
+)
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
@@ -68,10 +74,39 @@ def process_evolution_job(self, job_id: str) -> dict:
         job.started_at = datetime.now(UTC)
         db.commit()
 
+        # Track job start for metrics
+        increment_active_jobs()
+        start_time = time.time()
+
         try:
             result = _execute_evolution(db, job)
+
+            # Record success metrics
+            duration = time.time() - start_time
+            token_total = 0
+            model = "gpt-4o"  # Default model
+            if job.token_totals:
+                token_total = job.token_totals.get("total_tokens", 0)
+                model = job.token_totals.get("model", "gpt-4o")
+
+            observe_evolution(
+                status="completed",
+                playbook_id=str(job.playbook_id),
+                duration_seconds=duration,
+                tokens_used=token_total,
+                model=model,
+            )
+
             return result
         except Exception as e:
+            # Record failure metrics
+            duration = time.time() - start_time
+            observe_evolution(
+                status="failed",
+                playbook_id=str(job.playbook_id),
+                duration_seconds=duration,
+            )
+
             # Update job to FAILED
             job.status = EvolutionJobStatus.FAILED
             job.completed_at = datetime.now(UTC)
@@ -87,6 +122,9 @@ def process_evolution_job(self, job_id: str) -> dict:
                 "job_id": job_id,
                 "error": str(e),
             }
+        finally:
+            # Always decrement active jobs
+            decrement_active_jobs()
 
 
 def _execute_evolution(db, job: EvolutionJob) -> dict:

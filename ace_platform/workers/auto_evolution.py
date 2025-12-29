@@ -177,6 +177,11 @@ def _check_and_trigger_evolutions(
             db.add(new_job)
             db.flush()
 
+            # Record auto-trigger metric
+            from ace_platform.core.metrics import increment_evolution_triggered
+
+            increment_evolution_triggered(trigger_type="auto")
+
             # Queue the Celery task
             process_evolution_job.delay(str(new_job.id))
             jobs_queued += 1

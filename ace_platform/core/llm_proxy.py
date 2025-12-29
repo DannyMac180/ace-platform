@@ -232,6 +232,16 @@ class MeteredLLMClient:
         self._db.add(record)
         self._db.flush()
 
+        # Record token metrics for Prometheus
+        from ace_platform.core.metrics import record_token_usage
+
+        record_token_usage(
+            model=usage_info.model,
+            prompt_tokens=usage_info.prompt_tokens,
+            completion_tokens=usage_info.completion_tokens,
+            cost_usd=float(usage_info.cost_usd),
+        )
+
 
 class AsyncMeteredLLMClient:
     """Async OpenAI client wrapper that meters token usage.
@@ -384,3 +394,13 @@ class AsyncMeteredLLMClient:
         )
         self._db.add(record)
         await self._db.flush()
+
+        # Record token metrics for Prometheus
+        from ace_platform.core.metrics import record_token_usage
+
+        record_token_usage(
+            model=usage_info.model,
+            prompt_tokens=usage_info.prompt_tokens,
+            completion_tokens=usage_info.completion_tokens,
+            cost_usd=float(usage_info.cost_usd),
+        )

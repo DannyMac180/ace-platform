@@ -299,6 +299,27 @@ def _register_routes(app: FastAPI) -> None:
             "database": db_status,
         }
 
+    @app.get("/metrics", tags=["Monitoring"], include_in_schema=False)
+    async def metrics():
+        """Expose Prometheus metrics for scraping.
+
+        Returns metrics in Prometheus text format for monitoring systems.
+        This endpoint is excluded from OpenAPI docs for security.
+
+        Returns:
+            Prometheus-formatted metrics text.
+        """
+        from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+        from starlette.responses import Response
+
+        # Import metrics module to ensure all metrics are registered
+        from ace_platform.core import metrics as _  # noqa: F401
+
+        return Response(
+            content=generate_latest(),
+            media_type=CONTENT_TYPE_LATEST,
+        )
+
 
 # Create the application instance
 app = create_app()
