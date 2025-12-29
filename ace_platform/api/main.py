@@ -6,11 +6,13 @@ This module sets up the FastAPI application with:
 - Request timing middleware for performance monitoring
 - Global error handling
 - Health check endpoints
+- Sentry error tracking (when configured)
 """
 
 import logging
 from contextlib import asynccontextmanager
 
+import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +30,61 @@ from .middleware import (
 
 settings = get_settings()
 logger = get_logger(__name__)
+
+
+def _init_sentry() -> None:
+    """Initialize Sentry error tracking if configured.
+
+    Sentry is only initialized if SENTRY_DSN is set. This allows
+    running without Sentry in development while enabling it in
+    staging/production environments.
+    """
+    if not settings.sentry_dsn:
+        logger.debug("Sentry DSN not configured, error tracking disabled")
+        return
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.environment,
+        release="ace-platform@0.1.0",
+        # Performance monitoring
+        traces_sample_rate=settings.sentry_traces_sample_rate,
+        profiles_sample_rate=settings.sentry_profiles_sample_rate,
+        # Automatically capture breadcrumbs for logging, HTTP requests, etc.
+        enable_tracing=True,
+        # Don't send PII by default
+        send_default_pii=False,
+        # Filter out health check transactions
+        traces_sampler=_traces_sampler,
+    )
+    logger.info(
+        "Sentry error tracking initialized",
+        extra={"environment": settings.environment},
+    )
+
+
+def _traces_sampler(sampling_context: dict) -> float:
+    """Custom sampler to filter out noisy transactions.
+
+    Args:
+        sampling_context: Context about the transaction being sampled.
+
+    Returns:
+        Sample rate for this transaction (0.0 to 1.0).
+    """
+    # Don't trace health check endpoints
+    transaction_context = sampling_context.get("transaction_context", {})
+    name = transaction_context.get("name", "")
+
+    if name in ("/health", "/ready", "/metrics"):
+        return 0.0
+
+    # Use default sample rate for everything else
+    return settings.sentry_traces_sample_rate
+
+
+# Initialize Sentry at module load time
+_init_sentry()
 
 
 @asynccontextmanager
@@ -229,6 +286,19 @@ def _register_exception_handlers(app: FastAPI) -> None:
             f"[{correlation_id}] Unhandled exception: {type(exc).__name__}",
             extra={"correlation_id": correlation_id},
         )
+
+        # Capture to Sentry with context
+        with sentry_sdk.push_scope() as scope:
+            scope.set_tag("correlation_id", correlation_id)
+            scope.set_context(
+                "request",
+                {
+                    "url": str(request.url),
+                    "method": request.method,
+                    "headers": dict(request.headers),
+                },
+            )
+            sentry_sdk.capture_exception(exc)
 
         # Don't leak exception details in production
         message = "An unexpected error occurred"

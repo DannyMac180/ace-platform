@@ -154,6 +154,20 @@ class Settings(BaseSettings):
         description="Log format: 'json' for structured, 'text' for readable, 'auto' for environment-based",
     )
 
+    # Error tracking (Sentry)
+    sentry_dsn: str = Field(
+        default="",
+        description="Sentry DSN for error tracking. Leave empty to disable Sentry.",
+    )
+    sentry_traces_sample_rate: float = Field(
+        default=0.1,
+        description="Sentry performance monitoring sample rate (0.0 to 1.0)",
+    )
+    sentry_profiles_sample_rate: float = Field(
+        default=0.1,
+        description="Sentry profiling sample rate (0.0 to 1.0)",
+    )
+
     @field_validator("database_url_async", mode="before")
     @classmethod
     def derive_async_url(cls, v: str | None, info) -> str:

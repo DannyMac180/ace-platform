@@ -11,6 +11,7 @@ import time
 from datetime import UTC, datetime
 from uuid import UUID
 
+import sentry_sdk
 from sqlalchemy import select
 
 from ace_platform.core.evolution import EvolutionService, OutcomeData
@@ -19,6 +20,7 @@ from ace_platform.core.metrics import (
     increment_active_jobs,
     observe_evolution,
 )
+from ace_platform.core.sentry_context import set_job_context
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
@@ -56,11 +58,22 @@ def process_evolution_job(self, job_id: str) -> dict:
     """
     job_uuid = UUID(job_id)
 
+    # Set Sentry context for job tracking
+    set_job_context(job_id=job_id, job_type="evolution", status="starting")
+
     with SyncSessionLocal() as db:
         # Fetch the job
         job = db.get(EvolutionJob, job_uuid)
         if not job:
             return {"status": "error", "message": f"Job {job_id} not found"}
+
+        # Set playbook context for better error tracking
+        set_job_context(
+            job_id=job_id,
+            job_type="evolution",
+            status="running",
+            playbook_id=str(job.playbook_id),
+        )
 
         # Check if job is still queued
         if job.status != EvolutionJobStatus.QUEUED:
@@ -106,6 +119,9 @@ def process_evolution_job(self, job_id: str) -> dict:
                 playbook_id=str(job.playbook_id),
                 duration_seconds=duration,
             )
+
+            # Capture exception to Sentry with context
+            sentry_sdk.capture_exception(e)
 
             # Update job to FAILED
             job.status = EvolutionJobStatus.FAILED

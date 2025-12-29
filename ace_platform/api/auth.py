@@ -40,6 +40,7 @@ from ace_platform.core.security import (
     TokenExpiredError,
     decode_access_token,
 )
+from ace_platform.core.sentry_context import set_user_context
 from ace_platform.db.models import ApiKey, SubscriptionStatus, User
 
 from .deps import get_db
@@ -148,6 +149,10 @@ async def get_optional_auth(
         raise AuthenticationError("Invalid or revoked API key")
 
     api_key_record, user = result
+
+    # Set Sentry user context for error tracking
+    set_user_context(user_id=str(user.id), email=user.email)
+
     return AuthContext(user=user, api_key=api_key_record)
 
 
@@ -309,6 +314,9 @@ async def get_optional_user(
 
     if not user.is_active:
         raise AuthenticationError("User account is disabled")
+
+    # Set Sentry user context for error tracking
+    set_user_context(user_id=str(user.id), email=user.email)
 
     return user
 

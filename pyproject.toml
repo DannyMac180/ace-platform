@@ -54,6 +54,9 @@ dependencies = [
 
     # Metrics
     "prometheus-client>=0.20.0",
+
+    # Error tracking
+    "sentry-sdk[fastapi,celery]>=2.0.0",
 ]
 
 [project.optional-dependencies]
