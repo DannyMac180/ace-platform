@@ -219,6 +219,32 @@
 
 .error {
   color: var(--error);
+  flex-direction: row;
+  padding: var(--space-md) var(--space-lg);
+  background: var(--error-glow);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xl);
+}
+
+.error span {
+  flex: 1;
+}
+
+.dismissError {
+  background: transparent;
+  border: none;
+  color: var(--error);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: var(--space-xs);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
+}
+
+.dismissError:hover {
+  opacity: 1;
 }
 
 /* Empty State */

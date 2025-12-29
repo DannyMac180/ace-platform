@@ -57,20 +57,45 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   return config;
 });
 
+// Token refresh promise to prevent race conditions
+let refreshPromise: Promise<TokenResponse> | null = null;
+
+// Extend AxiosRequestConfig to include retry flag
+interface RetryableRequest extends InternalAxiosRequestConfig {
+  _retry?: boolean;
+}
+
 // Response interceptor for token refresh
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as RetryableRequest | undefined;
 
-    if (error.response?.status === 401 && refreshToken && originalRequest) {
+    // Only attempt refresh if: 401 error, have refresh token, have original request, not already retried
+    if (
+      error.response?.status === 401 &&
+      refreshToken &&
+      originalRequest &&
+      !originalRequest._retry
+    ) {
+      originalRequest._retry = true;
+
       try {
-        const response = await axios.post<TokenResponse>(
-          `${API_BASE_URL}/auth/refresh`,
-          { refresh_token: refreshToken }
-        );
-        setTokens(response.data);
-        originalRequest.headers.Authorization = `Bearer ${response.data.access_token}`;
+        // Reuse existing refresh promise to prevent race conditions
+        if (!refreshPromise) {
+          refreshPromise = axios
+            .post<TokenResponse>(`${API_BASE_URL}/auth/refresh`, {
+              refresh_token: refreshToken,
+            })
+            .then((res) => res.data)
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
+
+        const tokens = await refreshPromise;
+        setTokens(tokens);
+        originalRequest.headers.Authorization = `Bearer ${tokens.access_token}`;
         return api(originalRequest);
       } catch {
         clearTokens();

@@ -28,6 +28,7 @@ const AVAILABLE_SCOPES = [
 export function ApiKeys() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreateResponse | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -42,6 +43,10 @@ export function ApiKeys() {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] });
       setNewKey(key);
       setShowCreateModal(false);
+      setMutationError(null);
+    },
+    onError: () => {
+      setMutationError('Failed to create API key. Please try again.');
     },
   });
 
@@ -49,6 +54,10 @@ export function ApiKeys() {
     mutationFn: (keyId: string) => apiKeysApi.delete(keyId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['api-keys'] });
+      setMutationError(null);
+    },
+    onError: () => {
+      setMutationError('Failed to delete API key. Please try again.');
     },
   });
 
@@ -72,6 +81,21 @@ export function ApiKeys() {
           <p>API keys provide access to your account. Never share them or commit them to version control.</p>
         </div>
       </div>
+
+      {/* Mutation Error */}
+      {mutationError && (
+        <div className={styles.error}>
+          <AlertCircle size={20} />
+          <span>{mutationError}</span>
+          <button
+            className={styles.dismissError}
+            onClick={() => setMutationError(null)}
+            aria-label="Dismiss error"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* API Keys List */}
       {isLoading ? (

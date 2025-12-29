@@ -23,6 +23,7 @@ export function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -36,6 +37,10 @@ export function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
       setShowCreateModal(false);
+      setMutationError(null);
+    },
+    onError: () => {
+      setMutationError('Failed to create playbook. Please try again.');
     },
   });
 
@@ -81,6 +86,21 @@ export function Dashboard() {
           </select>
         </div>
       </div>
+
+      {/* Mutation Error */}
+      {mutationError && (
+        <div className={styles.mutationError}>
+          <AlertCircle size={20} />
+          <span>{mutationError}</span>
+          <button
+            className={styles.dismissError}
+            onClick={() => setMutationError(null)}
+            aria-label="Dismiss error"
+          >
+            &times;
+          </button>
+        </div>
+      )}
 
       {/* Content */}
       {isLoading ? (

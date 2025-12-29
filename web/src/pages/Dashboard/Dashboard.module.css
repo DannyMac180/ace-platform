@@ -250,6 +250,39 @@
   color: var(--error);
 }
 
+/* Mutation Error */
+.mutationError {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--error-glow);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xl);
+  color: var(--error);
+}
+
+.mutationError span {
+  flex: 1;
+}
+
+.dismissError {
+  background: transparent;
+  border: none;
+  color: var(--error);
+  font-size: 1.25rem;
+  line-height: 1;
+  padding: var(--space-xs);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
+}
+
+.dismissError:hover {
+  opacity: 1;
+}
+
 /* Empty state */
 .emptyState {
   display: flex;
