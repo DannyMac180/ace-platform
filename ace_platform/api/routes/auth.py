@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -24,6 +24,11 @@ from ace_platform.core.api_keys import (
     create_api_key_async,
     list_api_keys_async,
     revoke_api_key_async,
+)
+from ace_platform.core.login_lockout import (
+    check_login_lockout,
+    record_login_failure,
+    reset_login_lockout,
 )
 from ace_platform.core.rate_limit import RateLimitLogin
 from ace_platform.core.security import (
@@ -254,11 +259,12 @@ async def register(
     summary="Login with email and password",
     responses={
         401: {"description": "Invalid credentials"},
-        429: {"description": "Rate limit exceeded"},
+        429: {"description": "Rate limit exceeded or too many failed attempts"},
     },
 )
 async def login(
     request: UserLoginRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     _rate_limit: RateLimitLogin,
 ) -> TokenResponse:
@@ -266,13 +272,31 @@ async def login(
 
     Validates the email and password, then returns access and refresh tokens.
     Rate limited to 5 attempts per minute per IP address.
+
+    After 5 failed login attempts, exponential backoff is applied:
+    - 5 failures: 30 second lockout
+    - 6 failures: 60 second lockout
+    - 7 failures: 120 second lockout
+    - etc. up to 1 hour maximum
+
+    Lockout counters are tracked by both IP address and email address,
+    and are reset upon successful login.
     """
+    # Check for lockout before attempting authentication
+    await check_login_lockout(http_request, request.email)
+
     user = await authenticate_user(db, request.email, request.password)
     if not user:
+        # Record failed attempt for lockout tracking
+        await record_login_failure(http_request, request.email)
         raise AuthenticationError("Invalid email or password")
 
     if not user.is_active:
+        # Don't record as failed attempt - account exists but is disabled
         raise AuthenticationError("Account is disabled")
+
+    # Reset lockout counters on successful login
+    await reset_login_lockout(http_request, request.email)
 
     return create_tokens(user.id)
 
