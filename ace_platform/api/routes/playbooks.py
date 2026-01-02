@@ -353,6 +353,7 @@ async def create_playbook(
     await db.flush()
 
     # Create initial version if content provided
+    version = None
     if data.initial_content:
         bullet_count = data.initial_content.count("\n- ") + data.initial_content.count("\n* ")
         if data.initial_content.startswith("- ") or data.initial_content.startswith("* "):
@@ -370,8 +371,12 @@ async def create_playbook(
         playbook.current_version_id = version.id
 
     await db.commit()
-    await db.refresh(playbook, ["current_version"])
+    # Refresh only the playbook's scalar attributes (not relationships)
+    # to get server-generated values like updated_at
+    await db.refresh(playbook)
 
+    # Build response using the version object we already have
+    # (avoids async lazy-loading issue with relationships)
     return PlaybookResponse(
         id=playbook.id,
         name=playbook.name,
@@ -382,13 +387,13 @@ async def create_playbook(
         updated_at=playbook.updated_at,
         current_version=(
             PlaybookVersionResponse(
-                id=playbook.current_version.id,
-                version_number=playbook.current_version.version_number,
-                content=playbook.current_version.content,
-                bullet_count=playbook.current_version.bullet_count,
-                created_at=playbook.current_version.created_at,
+                id=version.id,
+                version_number=version.version_number,
+                content=version.content,
+                bullet_count=version.bullet_count,
+                created_at=version.created_at,
             )
-            if playbook.current_version
+            if version
             else None
         ),
     )
