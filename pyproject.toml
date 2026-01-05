@@ -36,6 +36,8 @@ dependencies = [
     "bcrypt>=4.0.0,<4.2.0",  # Pin bcrypt for passlib compatibility
     "python-multipart>=0.0.6",
     "email-validator>=2.0.0",  # For Pydantic email validation
+    "authlib>=1.3.0",  # OAuth client library
+    "itsdangerous>=2.1.0",  # Session middleware for OAuth state
 
     # MCP
     "mcp>=1.0.0",

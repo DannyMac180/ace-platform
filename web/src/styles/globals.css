@@ -2,7 +2,7 @@
    Design Direction: Tech-noir with bioluminescent accents
    The UI reflects that playbooks evolve and grow organically */
 
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
   /* Deep charcoal backgrounds */
@@ -44,7 +44,7 @@
   --border-strong: rgba(255, 255, 255, 0.15);
 
   /* Typography */
-  --font-display: 'Syne', sans-serif;
+  --font-display: 'Space Grotesk', sans-serif;
   --font-body: 'Outfit', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
@@ -112,7 +112,7 @@ body::before {
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.35;
   letter-spacing: -0.02em;
 }
 

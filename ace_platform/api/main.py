@@ -17,6 +17,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
@@ -108,6 +109,12 @@ async def lifespan(app: FastAPI):
     # Seed starter playbooks
     await _seed_starter_playbooks()
 
+    # Setup OAuth clients
+    from ace_platform.core.oauth import setup_oauth
+
+    setup_oauth()
+    logger.info("OAuth clients configured")
+
     yield
 
     # Shutdown
@@ -154,13 +161,20 @@ def create_app() -> FastAPI:
     )
 
     # Middleware execution order: last added = outermost (first for requests, last for responses)
-    # Request flow:  CorrelationId → Timing → CORS → Route
-    # Response flow: Route → CORS → Timing → CorrelationId
+    # Request flow:  CorrelationId → Timing → CORS → Session → Route
+    # Response flow: Route → Session → CORS → Timing → CorrelationId
     #
     # This ensures the correlation ID context is available throughout the entire
     # request lifecycle, including when Timing middleware logs slow requests.
 
-    # CORS middleware (innermost - handles preflight requests)
+    # Session middleware (innermost - required for OAuth state)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.jwt_secret_key,
+        max_age=600,  # 10 minutes for OAuth flow
+    )
+
+    # CORS middleware (handles preflight requests)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
@@ -326,12 +340,14 @@ def _register_routes(app: FastAPI) -> None:
     from ace_platform.api.routes import (
         auth_router,
         billing_router,
+        oauth_router,
         playbooks_router,
         usage_router,
     )
 
     # Include API routers
     app.include_router(auth_router)
+    app.include_router(oauth_router)
     app.include_router(billing_router)
     app.include_router(playbooks_router)
     app.include_router(usage_router)

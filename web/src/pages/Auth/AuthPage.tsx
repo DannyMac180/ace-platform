@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { OAuthButtons } from '../../components/OAuthButtons/OAuthButtons';
 import styles from './AuthPage.module.css';
 
 type AuthMode = 'login' | 'register';
@@ -83,8 +84,8 @@ export function AuthPage() {
                 <circle cx="24" cy="24" r="4" fill="currentColor" />
               </svg>
             </div>
-            <h1 className={styles.brandName}>ACE Platform</h1>
-            <p className={styles.tagline}>Autonomous Capability Enhancement</p>
+            <h1 className={styles.brandName}>ACE</h1>
+            <p className={styles.tagline}>Agentic Context Engineer</p>
           </div>
 
           <div className={styles.features}>
@@ -96,7 +97,7 @@ export function AuthPage() {
               </div>
               <div className={styles.featureText}>
                 <h3>Living Playbooks</h3>
-                <p>Documentation that evolves from your real-world outcomes</p>
+                <p>Context that evolves with your real-world outcomes</p>
               </div>
             </div>
             <div className={styles.feature}>
@@ -176,6 +177,8 @@ export function AuthPage() {
                 {mode === 'login' ? 'Sign in' : 'Create account'}
               </Button>
             </form>
+
+            <OAuthButtons />
 
             <div className={styles.formFooter}>
               <span>

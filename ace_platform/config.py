@@ -134,6 +134,32 @@ class Settings(BaseSettings):
         description="Allowed CORS origins",
     )
 
+    # OAuth Authentication
+    google_oauth_client_id: str = Field(
+        default="",
+        description="Google OAuth client ID",
+    )
+    google_oauth_client_secret: str = Field(
+        default="",
+        description="Google OAuth client secret",
+    )
+    github_oauth_client_id: str = Field(
+        default="",
+        description="GitHub OAuth client ID",
+    )
+    github_oauth_client_secret: str = Field(
+        default="",
+        description="GitHub OAuth client secret",
+    )
+    oauth_redirect_base_url: str = Field(
+        default="http://localhost:8000",
+        description="Base URL for OAuth redirect callbacks (your API server URL)",
+    )
+    frontend_url: str = Field(
+        default="http://localhost:3000",
+        description="Frontend application URL for post-OAuth redirects",
+    )
+
     # Environment
     environment: str = Field(
         default="development",

@@ -84,6 +84,13 @@ class SubscriptionStatus(str, enum.Enum):
     UNPAID = "unpaid"
 
 
+class OAuthProvider(str, enum.Enum):
+    """Supported OAuth providers."""
+
+    GOOGLE = "google"
+    GITHUB = "github"
+
+
 class User(Base):
     """Platform user."""
 
@@ -91,7 +98,9 @@ class User(Base):
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )  # Nullable for OAuth-only users
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -119,6 +128,9 @@ class User(Base):
     )
     usage_records: Mapped[list["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="user", cascade="all, delete-orphan"
+    )
+    oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
+        "UserOAuthAccount", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -415,3 +427,48 @@ class ApiKey(Base):
     def is_active(self) -> bool:
         """Check if the API key is active (not revoked)."""
         return self.revoked_at is None
+
+
+class UserOAuthAccount(Base):
+    """Links OAuth provider accounts to platform users.
+
+    Enables users to authenticate via multiple OAuth providers (Google, GitHub)
+    and links them to a single platform account by email.
+    """
+
+    __tablename__ = "user_oauth_accounts"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[OAuthProvider] = mapped_column(Enum(OAuthProvider), nullable=False)
+    provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    provider_email: Mapped[str] = mapped_column(String(255), nullable=False)
+    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    token_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    raw_user_info: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="oauth_accounts")
+
+    # Constraints: one provider account per user per provider
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
+        Index("ix_oauth_accounts_user_provider", "user_id", "provider"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<UserOAuthAccount {self.provider.value}:{self.provider_email}>"

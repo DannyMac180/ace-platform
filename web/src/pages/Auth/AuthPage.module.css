@@ -170,12 +170,14 @@
   font-weight: 600;
   color: var(--text-primary);
   margin: 0;
+  line-height: 1.4;
 }
 
 .featureText p {
   font-size: 0.875rem;
   color: var(--text-secondary);
   margin: var(--space-xs) 0 0 0;
+  line-height: 1.5;
 }
 
 /* Form section */

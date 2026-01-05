@@ -77,7 +77,7 @@ export function Layout({ children }: LayoutProps) {
               />
               <circle cx="16" cy="16" r="3" fill="currentColor" />
             </svg>
-            <span className={styles.logoText}>ACE Platform</span>
+            <span className={styles.logoText}>ACE</span>
           </div>
 
           {/* Navigation */}

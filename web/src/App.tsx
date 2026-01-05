@@ -3,10 +3,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Layout } from './components/Layout/Layout';
 import { AuthPage } from './pages/Auth/AuthPage';
+import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { PlaybookDetail } from './pages/PlaybookDetail/PlaybookDetail';
 import { ApiKeys } from './pages/ApiKeys/ApiKeys';
 import { Usage } from './pages/Usage/Usage';
+import { Settings } from './pages/Settings/Settings';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -74,6 +76,7 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
+      <Route path="/oauth/callback" element={<OAuthCallback />} />
 
       {/* Protected routes */}
       <Route
@@ -112,10 +115,7 @@ function AppRoutes() {
         path="/settings"
         element={
           <ProtectedRoute>
-            <div style={{ padding: '2rem' }}>
-              <h1>Settings</h1>
-              <p>Settings page coming soon...</p>
-            </div>
+            <Settings />
           </ProtectedRoute>
         }
       />
