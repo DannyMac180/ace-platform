@@ -7,6 +7,7 @@ This module provides REST API endpoints for:
 - Account linking (GET /auth/oauth/accounts, DELETE /auth/oauth/accounts/{provider})
 """
 
+import logging
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -24,9 +25,11 @@ from ace_platform.core.oauth import (
     oauth,
 )
 from ace_platform.core.oauth_service import OAuthService
+from ace_platform.core.rate_limit import RateLimitOAuth
 from ace_platform.core.security import create_access_token, create_refresh_token
 from ace_platform.db.models import OAuthProvider
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/oauth", tags=["OAuth"])
 settings = get_settings()
 
@@ -80,7 +83,7 @@ async def get_oauth_providers() -> OAuthProvidersResponse:
 
 
 @router.get("/google/login")
-async def google_login(request: Request):
+async def google_login(request: Request, _: RateLimitOAuth):
     """Initiate Google OAuth login flow.
 
     Redirects the user to Google's OAuth consent screen.
@@ -96,6 +99,7 @@ async def google_login(request: Request):
 async def google_callback(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _: RateLimitOAuth,
 ):
     """Handle Google OAuth callback.
 
@@ -107,7 +111,8 @@ async def google_callback(
     try:
         token = await oauth.google.authorize_access_token(request)
     except Exception as e:
-        return _oauth_error_redirect(f"Failed to authenticate with Google: {e}")
+        logger.error("Google OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        return _oauth_error_redirect("Failed to authenticate with Google. Please try again.")
 
     user_info = token.get("userinfo")
     if not user_info:
@@ -146,7 +151,7 @@ async def google_callback(
 
 
 @router.get("/github/login")
-async def github_login(request: Request):
+async def github_login(request: Request, _: RateLimitOAuth):
     """Initiate GitHub OAuth login flow.
 
     Redirects the user to GitHub's OAuth consent screen.
@@ -162,6 +167,7 @@ async def github_login(request: Request):
 async def github_callback(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _: RateLimitOAuth,
 ):
     """Handle GitHub OAuth callback.
 
@@ -173,14 +179,16 @@ async def github_callback(
     try:
         token = await oauth.github.authorize_access_token(request)
     except Exception as e:
-        return _oauth_error_redirect(f"Failed to authenticate with GitHub: {e}")
+        logger.error("GitHub OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        return _oauth_error_redirect("Failed to authenticate with GitHub. Please try again.")
 
     # GitHub requires separate API call to get user info
     try:
         resp = await oauth.github.get("user", token=token)
         user_info = resp.json()
     except Exception as e:
-        return _oauth_error_redirect(f"Failed to get user info from GitHub: {e}")
+        logger.error("GitHub user info fetch failed", exc_info=True, extra={"error": str(e)})
+        return _oauth_error_redirect("Failed to get user info from GitHub. Please try again.")
 
     # GitHub may not return email in user endpoint, fetch from emails endpoint
     email = user_info.get("email")
@@ -194,8 +202,11 @@ async def github_callback(
             )
             if primary_email:
                 email = primary_email["email"]
-        except Exception:
-            pass  # Fall through to error below
+        except Exception as e:
+            logger.warning(
+                "GitHub email fetch failed, will check for email in user info",
+                extra={"error": str(e)},
+            )
 
     if not email:
         return _oauth_error_redirect("No verified email found on GitHub account")

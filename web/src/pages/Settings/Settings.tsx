@@ -51,7 +51,8 @@ export function Settings() {
   const handleUnlink = async (provider: 'google' | 'github') => {
     if (!linkedAccounts) return;
 
-    // Check if this is the only auth method
+    // UX optimization - show error immediately without network round-trip.
+    // The backend enforces this rule definitively in oauth_service.py
     const otherProvider = provider === 'google' ? 'github' : 'google';
     if (!linkedAccounts.has_password && !linkedAccounts[otherProvider]) {
       setError('Cannot unlink your only sign-in method. Add a password or connect another account first.');

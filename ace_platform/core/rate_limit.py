@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 # Rate limit configurations
 RATE_LIMITS = {
     "login": {"limit": 5, "window_seconds": 60},  # 5 per minute per IP
+    "oauth": {"limit": 10, "window_seconds": 60},  # 10 per minute per IP (OAuth flow)
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
 }
@@ -395,5 +396,29 @@ async def rate_limit_evolution(request: Request, playbook_id: str) -> None:
     )
 
 
+async def rate_limit_oauth(request: Request) -> None:
+    """Rate limit dependency for OAuth login attempts.
+
+    Limits to 10 requests per minute per IP address.
+    Slightly higher than regular login to accommodate OAuth redirects.
+
+    Args:
+        request: The incoming request.
+
+    Raises:
+        RateLimitExceeded: If rate limit is exceeded.
+    """
+    client_ip = get_client_ip(request)
+    config = RATE_LIMITS["oauth"]
+    await _check_rate_limit(
+        request,
+        action="oauth",
+        identifier=client_ip,
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
 # Type aliases for dependency injection
 RateLimitLogin = Annotated[None, Depends(rate_limit_login)]
+RateLimitOAuth = Annotated[None, Depends(rate_limit_oauth)]
