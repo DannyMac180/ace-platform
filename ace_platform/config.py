@@ -159,6 +159,10 @@ class Settings(BaseSettings):
         default="http://localhost:3000",
         description="Frontend application URL for post-OAuth redirects",
     )
+    session_secret_key: str = Field(
+        default="",
+        description="Secret key for OAuth session cookies (separate from JWT for security isolation)",
+    )
 
     # Environment
     environment: str = Field(

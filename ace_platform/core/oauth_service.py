@@ -62,10 +62,10 @@ class OAuthService:
             await self.db.refresh(existing_oauth, ["user"])
             return existing_oauth.user, False
 
-        # 2. Check for existing user by email
+        # 2. Check for existing user by email (only auto-link if email is verified)
         existing_user = await self._get_user_by_email(email)
-        if existing_user:
-            # Link OAuth to existing account
+        if existing_user and existing_user.email_verified:
+            # Link OAuth to existing verified account
             oauth_account = UserOAuthAccount(
                 user_id=existing_user.id,
                 provider=provider,
@@ -79,6 +79,9 @@ class OAuthService:
             self.db.add(oauth_account)
             await self.db.commit()
             return existing_user, False
+        # Note: If existing_user exists but email is NOT verified, we create a new
+        # account. This prevents account hijacking where an attacker could create
+        # an OAuth account with an unverified user's email to gain access.
 
         # 3. Create new user
         new_user = User(

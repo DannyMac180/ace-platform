@@ -283,7 +283,13 @@ def _oauth_success_redirect(
     refresh_token: str,
     is_new_user: bool,
 ) -> RedirectResponse:
-    """Redirect to frontend with OAuth tokens."""
+    """Redirect to frontend with OAuth tokens.
+
+    Uses fragment identifier (#) instead of query params (?) to prevent:
+    - Token leakage via browser history
+    - Token exposure in server logs and referrer headers
+    - Token visibility to analytics and CDNs
+    """
     params = urlencode(
         {
             "access_token": access_token,
@@ -292,7 +298,7 @@ def _oauth_success_redirect(
         }
     )
     return RedirectResponse(
-        url=f"{settings.frontend_url}/oauth/callback?{params}",
+        url=f"{settings.frontend_url}/oauth/callback#{params}",
         status_code=status.HTTP_302_FOUND,
     )
 

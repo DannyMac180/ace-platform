@@ -168,9 +168,11 @@ def create_app() -> FastAPI:
     # request lifecycle, including when Timing middleware logs slow requests.
 
     # Session middleware (innermost - required for OAuth state)
+    # Uses dedicated session secret for security isolation from JWT tokens
+    session_secret = settings.session_secret_key or settings.jwt_secret_key
     app.add_middleware(
         SessionMiddleware,
-        secret_key=settings.jwt_secret_key,
+        secret_key=session_secret,
         max_age=600,  # 10 minutes for OAuth flow
     )
 

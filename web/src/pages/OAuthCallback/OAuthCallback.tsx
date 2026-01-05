@@ -4,6 +4,16 @@ import { setTokens } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import styles from './OAuthCallback.module.css';
 
+/**
+ * Parse URL fragment parameters (after #).
+ * Using fragments instead of query params prevents token leakage via
+ * browser history, server logs, and referrer headers.
+ */
+function parseFragmentParams(): URLSearchParams {
+  const hash = window.location.hash.slice(1); // Remove leading #
+  return new URLSearchParams(hash);
+}
+
 export function OAuthCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -12,19 +22,25 @@ export function OAuthCallback() {
 
   useEffect(() => {
     const handleCallback = async () => {
+      // Check query params for errors (errors can use query params since they're not sensitive)
       const errorParam = searchParams.get('error');
       if (errorParam) {
         setError(errorParam);
         return;
       }
 
-      const accessToken = searchParams.get('access_token');
-      const refreshToken = searchParams.get('refresh_token');
+      // Parse tokens from URL fragment (more secure than query params)
+      const fragmentParams = parseFragmentParams();
+      const accessToken = fragmentParams.get('access_token');
+      const refreshToken = fragmentParams.get('refresh_token');
 
       if (!accessToken || !refreshToken) {
         setError('Invalid OAuth response');
         return;
       }
+
+      // Clear fragment from URL immediately after reading (extra security measure)
+      window.history.replaceState(null, '', window.location.pathname);
 
       // Store tokens
       setTokens({
