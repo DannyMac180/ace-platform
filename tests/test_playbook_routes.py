@@ -24,6 +24,7 @@ from ace_platform.api.routes.playbooks import (
     PlaybookResponse,
     PlaybookUpdate,
     PlaybookVersionResponse,
+    VersionCreate,
 )
 from ace_platform.db.models import PlaybookSource, PlaybookStatus
 
@@ -877,6 +878,165 @@ class TestVersionsEndpointIntegration:
             headers={"Authorization": "Bearer fake"},
         )
         # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+
+class TestVersionCreateSchema:
+    """Tests for VersionCreate schema validation."""
+
+    def test_version_create_valid(self):
+        """Test valid version create schema."""
+        data = VersionCreate(
+            content="# My Playbook\n\n- Step 1\n- Step 2",
+            diff_summary="Added two steps",
+        )
+        assert data.content == "# My Playbook\n\n- Step 1\n- Step 2"
+        assert data.diff_summary == "Added two steps"
+
+    def test_version_create_minimal(self):
+        """Test version create with only required content field."""
+        data = VersionCreate(content="Some content")
+        assert data.content == "Some content"
+        assert data.diff_summary is None
+
+    def test_version_create_empty_content_rejected(self):
+        """Test that empty content is rejected."""
+        with pytest.raises(ValueError):
+            VersionCreate(content="")
+
+    def test_version_create_whitespace_only_content(self):
+        """Test version create with whitespace content."""
+        # Whitespace-only content should pass min_length check (length > 0)
+        # but the actual content is just whitespace
+        data = VersionCreate(content="   ")
+        assert data.content == "   "
+
+    def test_version_create_long_diff_summary_rejected(self):
+        """Test that diff_summary over 500 chars is rejected."""
+        with pytest.raises(ValueError):
+            VersionCreate(
+                content="Some content",
+                diff_summary="x" * 501,  # Over 500 char limit
+            )
+
+    def test_version_create_max_diff_summary(self):
+        """Test that diff_summary at exactly 500 chars is accepted."""
+        data = VersionCreate(
+            content="Some content",
+            diff_summary="x" * 500,
+        )
+        assert len(data.diff_summary) == 500
+
+
+class TestCreateVersionEndpointIntegration:
+    """Integration tests for POST /playbooks/{id}/versions endpoint."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app."""
+        from ace_platform.api.main import create_app
+
+        return create_app()
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_create_version_route_registered(self, app):
+        """Test that create version route is registered."""
+        routes = [route.path for route in app.routes]
+        assert "/playbooks/{playbook_id}/versions" in routes
+
+    def test_create_version_requires_auth(self, client):
+        """Test that creating version requires authentication."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={"content": "# New Content"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_version_with_invalid_token(self, client):
+        """Test creating version with invalid token."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={"content": "# New Content"},
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_version_invalid_uuid(self, client):
+        """Test creating version with invalid playbook UUID."""
+        response = client.post(
+            "/playbooks/not-a-uuid/versions",
+            json={"content": "# New Content"},
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for invalid path parameter or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_version_missing_content(self, client):
+        """Test creating version without content field."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={},
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_version_empty_content(self, client):
+        """Test creating version with empty content string."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={"content": ""},
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
+        assert response.status_code in [
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status.HTTP_401_UNAUTHORIZED,
+        ]
+
+    def test_create_version_with_diff_summary(self, client):
+        """Test creating version with optional diff_summary."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={
+                "content": "# Updated Content\n\n- New step",
+                "diff_summary": "Added new step for error handling",
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 401 for auth (would be 201 with valid auth)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_version_diff_summary_too_long(self, client):
+        """Test creating version with diff_summary over 500 chars."""
+        playbook_id = str(uuid4())
+        response = client.post(
+            f"/playbooks/{playbook_id}/versions",
+            json={
+                "content": "# Content",
+                "diff_summary": "x" * 501,
+            },
+            headers={"Authorization": "Bearer fake"},
+        )
+        # Returns 422 for validation error or 401 for auth
         assert response.status_code in [
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,

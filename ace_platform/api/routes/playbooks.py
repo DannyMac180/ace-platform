@@ -20,6 +20,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -686,6 +687,9 @@ async def create_version(
     Creates an immutable version with incremented version number.
     The playbook's current_version is updated to point to the new version.
     Requires active subscription.
+
+    Uses retry logic to handle race conditions where concurrent requests
+    might try to create the same version number.
     """
     # Verify playbook exists and belongs to user
     query = select(Playbook).where(Playbook.id == playbook_id, Playbook.user_id == current_user.id)
@@ -698,44 +702,65 @@ async def create_version(
             detail="Playbook not found",
         )
 
-    # Get current max version number
-    max_version_query = select(func.max(PlaybookVersion.version_number)).where(
-        PlaybookVersion.playbook_id == playbook_id
-    )
-    current_max = await db.scalar(max_version_query) or 0
-    new_version_number = current_max + 1
-
-    # Calculate bullet count
+    # Calculate bullet count (done once, outside retry loop)
     bullet_count = data.content.count("\n- ") + data.content.count("\n* ")
     if data.content.startswith("- ") or data.content.startswith("* "):
         bullet_count += 1
 
-    # Create new version
-    version = PlaybookVersion(
-        playbook_id=playbook_id,
-        version_number=new_version_number,
-        content=data.content,
-        bullet_count=bullet_count,
-        diff_summary=data.diff_summary,
-        created_by_job_id=None,  # Manual edit, not from evolution job
-    )
-    db.add(version)
-    await db.flush()
+    # Retry loop to handle race conditions on version_number
+    max_retries = 3
+    for attempt in range(max_retries):
+        # Get current max version number
+        max_version_query = select(func.max(PlaybookVersion.version_number)).where(
+            PlaybookVersion.playbook_id == playbook_id
+        )
+        current_max = await db.scalar(max_version_query) or 0
+        new_version_number = current_max + 1
 
-    # Update playbook to point to new version
-    playbook.current_version_id = version.id
+        # Create new version
+        version = PlaybookVersion(
+            playbook_id=playbook_id,
+            version_number=new_version_number,
+            content=data.content,
+            bullet_count=bullet_count,
+            diff_summary=data.diff_summary,
+            created_by_job_id=None,  # Manual edit, not from evolution job
+        )
+        db.add(version)
 
-    await db.commit()
-    await db.refresh(version)
+        try:
+            await db.flush()
+            # Update playbook to point to new version
+            playbook.current_version_id = version.id
+            await db.commit()
+            await db.refresh(version)
 
-    return PlaybookVersionDetailResponse(
-        id=version.id,
-        version_number=version.version_number,
-        content=version.content,
-        bullet_count=version.bullet_count,
-        diff_summary=version.diff_summary,
-        created_by_job_id=version.created_by_job_id,
-        created_at=version.created_at,
+            return PlaybookVersionDetailResponse(
+                id=version.id,
+                version_number=version.version_number,
+                content=version.content,
+                bullet_count=version.bullet_count,
+                diff_summary=version.diff_summary,
+                created_by_job_id=version.created_by_job_id,
+                created_at=version.created_at,
+            )
+        except IntegrityError:
+            # Race condition: another request created this version number
+            # Rollback and retry with a fresh version number
+            await db.rollback()
+            # Re-fetch playbook after rollback (session state is cleared)
+            result = await db.execute(query)
+            playbook = result.scalar_one_or_none()
+            if attempt == max_retries - 1:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Failed to create version due to concurrent modification. Please try again.",
+                )
+
+    # This should never be reached due to the raise in the loop
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Unexpected error creating version",
     )
 
 
