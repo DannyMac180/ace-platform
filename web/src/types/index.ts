@@ -76,6 +76,11 @@ export interface PlaybookUpdate {
   status?: 'active' | 'paused' | 'archived';
 }
 
+export interface VersionCreate {
+  content: string;
+  diff_summary?: string;
+}
+
 export interface Outcome {
   id: string;
   task_description: string;

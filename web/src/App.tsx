@@ -6,6 +6,7 @@ import { AuthPage } from './pages/Auth/AuthPage';
 import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { PlaybookDetail } from './pages/PlaybookDetail/PlaybookDetail';
+import { PlaybookContentEditor } from './pages/PlaybookContentEditor/PlaybookContentEditor';
 import { ApiKeys } from './pages/ApiKeys/ApiKeys';
 import { Usage } from './pages/Usage/Usage';
 import { Settings } from './pages/Settings/Settings';
@@ -92,6 +93,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PlaybookDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/playbooks/:id/edit"
+        element={
+          <ProtectedRoute>
+            <PlaybookContentEditor />
           </ProtectedRoute>
         }
       />
