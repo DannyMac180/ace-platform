@@ -56,7 +56,7 @@ export function Usage() {
             <SummaryCard
               icon={<DollarSign />}
               label="Total Cost"
-              value={`$${(summary?.total_cost_usd || 0).toFixed(2)}`}
+              value={`$${Number(summary?.total_cost_usd || 0).toFixed(2)}`}
               trend="+8%"
               trendUp={false}
             />
@@ -149,7 +149,7 @@ function SummaryCard({ icon, label, value, trend, trendUp }: SummaryCardProps) {
 }
 
 function UsageChart({ data }: { data: DailyUsage[] }) {
-  const maxTokens = Math.max(...data.map((d) => d.total_tokens));
+  const maxTokens = data.length > 0 ? Math.max(...data.map((d) => d.total_tokens)) : 0;
 
   return (
     <div className={styles.barChart}>
@@ -186,7 +186,7 @@ function PlaybookUsageItem({ usage }: { usage: PlaybookUsage }) {
       <div className={styles.playbookInfo}>
         <span className={styles.playbookName}>{usage.playbook_name}</span>
         <span className={styles.playbookStats}>
-          {formatNumber(usage.total_tokens)} tokens · ${usage.cost_usd.toFixed(2)}
+          {formatNumber(usage.total_tokens)} tokens · ${Number(usage.cost_usd).toFixed(2)}
         </span>
       </div>
       <div className={styles.playbookOps}>

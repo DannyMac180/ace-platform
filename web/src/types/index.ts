@@ -122,7 +122,7 @@ export interface UsageSummary {
   total_prompt_tokens: number;
   total_completion_tokens: number;
   total_tokens: number;
-  total_cost_usd: number;
+  total_cost_usd: string | number;
 }
 
 export interface DailyUsage {
@@ -131,7 +131,7 @@ export interface DailyUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
-  cost_usd: number;
+  cost_usd: string | number;
 }
 
 export interface PlaybookUsage {
@@ -139,7 +139,7 @@ export interface PlaybookUsage {
   playbook_name: string;
   request_count: number;
   total_tokens: number;
-  cost_usd: number;
+  cost_usd: string | number;
 }
 
 export interface PaginatedResponse<T> {
