@@ -116,26 +116,30 @@ export interface EvolutionJob {
 }
 
 export interface UsageSummary {
+  start_date: string;
+  end_date: string;
+  total_requests: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
   total_tokens: number;
   total_cost_usd: number;
-  total_operations: number;
-  period_start: string;
-  period_end: string;
 }
 
 export interface DailyUsage {
   date: string;
-  tokens: number;
+  request_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
   cost_usd: number;
-  operations: number;
 }
 
 export interface PlaybookUsage {
   playbook_id: string;
   playbook_name: string;
-  tokens: number;
+  request_count: number;
+  total_tokens: number;
   cost_usd: number;
-  operations: number;
 }
 
 export interface PaginatedResponse<T> {

@@ -63,7 +63,7 @@ export function Usage() {
             <SummaryCard
               icon={<Activity />}
               label="Operations"
-              value={formatNumber(summary?.total_operations || 0)}
+              value={formatNumber(summary?.total_requests || 0)}
               trend="+15%"
               trendUp
             />
@@ -113,8 +113,8 @@ export function Usage() {
           {summary && (
             <div className={styles.periodInfo}>
               <span>
-                Billing period: {new Date(summary.period_start).toLocaleDateString()} -{' '}
-                {new Date(summary.period_end).toLocaleDateString()}
+                Billing period: {new Date(summary.start_date).toLocaleDateString()} -{' '}
+                {new Date(summary.end_date).toLocaleDateString()}
               </span>
             </div>
           )}
@@ -149,12 +149,12 @@ function SummaryCard({ icon, label, value, trend, trendUp }: SummaryCardProps) {
 }
 
 function UsageChart({ data }: { data: DailyUsage[] }) {
-  const maxTokens = Math.max(...data.map((d) => d.tokens));
+  const maxTokens = Math.max(...data.map((d) => d.total_tokens));
 
   return (
     <div className={styles.barChart}>
       {data.slice(-14).map((day, index) => {
-        const height = maxTokens > 0 ? (day.tokens / maxTokens) * 100 : 0;
+        const height = maxTokens > 0 ? (day.total_tokens / maxTokens) * 100 : 0;
         const date = new Date(day.date);
         const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
 
@@ -186,12 +186,12 @@ function PlaybookUsageItem({ usage }: { usage: PlaybookUsage }) {
       <div className={styles.playbookInfo}>
         <span className={styles.playbookName}>{usage.playbook_name}</span>
         <span className={styles.playbookStats}>
-          {formatNumber(usage.tokens)} tokens · ${usage.cost_usd.toFixed(2)}
+          {formatNumber(usage.total_tokens)} tokens · ${usage.cost_usd.toFixed(2)}
         </span>
       </div>
       <div className={styles.playbookOps}>
         <Activity size={14} />
-        <span>{usage.operations}</span>
+        <span>{usage.request_count}</span>
       </div>
     </div>
   );
