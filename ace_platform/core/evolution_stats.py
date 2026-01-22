@@ -278,9 +278,7 @@ async def get_evolution_by_playbook(
             completed=row.completed or 0,
             failed=row.failed or 0,
             success_rate=(
-                (row.completed / row.total_evolutions)
-                if row.total_evolutions and row.completed
-                else 0.0
+                (row.completed / row.total_evolutions) if row.total_evolutions > 0 else 0.0
             ),
             last_evolution_at=row.last_evolution_at,
         )
@@ -332,7 +330,7 @@ async def get_recent_evolutions(
         .select_from(EvolutionJob)
         .join(Playbook, EvolutionJob.playbook_id == Playbook.id)
         .where(Playbook.user_id == user_id)
-        .order_by(EvolutionJob.started_at.desc())
+        .order_by(EvolutionJob.started_at.desc().nullslast())
         .limit(limit)
     )
 
