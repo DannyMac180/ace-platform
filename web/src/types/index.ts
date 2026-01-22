@@ -142,6 +142,51 @@ export interface PlaybookUsage {
   cost_usd: string | number;
 }
 
+// Evolution Statistics Types
+export interface EvolutionSummary {
+  start_date: string;
+  end_date: string;
+  total_evolutions: number;
+  completed_evolutions: number;
+  failed_evolutions: number;
+  running_evolutions: number;
+  queued_evolutions: number;
+  success_rate: number;
+  total_outcomes_processed: number;
+}
+
+export interface DailyEvolution {
+  date: string;
+  total_evolutions: number;
+  completed: number;
+  failed: number;
+  running: number;
+  queued: number;
+}
+
+export interface PlaybookEvolutionStats {
+  playbook_id: string;
+  playbook_name: string;
+  total_evolutions: number;
+  completed: number;
+  failed: number;
+  success_rate: number;
+  last_evolution_at: string | null;
+}
+
+export interface RecentEvolution {
+  id: string;
+  playbook_id: string;
+  playbook_name: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  outcomes_processed: number;
+  from_version_number: number | null;
+  to_version_number: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

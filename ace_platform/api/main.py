@@ -342,6 +342,7 @@ def _register_routes(app: FastAPI) -> None:
     from ace_platform.api.routes import (
         auth_router,
         billing_router,
+        evolutions_router,
         oauth_router,
         playbooks_router,
         usage_router,
@@ -353,6 +354,7 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(billing_router)
     app.include_router(playbooks_router)
     app.include_router(usage_router)
+    app.include_router(evolutions_router)
 
     @app.get("/health", tags=["Health"])
     async def health_check():

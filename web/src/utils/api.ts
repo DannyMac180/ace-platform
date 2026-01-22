@@ -3,17 +3,21 @@ import type {
   ApiKey,
   ApiKeyCreate,
   ApiKeyCreateResponse,
+  DailyEvolution,
   DailyUsage,
   EvolutionJob,
+  EvolutionSummary,
   Outcome,
   OutcomeCreate,
   PaginatedResponse,
   Playbook,
   PlaybookCreate,
+  PlaybookEvolutionStats,
   PlaybookListItem,
   PlaybookUpdate,
   PlaybookUsage,
   PlaybookVersion,
+  RecentEvolution,
   TokenResponse,
   UsageSummary,
   User,
@@ -255,6 +259,31 @@ export const usageApi = {
 
   getByPlaybook: async (): Promise<PlaybookUsage[]> => {
     const response = await api.get<PlaybookUsage[]>('/usage/by-playbook');
+    return response.data;
+  },
+};
+
+// Evolution Statistics API
+export const evolutionsApi = {
+  getSummary: async (): Promise<EvolutionSummary> => {
+    const response = await api.get<EvolutionSummary>('/evolutions/summary');
+    return response.data;
+  },
+
+  getDaily: async (days = 30): Promise<DailyEvolution[]> => {
+    const response = await api.get<DailyEvolution[]>(`/evolutions/daily?days=${days}`);
+    return response.data;
+  },
+
+  getByPlaybook: async (limit = 10): Promise<PlaybookEvolutionStats[]> => {
+    const response = await api.get<PlaybookEvolutionStats[]>(
+      `/evolutions/by-playbook?limit=${limit}`
+    );
+    return response.data;
+  },
+
+  getRecent: async (limit = 10): Promise<RecentEvolution[]> => {
+    const response = await api.get<RecentEvolution[]>(`/evolutions/recent?limit=${limit}`);
     return response.data;
   },
 };
