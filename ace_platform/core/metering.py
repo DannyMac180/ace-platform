@@ -9,6 +9,11 @@ Key functions:
 - get_user_usage_by_day: Get daily usage breakdown
 - get_usage_by_playbook: Get usage grouped by playbook
 - get_usage_by_operation: Get usage grouped by operation type
+
+Platform-wide functions (for admin alerts):
+- get_platform_daily_summary: Get total platform spend for a day
+- get_top_users_by_spend: Get top N users by spend in a period
+- get_users_over_threshold: Get users who exceeded X% of their tier limit
 """
 
 from dataclasses import dataclass
@@ -19,7 +24,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.db.models import Playbook, UsageRecord
+from ace_platform.db.models import Playbook, UsageRecord, User
 
 
 @dataclass
@@ -371,3 +376,221 @@ async def get_billing_period_usage(
         "by_operation": by_operation,
         "by_model": by_model,
     }
+
+
+# =============================================================================
+# Platform-wide aggregation (for admin alerts)
+# =============================================================================
+
+
+@dataclass
+class PlatformDailySummary:
+    """Summary of platform-wide usage for a day."""
+
+    date: datetime
+    total_users_active: int
+    total_requests: int
+    total_tokens: int
+    total_cost_usd: Decimal
+
+
+@dataclass
+class UserSpendSummary:
+    """Summary of a user's spend for admin alerts."""
+
+    user_id: UUID
+    email: str
+    subscription_tier: str | None
+    total_cost_usd: Decimal
+    cost_limit_usd: Decimal | None
+    percent_of_limit: float | None
+
+
+async def get_platform_daily_summary(
+    db: AsyncSession,
+    date: datetime | None = None,
+) -> PlatformDailySummary:
+    """Get platform-wide usage summary for a specific day.
+
+    Args:
+        db: Database session.
+        date: Date to get summary for. Defaults to today.
+
+    Returns:
+        PlatformDailySummary with aggregated totals.
+    """
+    if date is None:
+        date = datetime.now(UTC)
+
+    # Get start and end of day
+    start_of_day = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+
+    # Get usage totals
+    usage_query = select(
+        func.count(func.distinct(UsageRecord.user_id)).label("total_users_active"),
+        func.count(UsageRecord.id).label("total_requests"),
+        func.coalesce(func.sum(UsageRecord.total_tokens), 0).label("total_tokens"),
+        func.coalesce(func.sum(UsageRecord.cost_usd), Decimal("0")).label("total_cost_usd"),
+    ).where(
+        UsageRecord.created_at >= start_of_day,
+        UsageRecord.created_at < end_of_day,
+    )
+
+    result = await db.execute(usage_query)
+    row = result.one()
+
+    return PlatformDailySummary(
+        date=start_of_day,
+        total_users_active=row.total_users_active,
+        total_requests=row.total_requests,
+        total_tokens=row.total_tokens,
+        total_cost_usd=row.total_cost_usd,
+    )
+
+
+async def get_top_users_by_spend(
+    db: AsyncSession,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    limit: int = 5,
+) -> list[UserSpendSummary]:
+    """Get top users by spend in a time period.
+
+    Args:
+        db: Database session.
+        start_date: Start of period. Defaults to start of current month.
+        end_date: End of period. Defaults to now.
+        limit: Maximum number of users to return.
+
+    Returns:
+        List of UserSpendSummary, ordered by spend descending.
+    """
+    from ace_platform.core.limits import TIER_LIMITS, SubscriptionTier
+
+    if end_date is None:
+        end_date = datetime.now(UTC)
+    if start_date is None:
+        # Default to start of current month
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Query for top users by spend with user info
+    query = (
+        select(
+            UsageRecord.user_id,
+            User.email,
+            User.subscription_tier,
+            func.sum(UsageRecord.cost_usd).label("total_cost_usd"),
+        )
+        .join(User, UsageRecord.user_id == User.id)
+        .where(
+            UsageRecord.created_at >= start_date,
+            UsageRecord.created_at <= end_date,
+        )
+        .group_by(UsageRecord.user_id, User.email, User.subscription_tier)
+        .order_by(func.sum(UsageRecord.cost_usd).desc())
+        .limit(limit)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    summaries = []
+    for row in rows:
+        # Get tier limits
+        tier = SubscriptionTier(row.subscription_tier) if row.subscription_tier else SubscriptionTier.FREE
+        tier_limits = TIER_LIMITS.get(tier)
+        cost_limit = tier_limits.monthly_cost_limit_usd if tier_limits else None
+
+        # Calculate percentage of limit
+        percent = None
+        if cost_limit and cost_limit > 0:
+            percent = float(row.total_cost_usd / cost_limit * 100)
+
+        summaries.append(
+            UserSpendSummary(
+                user_id=row.user_id,
+                email=row.email,
+                subscription_tier=row.subscription_tier,
+                total_cost_usd=row.total_cost_usd or Decimal("0"),
+                cost_limit_usd=cost_limit,
+                percent_of_limit=percent,
+            )
+        )
+
+    return summaries
+
+
+async def get_users_over_threshold(
+    db: AsyncSession,
+    threshold_percent: int = 50,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[UserSpendSummary]:
+    """Get users who have exceeded a percentage of their tier's cost limit.
+
+    Args:
+        db: Database session.
+        threshold_percent: Percentage threshold (e.g., 50 for 50% of limit).
+        start_date: Start of period. Defaults to start of current month.
+        end_date: End of period. Defaults to now.
+
+    Returns:
+        List of UserSpendSummary for users over threshold, ordered by percent descending.
+    """
+    from ace_platform.core.limits import TIER_LIMITS, SubscriptionTier
+
+    if end_date is None:
+        end_date = datetime.now(UTC)
+    if start_date is None:
+        # Default to start of current month
+        start_date = end_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Query for all users with spend
+    query = (
+        select(
+            UsageRecord.user_id,
+            User.email,
+            User.subscription_tier,
+            func.sum(UsageRecord.cost_usd).label("total_cost_usd"),
+        )
+        .join(User, UsageRecord.user_id == User.id)
+        .where(
+            UsageRecord.created_at >= start_date,
+            UsageRecord.created_at <= end_date,
+        )
+        .group_by(UsageRecord.user_id, User.email, User.subscription_tier)
+    )
+
+    result = await db.execute(query)
+    rows = result.all()
+
+    over_threshold = []
+    for row in rows:
+        # Get tier limits
+        tier = SubscriptionTier(row.subscription_tier) if row.subscription_tier else SubscriptionTier.FREE
+        tier_limits = TIER_LIMITS.get(tier)
+        cost_limit = tier_limits.monthly_cost_limit_usd if tier_limits else None
+
+        # Skip if no limit (enterprise) or no spend
+        if not cost_limit or cost_limit <= 0:
+            continue
+
+        total_cost = row.total_cost_usd or Decimal("0")
+        percent = float(total_cost / cost_limit * 100)
+
+        if percent >= threshold_percent:
+            over_threshold.append(
+                UserSpendSummary(
+                    user_id=row.user_id,
+                    email=row.email,
+                    subscription_tier=row.subscription_tier,
+                    total_cost_usd=total_cost,
+                    cost_limit_usd=cost_limit,
+                    percent_of_limit=percent,
+                )
+            )
+
+    # Sort by percentage descending
+    over_threshold.sort(key=lambda x: x.percent_of_limit or 0, reverse=True)
+    return over_threshold

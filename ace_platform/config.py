@@ -220,6 +220,20 @@ class Settings(BaseSettings):
         description="Email verification token expiration time in hours",
     )
 
+    # Admin Alerts
+    admin_alert_email: str = Field(
+        default="",
+        description="Email address to receive admin alerts (daily spend summaries, high-spend warnings)",
+    )
+    admin_alert_slack_webhook: str = Field(
+        default="",
+        description="Slack webhook URL for admin alerts (optional)",
+    )
+    admin_alert_spend_threshold_pct: int = Field(
+        default=50,
+        description="Percentage of tier limit to trigger spend alert (e.g., 50 = alert at 50% of limit)",
+    )
+
     @field_validator("database_url", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:
