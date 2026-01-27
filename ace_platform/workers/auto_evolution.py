@@ -128,6 +128,9 @@ def _check_and_trigger_evolutions(
 
             # FREE tier users must have a payment method on file
             if user_tier == SubscriptionTier.FREE and not user.has_payment_method:
+                from ace_platform.core.metrics import increment_evolution_blocked_no_card
+
+                increment_evolution_blocked_no_card(trigger_type="auto")
                 logger.debug(
                     "Skipping auto-evolution for playbook %s: user %s has no payment method",
                     playbook.id,

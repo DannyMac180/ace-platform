@@ -236,6 +236,9 @@ async def check_can_evolve(
     """
     # FREE tier users must have a payment method on file
     if tier == SubscriptionTier.FREE and not has_payment_method:
+        from ace_platform.core.metrics import increment_evolution_blocked_no_card
+
+        increment_evolution_blocked_no_card(trigger_type="manual")
         return (
             False,
             "A payment method is required to trigger evolutions. "

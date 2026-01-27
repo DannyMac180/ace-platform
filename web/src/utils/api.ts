@@ -263,6 +263,23 @@ export const usageApi = {
   },
 };
 
+// Billing API
+export const billingApi = {
+  setupCard: async (): Promise<{ success: boolean; checkout_url: string | null; message: string }> => {
+    const response = await api.post<{ success: boolean; checkout_url: string | null; message: string }>(
+      '/billing/setup-card'
+    );
+    return response.data;
+  },
+
+  getCardStatus: async (): Promise<{ has_payment_method: boolean; payment_method_id: string | null }> => {
+    const response = await api.get<{ has_payment_method: boolean; payment_method_id: string | null }>(
+      '/billing/card-status'
+    );
+    return response.data;
+  },
+};
+
 // Evolution Statistics API
 export const evolutionsApi = {
   getSummary: async (): Promise<EvolutionSummary> => {

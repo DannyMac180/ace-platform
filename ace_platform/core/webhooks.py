@@ -260,8 +260,6 @@ async def _handle_setup_mode_checkout(
     payment_method_id = None
     if setup_intent_id:
         try:
-            from ace_platform.config import get_settings
-
             settings = get_settings()
             if settings.stripe_secret_key:
                 client = stripe.StripeClient(settings.stripe_secret_key)
@@ -282,6 +280,11 @@ async def _handle_setup_mode_checkout(
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
+
+    # Record metric for card setup completed
+    from ace_platform.core.metrics import increment_card_setup_completed
+
+    increment_card_setup_completed()
 
     logger.info(f"User {user.id} card setup completed, has_payment_method=True")
     return WebhookResult(

@@ -131,6 +131,27 @@ ACTIVE_EVOLUTION_JOBS = Gauge(
 
 
 # =============================================================================
+# Card Setup Metrics
+# =============================================================================
+
+CARD_SETUP_INITIATED = Counter(
+    "ace_card_setup_initiated_total",
+    "Total number of card setup sessions initiated",
+)
+
+CARD_SETUP_COMPLETED = Counter(
+    "ace_card_setup_completed_total",
+    "Total number of card setup sessions completed successfully",
+)
+
+EVOLUTION_BLOCKED_NO_CARD = Counter(
+    "ace_evolution_blocked_no_card_total",
+    "Total evolutions blocked due to missing payment method",
+    ["trigger_type"],  # "manual" or "auto"
+)
+
+
+# =============================================================================
 # Helper Functions
 # =============================================================================
 
@@ -255,6 +276,34 @@ def decrement_active_jobs() -> None:
         ACTIVE_EVOLUTION_JOBS.dec()
     except Exception as e:
         logger.warning(f"Failed to decrement active jobs: {e}")
+
+
+def increment_card_setup_initiated() -> None:
+    """Record a card setup session initiation."""
+    try:
+        CARD_SETUP_INITIATED.inc()
+    except Exception as e:
+        logger.warning(f"Failed to record card setup initiated metric: {e}")
+
+
+def increment_card_setup_completed() -> None:
+    """Record a successful card setup completion."""
+    try:
+        CARD_SETUP_COMPLETED.inc()
+    except Exception as e:
+        logger.warning(f"Failed to record card setup completed metric: {e}")
+
+
+def increment_evolution_blocked_no_card(trigger_type: TriggerType = "manual") -> None:
+    """Record an evolution block due to missing payment method.
+
+    Args:
+        trigger_type: How the evolution was triggered (manual or auto)
+    """
+    try:
+        EVOLUTION_BLOCKED_NO_CARD.labels(trigger_type=trigger_type).inc()
+    except Exception as e:
+        logger.warning(f"Failed to record evolution blocked metric: {e}")
 
 
 def get_metrics_registry():

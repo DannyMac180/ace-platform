@@ -340,6 +340,11 @@ async def create_card_setup_session(
             }
         )
 
+        # Record metric for card setup initiated
+        from ace_platform.core.metrics import increment_card_setup_initiated
+
+        increment_card_setup_initiated()
+
         return CardSetupSessionResult(
             success=True,
             checkout_url=session.url,

@@ -7,6 +7,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { SubscriptionGate } from '../../components/SubscriptionGate';
+import { CardSetupBanner } from '../../components/CardSetupBanner';
 import {
   Plus,
   BookOpen,
@@ -28,7 +29,13 @@ export function Dashboard() {
   const [mutationError, setMutationError] = useState<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+
+  // Show card setup banner for FREE tier users without payment method
+  const showCardSetupBanner =
+    user &&
+    !user.subscription_tier &&
+    !user.has_payment_method;
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['playbooks', statusFilter, isAuthenticated],
@@ -93,6 +100,11 @@ export function Dashboard() {
           </select>
         </div>
       </div>
+
+      {/* Card Setup Banner for FREE tier users */}
+      {showCardSetupBanner && (
+        <CardSetupBanner message="Add a payment method to enable evolution triggers on your playbooks." />
+      )}
 
       {/* Mutation Error */}
       {mutationError && (

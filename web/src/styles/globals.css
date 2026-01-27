@@ -41,6 +41,12 @@
   --error: #c41e3a;
   --error-glow: rgba(196, 30, 58, 0.1);
 
+  /* Warning banner colors */
+  --text-warning: #7c5c07;
+  --text-error: #a31830;
+  --bg-warning: rgba(184, 134, 11, 0.08);
+  --border-warning: rgba(184, 134, 11, 0.25);
+
   /* Text hierarchy */
   --text-primary: #1a1a1a;
   --text-secondary: #4a4a4a;

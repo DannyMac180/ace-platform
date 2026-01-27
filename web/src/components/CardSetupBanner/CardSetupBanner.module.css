@@ -1,0 +1,39 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-warning);
+  border: 1px solid var(--border-warning);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-lg);
+}
+
+.iconWrapper {
+  flex-shrink: 0;
+}
+
+.icon {
+  color: var(--text-warning);
+}
+
+.content {
+  flex: 1;
+}
+
+.message {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--text-error);
+  margin: var(--space-xs) 0 0 0;
+}
