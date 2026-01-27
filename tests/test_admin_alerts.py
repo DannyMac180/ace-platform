@@ -254,6 +254,78 @@ class TestSendDailySpendSummary:
         assert result.email_sent is True
         mock_email.assert_called_once()
 
+    @pytest.mark.asyncio
+    async def test_sends_slack_when_webhook_configured(self):
+        """Test sends Slack notification when webhook is configured."""
+        mock_db = AsyncMock()
+
+        mock_settings = MagicMock()
+        mock_settings.admin_alert_email = ""
+        mock_settings.admin_alert_slack_webhook = "https://hooks.slack.com/services/test"
+        mock_settings.admin_alert_spend_threshold_pct = 50
+
+        with (
+            patch("ace_platform.core.admin_alerts.is_admin_alerts_enabled", return_value=True),
+            patch("ace_platform.core.admin_alerts.get_settings", return_value=mock_settings),
+            patch(
+                "ace_platform.core.admin_alerts.get_platform_daily_summary",
+                return_value=PlatformDailySummary(
+                    date=datetime.now(UTC),
+                    total_users_active=5,
+                    total_requests=50,
+                    total_tokens=10000,
+                    total_cost_usd=Decimal("2.50"),
+                ),
+            ),
+            patch("ace_platform.core.admin_alerts.get_top_users_by_spend", return_value=[]),
+            patch("ace_platform.core.admin_alerts.get_users_over_threshold", return_value=[]),
+            patch("ace_platform.core.admin_alerts._send_summary_slack", return_value=True) as mock_slack,
+        ):
+            result = await send_daily_spend_summary(mock_db)
+
+        assert result.success is True
+        assert result.slack_sent is True
+        mock_slack.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_sends_both_email_and_slack_when_both_configured(self):
+        """Test sends both email and Slack when both are configured."""
+        mock_db = AsyncMock()
+
+        mock_settings = MagicMock()
+        mock_settings.admin_alert_email = "admin@example.com"
+        mock_settings.admin_alert_slack_webhook = "https://hooks.slack.com/services/test"
+        mock_settings.admin_alert_spend_threshold_pct = 50
+        mock_settings.resend_api_key = "test_key"
+        mock_settings.email_from_name = "ACE Platform"
+        mock_settings.email_from_address = "noreply@test.com"
+
+        with (
+            patch("ace_platform.core.admin_alerts.is_admin_alerts_enabled", return_value=True),
+            patch("ace_platform.core.admin_alerts.get_settings", return_value=mock_settings),
+            patch(
+                "ace_platform.core.admin_alerts.get_platform_daily_summary",
+                return_value=PlatformDailySummary(
+                    date=datetime.now(UTC),
+                    total_users_active=5,
+                    total_requests=50,
+                    total_tokens=10000,
+                    total_cost_usd=Decimal("2.50"),
+                ),
+            ),
+            patch("ace_platform.core.admin_alerts.get_top_users_by_spend", return_value=[]),
+            patch("ace_platform.core.admin_alerts.get_users_over_threshold", return_value=[]),
+            patch("ace_platform.core.admin_alerts._send_summary_email", return_value=True) as mock_email,
+            patch("ace_platform.core.admin_alerts._send_summary_slack", return_value=True) as mock_slack,
+        ):
+            result = await send_daily_spend_summary(mock_db)
+
+        assert result.success is True
+        assert result.email_sent is True
+        assert result.slack_sent is True
+        mock_email.assert_called_once()
+        mock_slack.assert_called_once()
+
 
 class TestAlertResult:
     """Tests for AlertResult dataclass."""

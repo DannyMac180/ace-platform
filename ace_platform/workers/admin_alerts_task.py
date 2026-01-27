@@ -30,7 +30,8 @@ def send_daily_spend_summary(self):
     """
     import asyncio
 
-    from ace_platform.core.admin_alerts import is_admin_alerts_enabled, send_daily_spend_summary
+    from ace_platform.core.admin_alerts import is_admin_alerts_enabled
+    from ace_platform.core.admin_alerts import send_daily_spend_summary as send_summary
     from ace_platform.db.session import async_session_factory
 
     # Check if alerts are enabled
@@ -40,7 +41,7 @@ def send_daily_spend_summary(self):
 
     async def _run():
         async with async_session_factory() as db:
-            result = await send_daily_spend_summary(db)
+            result = await send_summary(db)
             return result
 
     try:

@@ -12,8 +12,10 @@ Alerts can be sent via:
 
 import logging
 from dataclasses import dataclass
+from html import escape as html_escape
 
 import httpx
+import resend
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
@@ -150,8 +152,6 @@ async def _send_summary_email(
         logger.warning("Resend API key not configured, skipping email")
         return False
 
-    import resend
-
     resend.api_key = settings.resend_api_key
 
     # Format date
@@ -162,11 +162,11 @@ async def _send_summary_email(
     if top_users:
         top_users_rows = ""
         for user in top_users:
-            tier = user.subscription_tier or "free"
+            tier = html_escape(user.subscription_tier or "free")
             pct_str = f"{user.percent_of_limit:.1f}%" if user.percent_of_limit else "N/A"
             top_users_rows += f"""
             <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">{user.email}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee;">{html_escape(user.email)}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{tier}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">${user.total_cost_usd:.2f}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{pct_str}</td>
@@ -194,12 +194,12 @@ async def _send_summary_email(
     if users_over_threshold:
         threshold_rows = ""
         for user in users_over_threshold:
-            tier = user.subscription_tier or "free"
+            tier = html_escape(user.subscription_tier or "free")
             pct_str = f"{user.percent_of_limit:.1f}%" if user.percent_of_limit else "N/A"
             color = "#c41e3a" if (user.percent_of_limit or 0) >= 80 else "#b8860b"
             threshold_rows += f"""
             <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">{user.email}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee;">{html_escape(user.email)}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">{tier}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;">${user.total_cost_usd:.2f}</td>
                 <td style="padding: 8px; border-bottom: 1px solid #eee; color: {color}; font-weight: bold;">{pct_str}</td>
