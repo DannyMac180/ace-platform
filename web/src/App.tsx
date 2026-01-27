@@ -14,6 +14,7 @@ import { Settings } from './pages/Settings/Settings';
 import { Pricing } from './pages/Pricing/Pricing';
 import { BillingSuccess } from './pages/BillingSuccess/BillingSuccess';
 import { BillingCancel } from './pages/BillingCancel/BillingCancel';
+import { CardSetupSuccess } from './pages/CardSetupSuccess/CardSetupSuccess';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -90,6 +91,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <BillingSuccess />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/billing/setup-success"
+        element={
+          <ProtectedRoute>
+            <CardSetupSuccess />
           </ProtectedRoute>
         }
       />

@@ -181,13 +181,17 @@ async def _handle_checkout_completed(
     """Handle checkout.session.completed event.
 
     This fires when a customer completes Stripe Checkout.
+    Handles both subscription checkouts and setup mode (card validation).
     """
     session = event.data.object
     customer_id = session.customer
     subscription_id = session.subscription
     metadata = session.metadata or {}
+    mode = getattr(session, "mode", "subscription")
 
-    logger.info(f"Checkout completed: customer={customer_id}, subscription={subscription_id}")
+    logger.info(
+        f"Checkout completed: customer={customer_id}, mode={mode}, subscription={subscription_id}"
+    )
 
     # Find user by metadata or customer ID
     user = await _get_user_by_metadata(db, metadata)
@@ -202,6 +206,11 @@ async def _handle_checkout_completed(
             event_type=event.type,
         )
 
+    # Handle setup mode (card validation without charging)
+    if mode == "setup":
+        return await _handle_setup_mode_checkout(db, event, session, user)
+
+    # Handle subscription checkout
     # Update user with customer and subscription ID
     tier = metadata.get("tier")
     is_trial = metadata.get("is_trial") == "true"
@@ -226,6 +235,58 @@ async def _handle_checkout_completed(
     return WebhookResult(
         success=True,
         message="Checkout session processed",
+        event_type=event.type,
+        user_id=str(user.id),
+    )
+
+
+async def _handle_setup_mode_checkout(
+    db: AsyncSession,
+    event: stripe.Event,
+    session,
+    user: User,
+) -> WebhookResult:
+    """Handle setup mode checkout completion (card validation).
+
+    This is called when a user completes Stripe Checkout in 'setup' mode,
+    which validates their card without charging.
+    """
+    setup_intent_id = session.setup_intent
+    customer_id = session.customer
+
+    logger.info(f"Processing setup mode checkout for user {user.id}")
+
+    # Get payment method from the setup intent
+    payment_method_id = None
+    if setup_intent_id:
+        try:
+            from ace_platform.config import get_settings
+
+            settings = get_settings()
+            if settings.stripe_secret_key:
+                client = stripe.StripeClient(settings.stripe_secret_key)
+                setup_intent = client.setup_intents.retrieve(setup_intent_id)
+                payment_method_id = setup_intent.payment_method
+                logger.info(f"Retrieved payment method {payment_method_id} from setup intent")
+        except stripe.StripeError as e:
+            logger.warning(f"Failed to retrieve setup intent: {e}")
+
+    # Update user with payment method info
+    update_values: dict = {
+        "stripe_customer_id": customer_id,
+        "has_payment_method": True,
+    }
+
+    if payment_method_id:
+        update_values["stripe_default_payment_method_id"] = payment_method_id
+
+    await db.execute(update(User).where(User.id == user.id).values(**update_values))
+    await db.commit()
+
+    logger.info(f"User {user.id} card setup completed, has_payment_method=True")
+    return WebhookResult(
+        success=True,
+        message="Card setup completed",
         event_type=event.type,
         user_id=str(user.id),
     )

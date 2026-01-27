@@ -9,6 +9,7 @@ export interface User {
   subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
   has_used_trial: boolean;
   trial_ends_at: string | null;  // ISO date string if in trial
+  has_payment_method: boolean;  // Whether user has a valid card on file
   created_at: string;
 }
 

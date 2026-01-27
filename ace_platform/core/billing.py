@@ -43,6 +43,16 @@ class PortalSessionResult:
     error: str | None = None
 
 
+@dataclass
+class CardSetupSessionResult:
+    """Result of creating a card setup session."""
+
+    success: bool
+    checkout_url: str | None = None
+    session_id: str | None = None
+    error: str | None = None
+
+
 def _get_stripe_client() -> stripe.StripeClient:
     """Get configured Stripe client.
 
@@ -273,6 +283,76 @@ async def create_billing_portal_session(
         )
     except ValueError as e:
         return PortalSessionResult(
+            success=False,
+            error=str(e),
+        )
+
+
+async def create_card_setup_session(
+    db: AsyncSession,
+    user: User,
+    success_url: str | None = None,
+    cancel_url: str | None = None,
+) -> CardSetupSessionResult:
+    """Create a Stripe checkout session for card setup (no charge).
+
+    Uses Stripe Checkout in 'setup' mode to collect and validate a payment
+    method without charging. This validates the card via $0 authorization.
+
+    Args:
+        db: Database session.
+        user: User setting up their card.
+        success_url: URL to redirect to on successful setup.
+        cancel_url: URL to redirect to if setup is cancelled.
+
+    Returns:
+        CardSetupSessionResult with checkout URL or error.
+    """
+    try:
+        # Get or create Stripe customer
+        customer_id = await get_or_create_stripe_customer(db, user)
+
+        # Get default URLs from settings
+        settings = get_settings()
+        base_url = f"http://localhost:{settings.api_port}"
+        if settings.cors_origins:
+            # Use first CORS origin as base URL (typically the frontend)
+            base_url = settings.cors_origins[0]
+
+        final_success_url = (
+            success_url or f"{base_url}/billing/setup-success?session_id={{CHECKOUT_SESSION_ID}}"
+        )
+        final_cancel_url = cancel_url or f"{base_url}/billing/cancel"
+
+        # Create checkout session in setup mode
+        client = _get_stripe_client()
+        session = client.checkout.sessions.create(
+            params={
+                "customer": customer_id,
+                "mode": "setup",
+                "payment_method_types": ["card"],
+                "success_url": final_success_url,
+                "cancel_url": final_cancel_url,
+                "metadata": {
+                    "user_id": str(user.id),
+                    "purpose": "card_setup",
+                },
+            }
+        )
+
+        return CardSetupSessionResult(
+            success=True,
+            checkout_url=session.url,
+            session_id=session.id,
+        )
+
+    except stripe.StripeError as e:
+        return CardSetupSessionResult(
+            success=False,
+            error=f"Stripe error: {str(e)}",
+        )
+    except ValueError as e:
+        return CardSetupSessionResult(
             success=False,
             error=str(e),
         )

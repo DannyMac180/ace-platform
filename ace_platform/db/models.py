@@ -115,6 +115,10 @@ class User(Base):
     )
     has_used_trial: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    has_payment_method: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    stripe_default_payment_method_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

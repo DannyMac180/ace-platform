@@ -17,6 +17,8 @@ from ace_platform.core.webhooks import (
     WebhookResult,
     _get_subscription_tier,
     _get_user_by_customer_id,
+    _handle_checkout_completed,
+    _handle_setup_mode_checkout,
     _map_stripe_status,
     handle_webhook_event,
     verify_webhook_signature,
@@ -351,3 +353,112 @@ class TestWebhookRouteIntegration:
         )
         assert response.status_code == 400
         assert "Invalid webhook signature" in response.json()["error"]["message"]
+
+
+class TestSetupModeCheckout:
+    """Tests for setup mode checkout handling (card validation)."""
+
+    @pytest.mark.asyncio
+    async def test_setup_mode_checkout_success(self):
+        """Test setup mode checkout sets has_payment_method."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_event = MagicMock()
+        mock_event.type = "checkout.session.completed"
+
+        mock_session = MagicMock()
+        mock_session.mode = "setup"
+        mock_session.customer = "cus_test123"
+        mock_session.setup_intent = "seti_test123"
+        mock_session.metadata = {"user_id": str(uuid4()), "purpose": "card_setup"}
+
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.has_payment_method = False
+
+        result = await _handle_setup_mode_checkout(mock_db, mock_event, mock_session, mock_user)
+
+        assert result.success is True
+        assert "Card setup completed" in result.message
+        mock_db.execute.assert_called_once()
+        mock_db.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_mode_detected_in_checkout_completed(self):
+        """Test setup mode is detected and handled separately from subscription."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        user_id_str = str(mock_user.id)
+
+        mock_event = MagicMock()
+        mock_event.type = "checkout.session.completed"
+
+        # Create session with mode="setup"
+        mock_session = MagicMock()
+        mock_session.mode = "setup"
+        mock_session.customer = "cus_test123"
+        mock_session.subscription = None  # No subscription for setup mode
+        mock_session.setup_intent = "seti_test123"
+        mock_session.metadata = {"user_id": user_id_str, "purpose": "card_setup"}
+        mock_event.data.object = mock_session
+
+        # Mock user lookup
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = mock_result
+
+        with patch(
+            "ace_platform.core.webhooks._handle_setup_mode_checkout"
+        ) as mock_setup_handler:
+            mock_setup_handler.return_value = WebhookResult(
+                success=True,
+                message="Card setup completed",
+                event_type="checkout.session.completed",
+                user_id=user_id_str,
+            )
+
+            result = await _handle_checkout_completed(mock_db, mock_event)
+
+            # Verify setup mode handler was called
+            mock_setup_handler.assert_called_once()
+            assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_subscription_mode_not_routed_to_setup_handler(self):
+        """Test subscription mode checkout is not routed to setup handler."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        user_id_str = str(mock_user.id)
+
+        mock_event = MagicMock()
+        mock_event.type = "checkout.session.completed"
+
+        # Create session with mode="subscription" (not setup)
+        mock_session = MagicMock()
+        mock_session.mode = "subscription"
+        mock_session.customer = "cus_test123"
+        mock_session.subscription = "sub_test123"
+        mock_session.metadata = {"user_id": user_id_str, "tier": "starter"}
+        mock_event.data.object = mock_session
+
+        # Mock user lookup
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = mock_result
+
+        with patch(
+            "ace_platform.core.webhooks._handle_setup_mode_checkout"
+        ) as mock_setup_handler:
+            result = await _handle_checkout_completed(mock_db, mock_event)
+
+            # Setup handler should NOT be called for subscription mode
+            mock_setup_handler.assert_not_called()
+            # Result should still be success (handled as subscription)
+            assert result.success is True

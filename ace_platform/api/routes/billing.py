@@ -99,6 +99,21 @@ class PortalResponse(BaseModel):
     url: str
 
 
+class CardSetupResponse(BaseModel):
+    """Response schema for card setup session."""
+
+    success: bool
+    checkout_url: str | None = None
+    message: str
+
+
+class CardStatusResponse(BaseModel):
+    """Response schema for card status check."""
+
+    has_payment_method: bool
+    payment_method_id: str | None = None
+
+
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(require_user)]
@@ -298,6 +313,57 @@ async def create_billing_portal(
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         detail=result.error or "Failed to create billing portal session",
+    )
+
+
+@router.post("/setup-card", response_model=CardSetupResponse)
+async def setup_card(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> CardSetupResponse:
+    """Initiate card setup via Stripe Checkout.
+
+    Creates a Stripe Checkout session in 'setup' mode to collect and validate
+    a payment method without charging. Returns a checkout URL for redirect.
+
+    This is required for FREE tier users before they can trigger evolutions.
+    """
+    from ace_platform.core.billing import create_card_setup_session
+
+    # If user already has a payment method, inform them
+    if current_user.has_payment_method:
+        return CardSetupResponse(
+            success=True,
+            checkout_url=None,
+            message="You already have a payment method on file.",
+        )
+
+    result = await create_card_setup_session(db=db, user=current_user)
+
+    if result.success:
+        return CardSetupResponse(
+            success=True,
+            checkout_url=result.checkout_url,
+            message="Redirect to Stripe to add your card.",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=result.error or "Failed to create card setup session",
+    )
+
+
+@router.get("/card-status", response_model=CardStatusResponse)
+async def get_card_status(
+    current_user: CurrentUser,
+) -> CardStatusResponse:
+    """Check if the user has a payment method on file.
+
+    Returns the card status and payment method ID if available.
+    """
+    return CardStatusResponse(
+        has_payment_method=current_user.has_payment_method,
+        payment_method_id=current_user.stripe_default_payment_method_id,
     )
 
 

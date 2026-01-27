@@ -196,7 +196,7 @@ class TestCheckCanEvolve:
 
     @pytest.mark.asyncio
     async def test_can_evolve_within_limits(self):
-        """Test evolution allowed when within limits."""
+        """Test evolution allowed when within limits and has payment method."""
         user_id = uuid4()
         mock_db = AsyncMock()
 
@@ -208,7 +208,53 @@ class TestCheckCanEvolve:
             "ace_platform.core.limits.get_user_usage_summary",
             return_value=mock_summary,
         ):
-            can_proceed, error = await check_can_evolve(mock_db, user_id, SubscriptionTier.FREE)
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
+            )
+
+        assert can_proceed is True
+        assert error is None
+
+    @pytest.mark.asyncio
+    async def test_cannot_evolve_without_payment_method_free_tier(self):
+        """Test FREE tier evolution blocked without payment method."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 0
+        mock_summary.total_cost_usd = Decimal("0")
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.FREE, has_payment_method=False
+            )
+
+        assert can_proceed is False
+        assert "payment method" in error.lower()
+        assert "required" in error.lower()
+
+    @pytest.mark.asyncio
+    async def test_can_evolve_starter_without_payment_method(self):
+        """Test STARTER tier can evolve without explicit payment method (subscription implies card)."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 5
+        mock_summary.total_cost_usd = Decimal("0.50")
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            # Starter tier doesn't require has_payment_method check (subscription implies card)
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.STARTER, has_payment_method=False
+            )
 
         assert can_proceed is True
         assert error is None
@@ -227,7 +273,9 @@ class TestCheckCanEvolve:
             "ace_platform.core.limits.get_user_usage_summary",
             return_value=mock_summary,
         ):
-            can_proceed, error = await check_can_evolve(mock_db, user_id, SubscriptionTier.FREE)
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
+            )
 
         assert can_proceed is False
         assert "limit reached" in error.lower()
@@ -247,11 +295,35 @@ class TestCheckCanEvolve:
             "ace_platform.core.limits.get_user_usage_summary",
             return_value=mock_summary,
         ):
-            can_proceed, error = await check_can_evolve(mock_db, user_id, SubscriptionTier.FREE)
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
+            )
 
         assert can_proceed is False
         assert "spending limit" in error.lower()
         assert "Upgrade" in error
+
+    @pytest.mark.asyncio
+    async def test_payment_method_check_takes_precedence(self):
+        """Test payment method check happens before usage limits check."""
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        # Even with usage under limits, no payment method should block
+        mock_summary = MagicMock()
+        mock_summary.total_requests = 0
+        mock_summary.total_cost_usd = Decimal("0")
+
+        with patch(
+            "ace_platform.core.limits.get_user_usage_summary",
+            return_value=mock_summary,
+        ):
+            can_proceed, error = await check_can_evolve(
+                mock_db, user_id, SubscriptionTier.FREE, has_payment_method=False
+            )
+
+        assert can_proceed is False
+        assert "payment method" in error.lower()
 
 
 class TestPlaybookLimits:

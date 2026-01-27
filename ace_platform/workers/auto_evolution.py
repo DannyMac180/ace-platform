@@ -117,7 +117,7 @@ def _check_and_trigger_evolutions(
             skipped_running += 1
             continue
 
-        # Check user's spending limit
+        # Check user's spending limit and payment method
         user = db.get(User, playbook.user_id)
         if user:
             user_tier = (
@@ -125,6 +125,17 @@ def _check_and_trigger_evolutions(
                 if user.subscription_tier
                 else SubscriptionTier.FREE
             )
+
+            # FREE tier users must have a payment method on file
+            if user_tier == SubscriptionTier.FREE and not user.has_payment_method:
+                logger.debug(
+                    "Skipping auto-evolution for playbook %s: user %s has no payment method",
+                    playbook.id,
+                    user.id,
+                )
+                skipped_spending_limit += 1
+                continue
+
             within_limit, _, _ = check_spending_limit_sync(db, user.id, user_tier)
             if not within_limit:
                 logger.debug(

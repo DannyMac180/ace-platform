@@ -16,6 +16,8 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from ace_platform.api.routes.billing import (
+    CardSetupResponse,
+    CardStatusResponse,
     PortalResponse,
     SubscribeRequest,
     SubscribeResponse,
@@ -210,6 +212,45 @@ class TestBillingSchemas:
         response = PortalResponse(url="https://billing.stripe.com/session/123")
         assert response.url == "https://billing.stripe.com/session/123"
 
+    def test_card_setup_response(self):
+        """Test card setup response schema."""
+        response = CardSetupResponse(
+            success=True,
+            checkout_url="https://checkout.stripe.com/c/pay/test",
+            message="Redirect to Stripe to add your card.",
+        )
+        assert response.success is True
+        assert response.checkout_url is not None
+        assert "Redirect" in response.message
+
+    def test_card_setup_response_already_has_card(self):
+        """Test card setup response when user already has card."""
+        response = CardSetupResponse(
+            success=True,
+            checkout_url=None,
+            message="You already have a payment method on file.",
+        )
+        assert response.success is True
+        assert response.checkout_url is None
+
+    def test_card_status_response_no_card(self):
+        """Test card status response when no card."""
+        response = CardStatusResponse(
+            has_payment_method=False,
+            payment_method_id=None,
+        )
+        assert response.has_payment_method is False
+        assert response.payment_method_id is None
+
+    def test_card_status_response_with_card(self):
+        """Test card status response when card is present."""
+        response = CardStatusResponse(
+            has_payment_method=True,
+            payment_method_id="pm_test123",
+        )
+        assert response.has_payment_method is True
+        assert response.payment_method_id == "pm_test123"
+
 
 class TestBillingRoutesIntegration:
     """Integration tests for billing routes."""
@@ -233,6 +274,8 @@ class TestBillingRoutesIntegration:
         assert "/billing/usage" in routes
         assert "/billing/subscribe" in routes
         assert "/billing/portal" in routes
+        assert "/billing/setup-card" in routes
+        assert "/billing/card-status" in routes
 
     def test_subscription_requires_auth(self, client):
         """Test that subscription endpoint requires authentication."""
@@ -255,6 +298,16 @@ class TestBillingRoutesIntegration:
     def test_portal_requires_auth(self, client):
         """Test that portal endpoint requires authentication."""
         response = client.post("/billing/portal")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_setup_card_requires_auth(self, client):
+        """Test that setup-card endpoint requires authentication."""
+        response = client.post("/billing/setup-card")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_card_status_requires_auth(self, client):
+        """Test that card-status endpoint requires authentication."""
+        response = client.get("/billing/card-status")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_subscription_with_invalid_token(self, client):

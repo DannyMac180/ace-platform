@@ -98,6 +98,7 @@ class UserResponse(BaseModel):
     subscription_status: str = "none"
     has_used_trial: bool = False
     trial_ends_at: datetime | None = None
+    has_payment_method: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

@@ -581,7 +581,9 @@ async def trigger_evolution(
         if user.subscription_tier
         else SubscriptionTier.FREE
     )
-    can_proceed, error_message = await check_can_evolve(db, user.id, user_tier)
+    can_proceed, error_message = await check_can_evolve(
+        db, user.id, user_tier, has_payment_method=user.has_payment_method
+    )
     if not can_proceed:
         return f"Error: {error_message}"
 

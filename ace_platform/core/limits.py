@@ -220,6 +220,7 @@ async def check_can_evolve(
     db: AsyncSession,
     user_id: UUID,
     tier: SubscriptionTier = SubscriptionTier.FREE,
+    has_payment_method: bool = False,
 ) -> tuple[bool, str | None]:
     """Check if a user can trigger an evolution.
 
@@ -227,11 +228,20 @@ async def check_can_evolve(
         db: Database session.
         user_id: User ID to check.
         tier: User's subscription tier.
+        has_payment_method: Whether the user has a valid payment method on file.
 
     Returns:
         Tuple of (can_proceed, error_message).
         If can_proceed is False, error_message contains the reason.
     """
+    # FREE tier users must have a payment method on file
+    if tier == SubscriptionTier.FREE and not has_payment_method:
+        return (
+            False,
+            "A payment method is required to trigger evolutions. "
+            "Please add a card in your billing settings.",
+        )
+
     status = await get_user_usage_status(db, user_id, tier)
 
     if not status.is_within_limits:
