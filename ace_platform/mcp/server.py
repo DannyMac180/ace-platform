@@ -585,6 +585,20 @@ async def trigger_evolution(
         db, user.id, user_tier, has_payment_method=user.has_payment_method
     )
     if not can_proceed:
+        # Provide a helpful message with link for payment method requirement
+        if "payment method" in error_message.lower():
+            from ace_platform.config import get_settings
+
+            settings = get_settings()
+            # Get frontend URL for the card setup link
+            frontend_url = settings.frontend_url or "https://app.aceagent.io"
+            setup_url = f"{frontend_url}/pricing"
+
+            return (
+                f"Evolution blocked: A payment method is required to trigger evolutions.\n\n"
+                f"Add a card to unlock evolution triggers: {setup_url}\n\n"
+                f"Once you've added a payment method, you can trigger evolutions on your playbooks."
+            )
         return f"Error: {error_message}"
 
     # Trigger evolution
