@@ -292,6 +292,26 @@ Provide a formatted prompt for the next session with context.
 - Push the feature branch and open a PR for review before merging to main
 - PRs should include a summary of changes and test plan
 
+## Pre-PR Checklist
+
+**Before opening a PR, always run these checks locally to avoid CI failures:**
+
+```bash
+# 1. Run linting (fix any errors)
+source venv/bin/activate && ruff check ace_platform/ tests/
+
+# 2. Run formatting check (or just format directly)
+source venv/bin/activate && ruff format ace_platform/ tests/
+
+# 3. Run tests
+source venv/bin/activate && pytest tests/ -v
+
+# All-in-one command:
+source venv/bin/activate && ruff check ace_platform/ tests/ && ruff format ace_platform/ tests/ && pytest tests/ -v
+```
+
+This matches what CI runs, so if it passes locally, CI should pass too.
+
 ## Context management
 
 You are a LLM and therefore don't always have up to date knowledge in your internal knowledge. Due to this, always gather context about specific libraries, frameworks, technologies or coding patterns before generating files or writing code. This allows your output to be much more accurate and higher quality. Use the context7 MCP to do this when possible and use web search when context7 doesn't have the info you need.

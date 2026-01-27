@@ -498,7 +498,11 @@ async def get_top_users_by_spend(
     summaries = []
     for row in rows:
         # Get tier limits
-        tier = SubscriptionTier(row.subscription_tier) if row.subscription_tier else SubscriptionTier.FREE
+        tier = (
+            SubscriptionTier(row.subscription_tier)
+            if row.subscription_tier
+            else SubscriptionTier.FREE
+        )
         tier_limits = TIER_LIMITS.get(tier)
         cost_limit = tier_limits.monthly_cost_limit_usd if tier_limits else None
 
@@ -568,7 +572,11 @@ async def get_users_over_threshold(
     over_threshold = []
     for row in rows:
         # Get tier limits
-        tier = SubscriptionTier(row.subscription_tier) if row.subscription_tier else SubscriptionTier.FREE
+        tier = (
+            SubscriptionTier(row.subscription_tier)
+            if row.subscription_tier
+            else SubscriptionTier.FREE
+        )
         tier_limits = TIER_LIMITS.get(tier)
         cost_limit = tier_limits.monthly_cost_limit_usd if tier_limits else None
 

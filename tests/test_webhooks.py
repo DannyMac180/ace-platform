@@ -411,9 +411,7 @@ class TestSetupModeCheckout:
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_db.execute.return_value = mock_result
 
-        with patch(
-            "ace_platform.core.webhooks._handle_setup_mode_checkout"
-        ) as mock_setup_handler:
+        with patch("ace_platform.core.webhooks._handle_setup_mode_checkout") as mock_setup_handler:
             mock_setup_handler.return_value = WebhookResult(
                 success=True,
                 message="Card setup completed",
@@ -453,9 +451,7 @@ class TestSetupModeCheckout:
         mock_result.scalar_one_or_none.return_value = mock_user
         mock_db.execute.return_value = mock_result
 
-        with patch(
-            "ace_platform.core.webhooks._handle_setup_mode_checkout"
-        ) as mock_setup_handler:
+        with patch("ace_platform.core.webhooks._handle_setup_mode_checkout") as mock_setup_handler:
             result = await _handle_checkout_completed(mock_db, mock_event)
 
             # Setup handler should NOT be called for subscription mode

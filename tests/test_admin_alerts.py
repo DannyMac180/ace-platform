@@ -246,7 +246,9 @@ class TestSendDailySpendSummary:
             ),
             patch("ace_platform.core.admin_alerts.get_top_users_by_spend", return_value=[]),
             patch("ace_platform.core.admin_alerts.get_users_over_threshold", return_value=[]),
-            patch("ace_platform.core.admin_alerts._send_summary_email", return_value=True) as mock_email,
+            patch(
+                "ace_platform.core.admin_alerts._send_summary_email", return_value=True
+            ) as mock_email,
         ):
             result = await send_daily_spend_summary(mock_db)
 
@@ -279,7 +281,9 @@ class TestSendDailySpendSummary:
             ),
             patch("ace_platform.core.admin_alerts.get_top_users_by_spend", return_value=[]),
             patch("ace_platform.core.admin_alerts.get_users_over_threshold", return_value=[]),
-            patch("ace_platform.core.admin_alerts._send_summary_slack", return_value=True) as mock_slack,
+            patch(
+                "ace_platform.core.admin_alerts._send_summary_slack", return_value=True
+            ) as mock_slack,
         ):
             result = await send_daily_spend_summary(mock_db)
 
@@ -315,8 +319,12 @@ class TestSendDailySpendSummary:
             ),
             patch("ace_platform.core.admin_alerts.get_top_users_by_spend", return_value=[]),
             patch("ace_platform.core.admin_alerts.get_users_over_threshold", return_value=[]),
-            patch("ace_platform.core.admin_alerts._send_summary_email", return_value=True) as mock_email,
-            patch("ace_platform.core.admin_alerts._send_summary_slack", return_value=True) as mock_slack,
+            patch(
+                "ace_platform.core.admin_alerts._send_summary_email", return_value=True
+            ) as mock_email,
+            patch(
+                "ace_platform.core.admin_alerts._send_summary_slack", return_value=True
+            ) as mock_slack,
         ):
             result = await send_daily_spend_summary(mock_db)
 

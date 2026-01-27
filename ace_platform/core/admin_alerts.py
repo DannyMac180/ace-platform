@@ -327,10 +327,7 @@ async def _send_summary_slack(
 
     # Add top users
     if top_users:
-        user_list = "\n".join(
-            f"- {u.email}: ${u.total_cost_usd:.2f}"
-            for u in top_users[:5]
-        )
+        user_list = "\n".join(f"- {u.email}: ${u.total_cost_usd:.2f}" for u in top_users[:5])
         blocks.append(
             {
                 "type": "section",
