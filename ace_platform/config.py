@@ -234,6 +234,24 @@ class Settings(BaseSettings):
         description="Percentage of tier limit to trigger spend alert (e.g., 50 = alert at 50% of limit)",
     )
 
+    # Security Headers
+    security_headers_enabled: bool = Field(
+        default=True,
+        description="Enable security headers middleware",
+    )
+    security_hsts_enabled: bool = Field(
+        default=True,
+        description="Enable HSTS header (disable for local HTTP development)",
+    )
+    security_hsts_max_age: int = Field(
+        default=31536000,
+        description="HSTS max-age in seconds (default: 1 year)",
+    )
+    security_csp: str = Field(
+        default="default-src 'self'; frame-ancestors 'none'",
+        description="Content-Security-Policy header value",
+    )
+
     @field_validator("database_url", mode="after")
     @classmethod
     def normalize_database_url(cls, v: str) -> str:

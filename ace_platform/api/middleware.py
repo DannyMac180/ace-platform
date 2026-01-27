@@ -3,6 +3,7 @@
 This module contains middleware for:
 - Correlation ID generation and propagation
 - Request timing
+- Security headers
 - Logging
 """
 
@@ -140,6 +141,91 @@ class RequestTimingMiddleware(BaseHTTPMiddleware):
                 f"took {process_time:.3f}s",
                 extra={"correlation_id": correlation_id, "process_time": process_time},
             )
+
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware that adds security headers to all responses.
+
+    This middleware adds standard security headers to protect against common
+    web vulnerabilities:
+
+    - Strict-Transport-Security (HSTS): Forces HTTPS connections
+    - X-Content-Type-Options: Prevents MIME-type sniffing
+    - X-Frame-Options: Prevents clickjacking attacks
+    - X-XSS-Protection: Legacy XSS protection (for older browsers)
+    - Referrer-Policy: Controls referrer information leakage
+    - Content-Security-Policy: Restricts resource loading (configurable)
+    - Permissions-Policy: Disables unnecessary browser features
+
+    Note: For API-only services, some headers like CSP are less critical
+    but still good practice for defense in depth.
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        enable_hsts: bool = True,
+        hsts_max_age: int = 31536000,
+        hsts_include_subdomains: bool = True,
+        content_security_policy: str | None = None,
+    ):
+        """Initialize the security headers middleware.
+
+        Args:
+            app: The ASGI application to wrap.
+            enable_hsts: Whether to enable HSTS (disable for local development).
+            hsts_max_age: HSTS max-age in seconds (default: 1 year).
+            hsts_include_subdomains: Include subdomains in HSTS.
+            content_security_policy: Custom CSP header value, or None for default.
+        """
+        super().__init__(app)
+        self.enable_hsts = enable_hsts
+        self.hsts_max_age = hsts_max_age
+        self.hsts_include_subdomains = hsts_include_subdomains
+        self.content_security_policy = content_security_policy or "default-src 'self'"
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        """Process the request and add security headers to the response.
+
+        Args:
+            request: The incoming request.
+            call_next: The next middleware or route handler.
+
+        Returns:
+            The response with security headers added.
+        """
+        response = await call_next(request)
+
+        # Strict-Transport-Security (HSTS)
+        # Only enable in production to avoid issues with local development
+        if self.enable_hsts:
+            hsts_value = f"max-age={self.hsts_max_age}"
+            if self.hsts_include_subdomains:
+                hsts_value += "; includeSubDomains"
+            response.headers["Strict-Transport-Security"] = hsts_value
+
+        # Prevent MIME-type sniffing
+        response.headers["X-Content-Type-Options"] = "nosniff"
+
+        # Prevent clickjacking
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # Legacy XSS protection for older browsers
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+
+        # Control referrer information
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+        # Content Security Policy
+        response.headers["Content-Security-Policy"] = self.content_security_policy
+
+        # Permissions Policy - disable unnecessary browser features
+        response.headers["Permissions-Policy"] = (
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), payment=(), usb=()"
+        )
 
         return response
 

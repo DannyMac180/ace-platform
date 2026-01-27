@@ -26,6 +26,7 @@ from ace_platform.db.session import close_async_db
 from .middleware import (
     CorrelationIdMiddleware,
     RequestTimingMiddleware,
+    SecurityHeadersMiddleware,
     get_correlation_id,
 )
 
@@ -161,8 +162,8 @@ def create_app() -> FastAPI:
     )
 
     # Middleware execution order: last added = outermost (first for requests, last for responses)
-    # Request flow:  CorrelationId → Timing → CORS → Session → Route
-    # Response flow: Route → Session → CORS → Timing → CorrelationId
+    # Request flow:  CorrelationId → Timing → Security → CORS → Session → Route
+    # Response flow: Route → Session → CORS → Security → Timing → CorrelationId
     #
     # This ensures the correlation ID context is available throughout the entire
     # request lifecycle, including when Timing middleware logs slow requests.
@@ -185,6 +186,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Correlation-ID", "X-Process-Time"],
     )
+
+    # Security headers middleware (adds security headers to all responses)
+    if settings.security_headers_enabled:
+        app.add_middleware(
+            SecurityHeadersMiddleware,
+            enable_hsts=settings.security_hsts_enabled,
+            hsts_max_age=settings.security_hsts_max_age,
+            content_security_policy=settings.security_csp,
+        )
 
     # Request timing middleware (middle layer - can access correlation ID)
     app.add_middleware(RequestTimingMiddleware)

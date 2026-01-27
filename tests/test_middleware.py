@@ -13,6 +13,7 @@ from ace_platform.api.middleware import (
     CorrelationIdFilter,
     CorrelationIdMiddleware,
     RequestTimingMiddleware,
+    SecurityHeadersMiddleware,
     correlation_id_ctx,
     generate_correlation_id,
     get_correlation_id,
@@ -238,3 +239,139 @@ class TestMiddlewareIntegration:
 
         # Process time should be valid float
         float(response.headers["X-Process-Time"])
+
+
+class TestSecurityHeadersMiddleware:
+    """Tests for SecurityHeadersMiddleware."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app with security headers middleware."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware)
+
+        @app.get("/test")
+        async def test_route():
+            return {"message": "ok"}
+
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_adds_x_content_type_options(self, client):
+        """Test that middleware adds X-Content-Type-Options header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.headers["X-Content-Type-Options"] == "nosniff"
+
+    def test_adds_x_frame_options(self, client):
+        """Test that middleware adds X-Frame-Options header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.headers["X-Frame-Options"] == "DENY"
+
+    def test_adds_x_xss_protection(self, client):
+        """Test that middleware adds X-XSS-Protection header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.headers["X-XSS-Protection"] == "1; mode=block"
+
+    def test_adds_referrer_policy(self, client):
+        """Test that middleware adds Referrer-Policy header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+
+    def test_adds_content_security_policy(self, client):
+        """Test that middleware adds Content-Security-Policy header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert "Content-Security-Policy" in response.headers
+        assert "default-src 'self'" in response.headers["Content-Security-Policy"]
+
+    def test_adds_permissions_policy(self, client):
+        """Test that middleware adds Permissions-Policy header."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert "Permissions-Policy" in response.headers
+        assert "camera=()" in response.headers["Permissions-Policy"]
+
+    def test_adds_hsts_when_enabled(self, client):
+        """Test that middleware adds HSTS header when enabled."""
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert "Strict-Transport-Security" in response.headers
+        hsts = response.headers["Strict-Transport-Security"]
+        assert "max-age=31536000" in hsts
+        assert "includeSubDomains" in hsts
+
+
+class TestSecurityHeadersMiddlewareConfig:
+    """Tests for SecurityHeadersMiddleware configuration options."""
+
+    def test_hsts_disabled(self):
+        """Test that HSTS header is not added when disabled."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, enable_hsts=False)
+
+        @app.get("/test")
+        async def test_route():
+            return {"message": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert "Strict-Transport-Security" not in response.headers
+
+    def test_custom_hsts_max_age(self):
+        """Test that custom HSTS max-age is used."""
+        app = FastAPI()
+        app.add_middleware(SecurityHeadersMiddleware, hsts_max_age=86400)
+
+        @app.get("/test")
+        async def test_route():
+            return {"message": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert "max-age=86400" in response.headers["Strict-Transport-Security"]
+
+    def test_hsts_without_subdomains(self):
+        """Test HSTS without includeSubDomains."""
+        app = FastAPI()
+        app.add_middleware(
+            SecurityHeadersMiddleware,
+            hsts_include_subdomains=False,
+        )
+
+        @app.get("/test")
+        async def test_route():
+            return {"message": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test")
+        assert response.status_code == 200
+        hsts = response.headers["Strict-Transport-Security"]
+        assert "includeSubDomains" not in hsts
+
+    def test_custom_csp(self):
+        """Test that custom CSP is used."""
+        custom_csp = "default-src 'none'; script-src 'self'"
+        app = FastAPI()
+        app.add_middleware(
+            SecurityHeadersMiddleware,
+            content_security_policy=custom_csp,
+        )
+
+        @app.get("/test")
+        async def test_route():
+            return {"message": "ok"}
+
+        client = TestClient(app)
+        response = client.get("/test")
+        assert response.status_code == 200
+        assert response.headers["Content-Security-Policy"] == custom_csp
