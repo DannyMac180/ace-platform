@@ -23,6 +23,7 @@ from ace_platform.core.rate_limit import (
     get_rate_limiter,
     rate_limit_login,
     rate_limit_outcome,
+    rate_limit_register,
 )
 
 
@@ -95,6 +96,12 @@ class TestRateLimitConfigs:
         """Test evolution rate limit configuration."""
         config = RATE_LIMITS["evolution"]
         assert config["limit"] == 10
+        assert config["window_seconds"] == 3600  # 1 hour
+
+    def test_register_config(self):
+        """Test register rate limit configuration."""
+        config = RATE_LIMITS["register"]
+        assert config["limit"] == 3
         assert config["window_seconds"] == 3600  # 1 hour
 
 
@@ -240,6 +247,78 @@ class TestRateLimitLoginDependency:
 
             # Should not raise - allows request if Redis is down
             await rate_limit_login(mock_request)
+
+
+class TestRateLimitRegisterDependency:
+    """Tests for register rate limit dependency."""
+
+    @pytest.fixture
+    def mock_request(self):
+        """Create a mock request."""
+        request = MagicMock(spec=Request)
+        request.headers = {}
+        request.client = MagicMock()
+        request.client.host = "192.168.1.100"
+        request.state = MagicMock()
+        return request
+
+    @pytest.mark.asyncio
+    async def test_register_rate_limit_allowed(self, mock_request):
+        """Test registration allowed within rate limit."""
+        mock_result = RateLimitResult(
+            allowed=True,
+            remaining=2,
+            reset_at=time.time() + 3600,
+            limit=3,
+        )
+
+        with patch("ace_platform.core.rate_limit.get_rate_limiter") as mock_get_limiter:
+            mock_limiter = AsyncMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
+            mock_get_limiter.return_value = mock_limiter
+
+            # Should not raise
+            await rate_limit_register(mock_request)
+
+            # Verify is_allowed was called with correct parameters
+            mock_limiter.is_allowed.assert_called_once()
+            call_args = mock_limiter.is_allowed.call_args
+            assert call_args[0][0] == "register"
+            assert call_args[0][1] == "192.168.1.100"
+            assert call_args[0][2] == 3  # limit
+            assert call_args[0][3] == 3600  # window_seconds (1 hour)
+
+    @pytest.mark.asyncio
+    async def test_register_rate_limit_exceeded(self, mock_request):
+        """Test registration rejected when rate limit exceeded."""
+        mock_result = RateLimitResult(
+            allowed=False,
+            remaining=0,
+            reset_at=time.time() + 1800,
+            limit=3,
+        )
+
+        with patch("ace_platform.core.rate_limit.get_rate_limiter") as mock_get_limiter:
+            mock_limiter = AsyncMock()
+            mock_limiter.is_allowed = AsyncMock(return_value=mock_result)
+            mock_get_limiter.return_value = mock_limiter
+
+            with pytest.raises(RateLimitExceeded) as exc_info:
+                await rate_limit_register(mock_request)
+
+            assert exc_info.value.status_code == 429
+            assert "Rate limit exceeded" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_register_rate_limit_redis_unavailable(self, mock_request):
+        """Test that registration is allowed if Redis is unavailable."""
+        with patch("ace_platform.core.rate_limit.get_rate_limiter") as mock_get_limiter:
+            mock_limiter = AsyncMock()
+            mock_limiter.is_allowed = AsyncMock(side_effect=Exception("Redis unavailable"))
+            mock_get_limiter.return_value = mock_limiter
+
+            # Should not raise - allows request if Redis is down
+            await rate_limit_register(mock_request)
 
 
 class TestRateLimitOutcomeDependency:

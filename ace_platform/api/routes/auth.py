@@ -39,7 +39,11 @@ from ace_platform.core.login_lockout import (
     record_login_failure,
     reset_login_lockout,
 )
-from ace_platform.core.rate_limit import RateLimitLogin, rate_limit_verification_email
+from ace_platform.core.rate_limit import (
+    RateLimitLogin,
+    RateLimitRegister,
+    rate_limit_verification_email,
+)
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -225,17 +229,21 @@ def create_tokens(user_id: UUID) -> TokenResponse:
     summary="Register a new user",
     responses={
         409: {"description": "Email already registered"},
+        429: {"description": "Rate limit exceeded (3 registrations per hour per IP)"},
     },
 )
 async def register(
     request: UserRegisterRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    _rate_limit: RateLimitRegister,
 ) -> TokenResponse:
     """Register a new user account.
 
     Creates a new user with the provided email and password, then returns
     JWT tokens for immediate authentication. A verification email is sent
     to complete the registration.
+
+    Rate limited to 3 registrations per hour per IP address to prevent abuse.
 
     Note: Some features require email verification. OAuth users are
     automatically verified.

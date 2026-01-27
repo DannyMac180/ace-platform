@@ -42,6 +42,7 @@ logger = logging.getLogger(__name__)
 RATE_LIMITS = {
     "login": {"limit": 5, "window_seconds": 60},  # 5 per minute per IP
     "oauth": {"limit": 10, "window_seconds": 60},  # 10 per minute per IP (OAuth flow)
+    "register": {"limit": 3, "window_seconds": 3600},  # 3 per hour per IP
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
     "verification_email": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
@@ -353,6 +354,29 @@ async def rate_limit_login(request: Request) -> None:
     )
 
 
+async def rate_limit_register(request: Request) -> None:
+    """Rate limit dependency for account registration.
+
+    Limits to 3 registrations per hour per IP address to prevent
+    rapid creation of throwaway accounts.
+
+    Args:
+        request: The incoming request.
+
+    Raises:
+        RateLimitExceeded: If rate limit is exceeded.
+    """
+    client_ip = get_client_ip(request)
+    config = RATE_LIMITS["register"]
+    await _check_rate_limit(
+        request,
+        action="register",
+        identifier=client_ip,
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
 async def rate_limit_outcome(request: Request, user_id: str) -> None:
     """Rate limit dependency for outcome reporting.
 
@@ -444,4 +468,5 @@ async def rate_limit_verification_email(request: Request, user_id: str) -> None:
 
 # Type aliases for dependency injection
 RateLimitLogin = Annotated[None, Depends(rate_limit_login)]
+RateLimitRegister = Annotated[None, Depends(rate_limit_register)]
 RateLimitOAuth = Annotated[None, Depends(rate_limit_oauth)]
