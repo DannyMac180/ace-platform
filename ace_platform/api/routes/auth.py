@@ -9,7 +9,7 @@ This module provides REST API endpoints for:
 - Email verification (POST /auth/send-verification-email, /auth/verify-email)
 """
 
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -28,9 +28,13 @@ from ace_platform.core.api_keys import (
     revoke_api_key_async,
 )
 from ace_platform.core.email import (
+    PASSWORD_RESET_TOKEN_EXPIRE_HOURS,
     create_email_verification_token,
     decode_email_verification_token,
+    generate_password_reset_token,
+    hash_password_reset_token,
     is_email_enabled,
+    send_password_reset_email,
     send_verification_email,
     send_welcome_email,
 )
@@ -42,6 +46,7 @@ from ace_platform.core.login_lockout import (
 from ace_platform.core.rate_limit import (
     RateLimitLogin,
     RateLimitRegister,
+    rate_limit_password_reset,
     rate_limit_verification_email,
 )
 from ace_platform.core.security import (
@@ -53,7 +58,7 @@ from ace_platform.core.security import (
     hash_password,
     verify_password,
 )
-from ace_platform.db.models import User
+from ace_platform.db.models import PasswordResetToken, User
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -657,3 +662,152 @@ async def verify_email_endpoint(
         message="Email verified successfully",
         verified=True,
     )
+
+
+# =============================================================================
+# Password Reset Schemas
+# =============================================================================
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Request body for forgot password."""
+
+    email: EmailStr = Field(..., description="Email address to send reset link to")
+
+
+class ResetPasswordRequest(BaseModel):
+    """Request body for password reset."""
+
+    token: str = Field(..., description="Password reset token")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+
+# =============================================================================
+# Password Reset Routes
+# =============================================================================
+
+
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    summary="Request password reset email",
+    responses={
+        429: {"description": "Rate limit exceeded (3 requests per hour per email)"},
+    },
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    http_request: Request,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Request a password reset email.
+
+    If the email exists in the system, a password reset link will be sent.
+    For security, this endpoint always returns success even if the email
+    doesn't exist (to prevent email enumeration).
+
+    Rate limited to 3 requests per hour per email address.
+    """
+    # Apply rate limiting BEFORE any database lookups
+    await rate_limit_password_reset(http_request, request.email)
+
+    # Always return success message (prevents email enumeration)
+    success_message = "If an account exists with this email, a password reset link has been sent."
+
+    # Check if user exists
+    user = await get_user_by_email(db, request.email)
+    if not user or not user.is_active:
+        # Don't reveal whether the email exists
+        return MessageResponse(message=success_message)
+
+    # Check if email service is configured
+    if not is_email_enabled():
+        # Log for debugging but don't expose to user
+        return MessageResponse(message=success_message)
+
+    # Invalidate any existing unused tokens for this user
+    existing_tokens = await db.execute(
+        select(PasswordResetToken).where(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used_at.is_(None),
+        )
+    )
+    for token_record in existing_tokens.scalars():
+        token_record.used_at = datetime.now(UTC)
+
+    # Generate new token
+    token = generate_password_reset_token()
+    token_hash = hash_password_reset_token(token)
+    expires_at = datetime.now(UTC) + timedelta(hours=PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
+
+    # Store token
+    password_reset_token = PasswordResetToken(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+    )
+    db.add(password_reset_token)
+    await db.commit()
+
+    # Send reset email
+    reset_url = f"{settings.frontend_url}/reset-password?token={token}"
+    await send_password_reset_email(user.email, reset_url)
+
+    return MessageResponse(message=success_message)
+
+
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    summary="Reset password using token",
+    responses={
+        400: {"description": "Invalid or expired token"},
+    },
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Reset password using a token from the reset email.
+
+    The token can only be used once and expires after 1 hour.
+    """
+    # Hash the provided token to compare with stored hash
+    token_hash = hash_password_reset_token(request.token)
+
+    # Look up the token
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+    )
+    token_record = result.scalar_one_or_none()
+
+    if not token_record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired password reset token",
+        )
+
+    # Check if token is valid (not used, not expired)
+    if not token_record.is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password reset token has expired or already been used",
+        )
+
+    # Get the user
+    user = await db.get(User, token_record.user_id)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid password reset token",
+        )
+
+    # Update password
+    user.hashed_password = hash_password(request.new_password)
+
+    # Mark token as used
+    token_record.used_at = datetime.now(UTC)
+
+    await db.commit()
+
+    return MessageResponse(message="Password has been reset successfully")

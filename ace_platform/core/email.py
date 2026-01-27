@@ -2,11 +2,13 @@
 
 This module provides email sending capabilities for:
 - Email verification
-- Password reset (future)
+- Password reset
 - Notifications (future)
 """
 
+import hashlib
 import logging
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -194,4 +196,106 @@ async def send_welcome_email(email: str, name: str | None = None) -> EmailResult
 
     except Exception as e:
         logger.error(f"Failed to send welcome email to {email}", exc_info=True)
+        return EmailResult(success=False, error=str(e))
+
+
+# =============================================================================
+# Password Reset
+# =============================================================================
+
+# Token expiry time (1 hour)
+PASSWORD_RESET_TOKEN_EXPIRE_HOURS = 1
+
+
+def generate_password_reset_token() -> str:
+    """Generate a secure random password reset token.
+
+    Returns:
+        A 32-byte URL-safe random token string.
+    """
+    return secrets.token_urlsafe(32)
+
+
+def hash_password_reset_token(token: str) -> str:
+    """Hash a password reset token for secure storage.
+
+    Uses SHA-256 for fast, secure hashing (bcrypt is overkill for random tokens).
+
+    Args:
+        token: The plaintext token to hash.
+
+    Returns:
+        The SHA-256 hash of the token.
+    """
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def verify_password_reset_token(token: str, token_hash: str) -> bool:
+    """Verify a password reset token against its hash.
+
+    Uses timing-safe comparison to prevent timing attacks.
+
+    Args:
+        token: The plaintext token to verify.
+        token_hash: The stored hash to compare against.
+
+    Returns:
+        True if the token matches the hash.
+    """
+    return secrets.compare_digest(hash_password_reset_token(token), token_hash)
+
+
+async def send_password_reset_email(email: str, reset_url: str) -> EmailResult:
+    """Send password reset email.
+
+    Args:
+        email: Recipient email address.
+        reset_url: Full URL for password reset.
+
+    Returns:
+        EmailResult with success status.
+    """
+    if not is_email_enabled():
+        logger.warning("Email not configured, skipping password reset email")
+        return EmailResult(success=False, error="Email service not configured")
+
+    try:
+        import resend
+
+        resend.api_key = settings.resend_api_key
+
+        result = resend.Emails.send(
+            {
+                "from": f"{settings.email_from_name} <{settings.email_from_address}>",
+                "to": [email],
+                "subject": "Reset your password",
+                "html": f"""
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h1 style="color: #1a1a1a; font-size: 24px; margin-bottom: 20px;">Reset your password</h1>
+                    <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                        We received a request to reset your password. Click the button below to choose a new password.
+                    </p>
+                    <a href="{reset_url}"
+                       style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px;
+                              text-decoration: none; border-radius: 6px; margin: 20px 0; font-weight: 500;">
+                        Reset Password
+                    </a>
+                    <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
+                        Or copy and paste this link into your browser:<br>
+                        <a href="{reset_url}" style="color: #2563eb; word-break: break-all;">{reset_url}</a>
+                    </p>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 30px;">
+                        This link expires in {PASSWORD_RESET_TOKEN_EXPIRE_HOURS} hour.
+                        If you didn't request a password reset, you can safely ignore this email.
+                    </p>
+                </div>
+                """,
+            }
+        )
+
+        logger.info(f"Password reset email sent to {email}", extra={"message_id": result.get("id")})
+        return EmailResult(success=True, message_id=result.get("id"))
+
+    except Exception as e:
+        logger.error(f"Failed to send password reset email to {email}", exc_info=True)
         return EmailResult(success=False, error=str(e))

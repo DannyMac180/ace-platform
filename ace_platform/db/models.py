@@ -477,3 +477,40 @@ class UserOAuthAccount(Base):
 
     def __repr__(self) -> str:
         return f"<UserOAuthAccount {self.provider.value}:{self.provider_email}>"
+
+
+class PasswordResetToken(Base):
+    """Secure password reset token.
+
+    Tokens are stored as hashes (not plaintext) for security.
+    Each token can only be used once and expires after a set time.
+    """
+
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User")
+
+    def __repr__(self) -> str:
+        return f"<PasswordResetToken {self.id} (user={self.user_id})>"
+
+    @property
+    def is_valid(self) -> bool:
+        """Check if the token is still valid (not used and not expired)."""
+        from datetime import UTC, datetime
+
+        return self.used_at is None and self.expires_at > datetime.now(UTC)

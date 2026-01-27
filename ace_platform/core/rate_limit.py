@@ -43,6 +43,7 @@ RATE_LIMITS = {
     "login": {"limit": 5, "window_seconds": 60},  # 5 per minute per IP
     "oauth": {"limit": 10, "window_seconds": 60},  # 10 per minute per IP (OAuth flow)
     "register": {"limit": 3, "window_seconds": 3600},  # 3 per hour per IP
+    "password_reset": {"limit": 3, "window_seconds": 3600},  # 3 per hour per email
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
     "verification_email": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
@@ -461,6 +462,29 @@ async def rate_limit_verification_email(request: Request, user_id: str) -> None:
         request,
         action="verification_email",
         identifier=user_id,
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
+async def rate_limit_password_reset(request: Request, email: str) -> None:
+    """Rate limit dependency for password reset requests.
+
+    Limits to 3 requests per hour per email address to prevent abuse
+    while still allowing legitimate reset attempts.
+
+    Args:
+        request: The incoming request.
+        email: The email address requesting password reset.
+
+    Raises:
+        RateLimitExceeded: If rate limit is exceeded.
+    """
+    config = RATE_LIMITS["password_reset"]
+    await _check_rate_limit(
+        request,
+        action="password_reset",
+        identifier=email.lower(),
         limit=config["limit"],
         window_seconds=config["window_seconds"],
     )

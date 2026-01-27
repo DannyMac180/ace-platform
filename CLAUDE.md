@@ -32,7 +32,7 @@ lsof -ti :3000 | xargs kill -9 2>/dev/null; cd web && npm run dev -- --port 3000
 ### Prerequisites
 
 - Python 3.10+
-- Podman & Podman Compose for local development (Docker in production)
+- Docker & Docker Compose for local development
 - OpenAI API key
 
 ### Quick Start (Hybrid - Recommended)
@@ -43,8 +43,8 @@ Run infrastructure in containers, application locally for hot-reload:
 # 1. Clone and enter the project
 cd ace-platform
 
-# 2. Start infrastructure services (use podman locally, docker in production)
-podman compose up -d postgres redis
+# 2. Start infrastructure services
+docker compose up -d postgres redis
 
 # 3. Create and activate virtual environment
 python -m venv venv
@@ -76,21 +76,21 @@ cp .env.example .env
 # Edit .env with your API keys (especially OPENAI_API_KEY)
 
 # 2. Start complete stack (uses --profile full)
-podman compose --profile full up -d
+docker compose --profile full up -d
 
 # This starts: postgres, redis, migrate, api, mcp, worker, beat
 
 # 3. View logs
-podman compose logs -f api       # API server logs
-podman compose logs -f worker    # Worker logs
+docker compose logs -f api       # API server logs
+docker compose logs -f worker    # Worker logs
 
 # 4. Stop everything
-podman compose --profile full down
+docker compose --profile full down
 ```
 
 For minimal infrastructure only (postgres + redis):
 ```bash
-podman compose up -d postgres redis
+docker compose up -d postgres redis
 ```
 
 ### Environment Variables
@@ -146,9 +146,9 @@ ruff format .
 
 | Command | Description |
 |---------|-------------|
-| `podman compose up -d postgres redis` | Start infrastructure only |
-| `podman compose --profile full up -d` | Start complete Docker stack |
-| `podman compose --profile full down` | Stop complete Docker stack |
+| `docker compose up -d postgres redis` | Start infrastructure only |
+| `docker compose --profile full up -d` | Start complete Docker stack |
+| `docker compose --profile full down` | Stop complete Docker stack |
 | `alembic upgrade head` | Run database migrations |
 | `alembic revision --autogenerate -m "msg"` | Create new migration |
 | `uvicorn ace_platform.api.main:app --reload` | Start API server (local) |
