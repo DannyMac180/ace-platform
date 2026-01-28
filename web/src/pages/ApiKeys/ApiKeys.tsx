@@ -420,7 +420,7 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
 
 function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
-  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'json'>('prompt');
+  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'headers'>('prompt');
   const [setupCopied, setSetupCopied] = useState(false);
 
   const copyToClipboard = async () => {
@@ -434,18 +434,27 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
   const promptInstructions = `Set up the ACE Platform MCP server with these settings:
 - Server Name: ace
 - Server URL: ${mcpServerUrl}
-- API Key: ${apiKey.key}
+- API Key Header: X-API-Key: ${apiKey.key}
 
-Store the API key in the ACE_API_KEY environment variable for security.`;
+For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for your project.`;
 
-  const claudeCommand = `claude mcp add --transport sse ace ${mcpServerUrl} -e ACE_API_KEY=${apiKey.key}`;
+  const claudeCommand = `# Add to ~/.claude.json in your project's mcpServers config:
+{
+  "ace": {
+    "type": "sse",
+    "url": "${mcpServerUrl}",
+    "headers": {
+      "X-API-Key": "${apiKey.key}"
+    }
+  }
+}`;
 
-  const jsonConfig = JSON.stringify({
+  const headersConfig = JSON.stringify({
     "ace": {
-      "transport": "sse",
+      "type": "sse",
       "url": mcpServerUrl,
-      "env": {
-        "ACE_API_KEY": apiKey.key
+      "headers": {
+        "X-API-Key": apiKey.key
       }
     }
   }, null, 2);
@@ -456,8 +465,8 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
         return promptInstructions;
       case 'claude':
         return claudeCommand;
-      case 'json':
-        return jsonConfig;
+      case 'headers':
+        return headersConfig;
     }
   };
 
@@ -516,10 +525,10 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
               Claude Code
             </button>
             <button
-              className={`${styles.setupTab} ${setupTab === 'json' ? styles.active : ''}`}
-              onClick={() => setSetupTab('json')}
+              className={`${styles.setupTab} ${setupTab === 'headers' ? styles.active : ''}`}
+              onClick={() => setSetupTab('headers')}
             >
-              MCP Config
+              JSON Config
             </button>
           </div>
 
@@ -531,12 +540,12 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
             )}
             {setupTab === 'claude' && (
               <p className={styles.setupInstructions}>
-                Run this command in your terminal:
+                Add this to your <code>~/.claude.json</code> in your project's config:
               </p>
             )}
-            {setupTab === 'json' && (
+            {setupTab === 'headers' && (
               <p className={styles.setupInstructions}>
-                Add this to your MCP configuration file:
+                Add this to your MCP client configuration:
               </p>
             )}
 
@@ -594,7 +603,7 @@ function VerificationRequiredModal({ onClose }: { onClose: () => void }) {
 }
 
 function SetupDocsModal({ onClose }: { onClose: () => void }) {
-  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'json'>('prompt');
+  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'headers'>('prompt');
   const [setupCopied, setSetupCopied] = useState(false);
 
   const mcpServerUrl = 'https://aceagent.io/mcp/sse';
@@ -603,18 +612,27 @@ function SetupDocsModal({ onClose }: { onClose: () => void }) {
   const promptInstructions = `Set up the ACE Platform MCP server with these settings:
 - Server Name: ace
 - Server URL: ${mcpServerUrl}
-- API Key: ${keyPlaceholder}
+- API Key Header: X-API-Key: ${keyPlaceholder}
 
-Store the API key in the ACE_API_KEY environment variable for security.`;
+For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for your project.`;
 
-  const claudeCommand = `claude mcp add --transport sse ace ${mcpServerUrl} -e ACE_API_KEY=${keyPlaceholder}`;
+  const claudeCommand = `# Add to ~/.claude.json in your project's mcpServers config:
+{
+  "ace": {
+    "type": "sse",
+    "url": "${mcpServerUrl}",
+    "headers": {
+      "X-API-Key": "${keyPlaceholder}"
+    }
+  }
+}`;
 
-  const jsonConfig = JSON.stringify({
+  const headersConfig = JSON.stringify({
     "ace": {
-      "transport": "sse",
+      "type": "sse",
       "url": mcpServerUrl,
-      "env": {
-        "ACE_API_KEY": keyPlaceholder
+      "headers": {
+        "X-API-Key": keyPlaceholder
       }
     }
   }, null, 2);
@@ -625,8 +643,8 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
         return promptInstructions;
       case 'claude':
         return claudeCommand;
-      case 'json':
-        return jsonConfig;
+      case 'headers':
+        return headersConfig;
     }
   };
 
@@ -665,10 +683,10 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
               Claude Code
             </button>
             <button
-              className={`${styles.setupTab} ${setupTab === 'json' ? styles.active : ''}`}
-              onClick={() => setSetupTab('json')}
+              className={`${styles.setupTab} ${setupTab === 'headers' ? styles.active : ''}`}
+              onClick={() => setSetupTab('headers')}
             >
-              MCP Config
+              JSON Config
             </button>
           </div>
 
@@ -680,12 +698,12 @@ Store the API key in the ACE_API_KEY environment variable for security.`;
             )}
             {setupTab === 'claude' && (
               <p className={styles.setupInstructions}>
-                Run this command in your terminal:
+                Add this to your <code>~/.claude.json</code> in your project's config:
               </p>
             )}
-            {setupTab === 'json' && (
+            {setupTab === 'headers' && (
               <p className={styles.setupInstructions}>
-                Add this to your MCP configuration file:
+                Add this to your MCP client configuration:
               </p>
             )}
 

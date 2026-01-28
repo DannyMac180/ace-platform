@@ -379,10 +379,27 @@ def _register_routes(app: FastAPI) -> None:
     # Mount MCP server at /mcp for SSE transport
     # This allows clients to connect to the MCP server via the same domain as the API
     # using: https://aceagent.io/mcp/sse
+    #
+    # The HeaderAuthMiddleware wraps the MCP app to extract API keys from HTTP headers:
+    # - X-API-Key: <api_key>
+    # - Authorization: Bearer <api_key>
+    #
+    # This allows Claude Code users to configure authentication in their MCP settings:
+    # {
+    #   "mcpServers": {
+    #     "ace": {
+    #       "type": "sse",
+    #       "url": "https://aceagent.io/mcp/sse",
+    #       "headers": { "X-API-Key": "your-api-key" }
+    #     }
+    #   }
+    # }
+    from ace_platform.mcp.server import HeaderAuthMiddleware
     from ace_platform.mcp.server import mcp as mcp_server
 
     mcp_sse_app = mcp_server.sse_app()
-    app.mount("/mcp", app=mcp_sse_app, name="mcp")
+    mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
+    app.mount("/mcp", app=mcp_sse_app_with_auth, name="mcp")
 
     @app.get("/health", tags=["Health"])
     async def health_check():

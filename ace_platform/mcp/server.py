@@ -8,11 +8,18 @@ Configuration is loaded from environment variables:
 - MCP_SERVER_HOST: Server bind host (default: 0.0.0.0)
 - MCP_SERVER_PORT: Server port (default: 8001)
 - ACE_API_KEY: API key for authentication (can also be passed per-tool)
+
+Authentication priority (first match wins):
+1. Explicit `api_key` parameter passed to tool
+2. `X-API-Key` header (for SSE/HTTP transport)
+3. `Authorization: Bearer <token>` header (for SSE/HTTP transport)
+4. `ACE_API_KEY` environment variable (for stdio transport)
 """
 
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import Annotated
 from uuid import UUID
@@ -23,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
@@ -32,6 +40,80 @@ from ace_platform.db.models import Outcome, OutcomeStatus, Playbook
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
 settings = get_settings()
+
+# Context variable for storing API key extracted from HTTP headers
+# This allows tools to access the API key without it being passed as a parameter
+_request_api_key: ContextVar[str | None] = ContextVar("request_api_key", default=None)
+
+
+class HeaderAuthMiddleware:
+    """ASGI middleware to extract API key from HTTP headers.
+
+    This middleware extracts the API key from incoming requests and stores
+    it in a context variable that can be accessed by MCP tools. It supports
+    two header formats:
+
+    1. X-API-Key: <api_key>
+    2. Authorization: Bearer <api_key>
+
+    The extracted key is available via the _request_api_key context variable
+    and is automatically checked by get_api_key() in tool handlers.
+
+    Example Claude Code MCP configuration with headers:
+        {
+            "mcpServers": {
+                "ace": {
+                    "type": "sse",
+                    "url": "https://aceagent.io/mcp/sse",
+                    "headers": {
+                        "X-API-Key": "your-api-key-here"
+                    }
+                }
+            }
+        }
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        """Initialize the middleware.
+
+        Args:
+            app: The ASGI application to wrap.
+        """
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Process the ASGI request.
+
+        For HTTP requests, extracts the API key from headers and stores it
+        in a context variable before calling the wrapped application.
+
+        Args:
+            scope: The ASGI scope dictionary.
+            receive: The receive callable.
+            send: The send callable.
+        """
+        if scope["type"] == "http":
+            # Extract headers (they come as a list of byte tuples)
+            headers = dict(scope.get("headers", []))
+
+            # Try X-API-Key header first
+            api_key = headers.get(b"x-api-key", b"").decode("utf-8") or None
+
+            # Fall back to Authorization: Bearer header
+            if not api_key:
+                auth_header = headers.get(b"authorization", b"").decode("utf-8")
+                if auth_header.lower().startswith("bearer "):
+                    api_key = auth_header[7:].strip()
+
+            # Store in context variable for the duration of this request
+            token = _request_api_key.set(api_key)
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                _request_api_key.reset(token)
+        else:
+            # For non-HTTP scopes (websocket, lifespan), pass through
+            await self.app(scope, receive, send)
 
 
 @dataclass
@@ -105,11 +187,12 @@ def get_db(ctx: Context) -> AsyncSession:
 
 
 def get_api_key(api_key_param: str | None = None) -> str | None:
-    """Get API key from environment variable or parameter.
+    """Get API key from parameter, HTTP header, or environment variable.
 
-    Priority:
+    Priority (first match wins):
     1. Explicit parameter (if provided and non-empty)
-    2. ACE_API_KEY environment variable
+    2. X-API-Key or Authorization header (via context variable)
+    3. ACE_API_KEY environment variable
 
     Args:
         api_key_param: Optional API key passed as tool parameter.
@@ -117,8 +200,16 @@ def get_api_key(api_key_param: str | None = None) -> str | None:
     Returns:
         API key string or None if not found.
     """
+    # 1. Check explicit parameter
     if api_key_param:
         return api_key_param
+
+    # 2. Check header (stored in context variable by HeaderAuthMiddleware)
+    header_api_key = _request_api_key.get()
+    if header_api_key:
+        return header_api_key
+
+    # 3. Fall back to environment variable (for stdio transport)
     return os.environ.get("ACE_API_KEY")
 
 

@@ -358,6 +358,241 @@ class TestGetApiKey:
         assert result == "ace_env_key_123"
 
 
+class TestHeaderAuthMiddleware:
+    """Tests for HeaderAuthMiddleware ASGI middleware."""
+
+    @pytest.fixture
+    def mock_app(self):
+        """Create a mock ASGI app that records the API key from context."""
+        from ace_platform.mcp.server import _request_api_key
+
+        async def app(scope, receive, send):
+            # Store the API key seen during request handling
+            app.seen_api_key = _request_api_key.get()
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"OK"})
+
+        app.seen_api_key = None
+        return app
+
+    @pytest.mark.asyncio
+    async def test_extracts_x_api_key_header(self, mock_app):
+        """Test that X-API-Key header is extracted and available via context."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "headers": [(b"x-api-key", b"test_api_key_123")],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert mock_app.seen_api_key == "test_api_key_123"
+
+    @pytest.mark.asyncio
+    async def test_extracts_authorization_bearer_header(self, mock_app):
+        """Test that Authorization: Bearer header is extracted."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"Bearer bearer_token_456")],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert mock_app.seen_api_key == "bearer_token_456"
+
+    @pytest.mark.asyncio
+    async def test_x_api_key_takes_priority_over_authorization(self, mock_app):
+        """Test that X-API-Key header takes priority over Authorization."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "headers": [
+                (b"x-api-key", b"x_api_key_value"),
+                (b"authorization", b"Bearer bearer_value"),
+            ],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert mock_app.seen_api_key == "x_api_key_value"
+
+    @pytest.mark.asyncio
+    async def test_no_headers_returns_none(self, mock_app):
+        """Test that missing headers result in None API key."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "headers": [],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert mock_app.seen_api_key is None
+
+    @pytest.mark.asyncio
+    async def test_non_http_scope_passes_through(self, mock_app):
+        """Test that non-HTTP scopes pass through without modification."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "websocket",
+            "headers": [(b"x-api-key", b"should_not_be_set")],
+        }
+
+        async def receive():
+            return {"type": "websocket.connect"}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        # For non-HTTP, the context var should be None (default)
+        assert mock_app.seen_api_key is None
+
+    @pytest.mark.asyncio
+    async def test_authorization_case_insensitive(self, mock_app):
+        """Test that 'bearer' prefix is case-insensitive."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware
+
+        middleware = HeaderAuthMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "headers": [(b"authorization", b"BEARER uppercase_token")],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        sent_messages = []
+
+        async def send(message):
+            sent_messages.append(message)
+
+        await middleware(scope, receive, send)
+
+        assert mock_app.seen_api_key == "uppercase_token"
+
+    @pytest.mark.asyncio
+    async def test_context_var_reset_after_request(self):
+        """Test that context variable is properly reset after request."""
+        from ace_platform.mcp.server import HeaderAuthMiddleware, _request_api_key
+
+        # Verify initial state is None
+        assert _request_api_key.get() is None
+
+        call_count = 0
+
+        async def counting_app(scope, receive, send):
+            nonlocal call_count
+            call_count += 1
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"OK"})
+
+        middleware = HeaderAuthMiddleware(counting_app)
+        scope = {
+            "type": "http",
+            "headers": [(b"x-api-key", b"temp_key")],
+        }
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        async def send(message):
+            pass
+
+        await middleware(scope, receive, send)
+
+        # After request, context var should be reset to default
+        assert _request_api_key.get() is None
+        assert call_count == 1
+
+
+class TestGetApiKeyWithHeaders:
+    """Tests for get_api_key integration with HeaderAuthMiddleware."""
+
+    def test_header_takes_priority_over_env_var(self, monkeypatch):
+        """Test that header API key takes priority over env var."""
+        from ace_platform.mcp.server import _request_api_key, get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "env_key")
+
+        # Simulate header being set by middleware
+        token = _request_api_key.set("header_key")
+        try:
+            result = get_api_key()
+            assert result == "header_key"
+        finally:
+            _request_api_key.reset(token)
+
+    def test_parameter_takes_priority_over_header(self, monkeypatch):
+        """Test that explicit parameter takes priority over header."""
+        from ace_platform.mcp.server import _request_api_key, get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "env_key")
+
+        # Simulate header being set by middleware
+        token = _request_api_key.set("header_key")
+        try:
+            result = get_api_key("param_key")
+            assert result == "param_key"
+        finally:
+            _request_api_key.reset(token)
+
+    def test_falls_back_to_env_when_no_header(self, monkeypatch):
+        """Test fallback to env var when no header is set."""
+        from ace_platform.mcp.server import get_api_key
+
+        monkeypatch.setenv("ACE_API_KEY", "env_key")
+        # No header set (context var is default None)
+        result = get_api_key()
+        assert result == "env_key"
+
+
 class TestExtractSection:
     """Tests for _extract_section helper function."""
 
