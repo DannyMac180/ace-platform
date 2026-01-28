@@ -281,19 +281,20 @@ async def register(
     db.add(user)
 
     try:
-        await db.commit()
+        # Flush to get user ID and check for integrity errors
+        await db.flush()
     except IntegrityError:
-        # Race condition: another request registered this email between our check and commit
+        # Race condition: another request registered this email between our check and flush
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
 
-    await db.refresh(user)
-
     # Audit log the account creation
     await audit_account_created(db, user.id, http_request, method="email")
+
+    # Single commit for both user creation and audit log
     await db.commit()
 
     # Send verification email (fire and forget - don't fail registration if email fails)
