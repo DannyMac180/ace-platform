@@ -11,6 +11,7 @@ export function OAuthButtons() {
   const [providers, setProviders] = useState<OAuthProviders | null>(null);
   const [loading, setLoading] = useState(true);
   const [oauthLoading, setOauthLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -35,6 +36,7 @@ export function OAuthButtons() {
     if (oauthLoading) return;
 
     setOauthLoading(true);
+    setError(null);
     try {
       // Get CSRF token first
       const csrfToken = await authApi.getOAuthCsrfToken();
@@ -42,8 +44,9 @@ export function OAuthButtons() {
       // Redirect with CSRF token
       const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
-    } catch (error) {
-      console.error('Failed to initiate OAuth login:', error);
+    } catch (err) {
+      console.error('Failed to initiate OAuth login:', err);
+      setError('Failed to connect. Please try again.');
       setOauthLoading(false);
     }
   };
@@ -53,6 +56,8 @@ export function OAuthButtons() {
       <div className={styles.divider}>
         <span>or continue with</span>
       </div>
+
+      {error && <div className={styles.error}>{error}</div>}
 
       <div className={styles.buttons}>
         {providers.google && (

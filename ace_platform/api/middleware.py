@@ -97,13 +97,27 @@ def ensure_csrf_token(request: Request) -> str:
     return token
 
 
-async def validate_csrf_token(request: Request) -> None:
-    """Validate the CSRF token from the request header matches the session.
+def validate_csrf_token_value(
+    request: Request,
+    provided_token: str | None,
+    *,
+    consume_token: bool = False,
+    error_detail_missing_session: str = "CSRF token missing from session. Please refresh and try again.",
+    error_detail_missing_token: str = "CSRF token missing from request.",
+    error_detail_mismatch: str = "CSRF token validation failed.",
+) -> None:
+    """Validate a provided CSRF token against the session token.
 
-    This should be called on state-changing operations that use session-based auth.
+    This is the core CSRF validation function. It can be used for different
+    token sources (headers, query params, form data) by passing the token value.
 
     Args:
-        request: The incoming request.
+        request: The incoming request with session.
+        provided_token: The CSRF token provided by the client.
+        consume_token: If True, delete the token from session after validation (single-use).
+        error_detail_missing_session: Custom error message when no token in session.
+        error_detail_missing_token: Custom error message when no token provided.
+        error_detail_mismatch: Custom error message when tokens don't match.
 
     Raises:
         HTTPException: If CSRF validation fails.
@@ -116,30 +130,53 @@ async def validate_csrf_token(request: Request) -> None:
         )
         raise HTTPException(
             status_code=403,
-            detail="CSRF token missing from session. Please refresh and try again.",
+            detail=error_detail_missing_session,
         )
 
-    header_token = request.headers.get(CSRF_TOKEN_HEADER)
-    if not header_token:
+    if not provided_token:
         logger.warning(
-            "CSRF validation failed: no token in header",
+            "CSRF validation failed: no token provided",
             extra={"correlation_id": get_correlation_id()},
         )
         raise HTTPException(
             status_code=403,
-            detail="CSRF token missing from request header.",
+            detail=error_detail_missing_token,
         )
 
     # Use constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(session_token, header_token):
+    if not secrets.compare_digest(session_token, provided_token):
         logger.warning(
             "CSRF validation failed: token mismatch",
             extra={"correlation_id": get_correlation_id()},
         )
         raise HTTPException(
             status_code=403,
-            detail="CSRF token validation failed.",
+            detail=error_detail_mismatch,
         )
+
+    # Optionally consume the token (for single-use scenarios like OAuth)
+    if consume_token:
+        del request.session[CSRF_TOKEN_SESSION_KEY]
+
+
+async def validate_csrf_token(request: Request) -> None:
+    """Validate the CSRF token from the request header matches the session.
+
+    This should be called on state-changing operations that use session-based auth.
+    For OAuth flows that need single-use tokens, use validate_csrf_token_value directly.
+
+    Args:
+        request: The incoming request.
+
+    Raises:
+        HTTPException: If CSRF validation fails.
+    """
+    header_token = request.headers.get(CSRF_TOKEN_HEADER)
+    validate_csrf_token_value(
+        request,
+        header_token,
+        error_detail_missing_token="CSRF token missing from request header.",
+    )
 
 
 class CorrelationIdMiddleware(BaseHTTPMiddleware):

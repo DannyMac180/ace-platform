@@ -15,7 +15,6 @@ The frontend should:
 """
 
 import logging
-import secrets
 from typing import Annotated
 from urllib.parse import urlencode
 
@@ -27,10 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ace_platform.api.auth import RequiredUser
 from ace_platform.api.deps import get_db
 from ace_platform.api.middleware import (
-    CSRF_TOKEN_SESSION_KEY,
     ensure_csrf_token,
-    get_correlation_id,
-    get_csrf_token_from_session,
+    validate_csrf_token_value,
 )
 from ace_platform.config import get_settings
 from ace_platform.core.oauth import (
@@ -85,8 +82,11 @@ class CSRFTokenResponse(BaseModel):
 # =============================================================================
 
 
-def _validate_csrf_token(request: Request, csrf_token: str | None) -> None:
+def _validate_oauth_csrf_token(request: Request, csrf_token: str | None) -> None:
     """Validate CSRF token for OAuth login endpoints.
+
+    Uses the shared CSRF validation with OAuth-specific error messages and
+    single-use token behavior (token is consumed after validation).
 
     Args:
         request: The incoming request with session.
@@ -95,40 +95,14 @@ def _validate_csrf_token(request: Request, csrf_token: str | None) -> None:
     Raises:
         HTTPException: If CSRF validation fails.
     """
-    session_token = get_csrf_token_from_session(request)
-    if not session_token:
-        logger.warning(
-            "OAuth CSRF validation failed: no token in session",
-            extra={"correlation_id": get_correlation_id()},
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="CSRF token missing from session. Please get a token first via /auth/oauth/csrf-token",
-        )
-
-    if not csrf_token:
-        logger.warning(
-            "OAuth CSRF validation failed: no token in query parameter",
-            extra={"correlation_id": get_correlation_id()},
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="CSRF token required. Include ?csrf_token=xxx in the OAuth login URL.",
-        )
-
-    # Use constant-time comparison to prevent timing attacks
-    if not secrets.compare_digest(session_token, csrf_token):
-        logger.warning(
-            "OAuth CSRF validation failed: token mismatch",
-            extra={"correlation_id": get_correlation_id()},
-        )
-        raise HTTPException(
-            status_code=403,
-            detail="CSRF token validation failed. Please get a fresh token and try again.",
-        )
-
-    # Invalidate the token after use (one-time use)
-    del request.session[CSRF_TOKEN_SESSION_KEY]
+    validate_csrf_token_value(
+        request,
+        csrf_token,
+        consume_token=True,  # OAuth tokens are single-use
+        error_detail_missing_session="CSRF token missing from session. Please get a token first via /auth/oauth/csrf-token",
+        error_detail_missing_token="CSRF token required. Include ?csrf_token=xxx in the OAuth login URL.",
+        error_detail_mismatch="CSRF token validation failed. Please get a fresh token and try again.",
+    )
 
 
 @router.get("/csrf-token", response_model=CSRFTokenResponse)
@@ -187,7 +161,7 @@ async def google_login(
         raise HTTPException(status_code=400, detail="Google OAuth not configured")
 
     # Validate CSRF token
-    _validate_csrf_token(request, csrf_token)
+    _validate_oauth_csrf_token(request, csrf_token)
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -265,7 +239,7 @@ async def github_login(
         raise HTTPException(status_code=400, detail="GitHub OAuth not configured")
 
     # Validate CSRF token
-    _validate_csrf_token(request, csrf_token)
+    _validate_oauth_csrf_token(request, csrf_token)
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)

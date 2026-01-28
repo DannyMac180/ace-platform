@@ -6,6 +6,10 @@ These tests verify:
 3. Account linking and unlinking
 4. Security: unverified email auto-link prevention
 5. OAuth service business logic
+
+Note: OAuth route tests use shared fixtures from conftest.py that disable
+rate limiting (app_no_rate_limit, client_no_rate_limit, etc.) to prevent
+rate limit interference between tests.
 """
 
 from datetime import datetime, timezone
@@ -16,15 +20,8 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
-from ace_platform.core.rate_limit import rate_limit_oauth
 from ace_platform.core.security import hash_password
 from ace_platform.db.models import OAuthProvider, User, UserOAuthAccount
-
-
-async def _no_rate_limit():
-    """Mock rate limit that does nothing."""
-    pass
-
 
 # =============================================================================
 # OAuth Routes Tests
@@ -83,18 +80,9 @@ class TestOAuthCSRFToken:
     """Tests for OAuth CSRF token endpoint."""
 
     @pytest.fixture
-    def app(self):
-        """Create a test FastAPI app with rate limiting disabled."""
-        from ace_platform.api.main import create_app
-
-        app = create_app()
-        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create a test client."""
-        return TestClient(app)
+    def client(self, client_no_rate_limit):
+        """Use shared test client with rate limiting disabled."""
+        return client_no_rate_limit
 
     def test_csrf_token_endpoint_returns_token(self, client):
         """Test CSRF token endpoint returns a token."""
@@ -145,18 +133,9 @@ class TestGoogleOAuthLogin:
     """Tests for Google OAuth login flow."""
 
     @pytest.fixture
-    def app(self):
-        """Create a test FastAPI app with rate limiting disabled."""
-        from ace_platform.api.main import create_app
-
-        app = create_app()
-        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create a test client."""
-        return TestClient(app, follow_redirects=False)
+    def client(self, client_no_rate_limit_no_redirect):
+        """Use shared test client with rate limiting disabled and no redirects."""
+        return client_no_rate_limit_no_redirect
 
     @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=False)
     def test_google_login_disabled(self, mock_enabled, client):
@@ -200,18 +179,9 @@ class TestGitHubOAuthLogin:
     """Tests for GitHub OAuth login flow."""
 
     @pytest.fixture
-    def app(self):
-        """Create a test FastAPI app with rate limiting disabled."""
-        from ace_platform.api.main import create_app
-
-        app = create_app()
-        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create a test client."""
-        return TestClient(app, follow_redirects=False)
+    def client(self, client_no_rate_limit_no_redirect):
+        """Use shared test client with rate limiting disabled and no redirects."""
+        return client_no_rate_limit_no_redirect
 
     @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=False)
     def test_github_login_disabled(self, mock_enabled, client):
@@ -253,18 +223,9 @@ class TestOAuthCallback:
     """Tests for OAuth callback handling."""
 
     @pytest.fixture
-    def app(self):
-        """Create a test FastAPI app with rate limiting disabled."""
-        from ace_platform.api.main import create_app
-
-        app = create_app()
-        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
-        return app
-
-    @pytest.fixture
-    def client(self, app):
-        """Create a test client."""
-        return TestClient(app, follow_redirects=False)
+    def client(self, client_no_rate_limit_no_redirect):
+        """Use shared test client with rate limiting disabled and no redirects."""
+        return client_no_rate_limit_no_redirect
 
     @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=False)
     def test_google_callback_disabled(self, mock_enabled, client):

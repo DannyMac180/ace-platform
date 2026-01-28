@@ -3,6 +3,7 @@
 import os
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -11,6 +12,45 @@ os.environ.setdefault(
     "DATABASE_URL",
     "postgresql://postgres:postgres@localhost:5432/ace_platform_test",
 )
+
+
+# =============================================================================
+# Rate Limit Override Fixtures
+# =============================================================================
+
+
+async def _no_rate_limit():
+    """Mock rate limit dependency that does nothing."""
+    pass
+
+
+@pytest.fixture
+def app_no_rate_limit():
+    """Create a test FastAPI app with OAuth rate limiting disabled.
+
+    Use this fixture when testing OAuth endpoints to avoid rate limit
+    interference between tests.
+    """
+    from ace_platform.api.main import create_app
+    from ace_platform.core.rate_limit import rate_limit_oauth
+
+    app = create_app()
+    app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
+    yield app
+    # Clean up overrides
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_no_rate_limit(app_no_rate_limit):
+    """Create a test client with OAuth rate limiting disabled."""
+    return TestClient(app_no_rate_limit)
+
+
+@pytest.fixture
+def client_no_rate_limit_no_redirect(app_no_rate_limit):
+    """Create a test client with OAuth rate limiting disabled and no redirect following."""
+    return TestClient(app_no_rate_limit, follow_redirects=False)
 
 
 @pytest.fixture(scope="session")

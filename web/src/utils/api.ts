@@ -156,8 +156,11 @@ export const authApi = {
   },
 
   getOAuthCsrfToken: async (): Promise<string> => {
-    // Use fetch directly with credentials to ensure cookies are sent/received
-    // This is important for the session-based CSRF token
+    // NOTE: We use native fetch instead of axios here because:
+    // 1. CSRF tokens require session cookies (credentials: 'include')
+    // 2. Axios is configured for JWT auth (Authorization header), not session cookies
+    // 3. The OAuth flow uses session-based state, separate from JWT auth
+    // This ensures the session cookie is sent/received for CSRF token storage.
     const apiBaseUrl = import.meta.env.VITE_API_URL || '';
     const response = await fetch(`${apiBaseUrl}/auth/oauth/csrf-token`, {
       method: 'GET',

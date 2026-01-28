@@ -64,3 +64,25 @@
 .oauthButton svg {
   flex-shrink: 0;
 }
+
+.oauthButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.oauthButton:disabled:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.error {
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--error-glow);
+  border: 1px solid var(--error);
+  border-radius: var(--radius-md);
+  color: var(--error);
+  font-size: 0.875rem;
+  text-align: center;
+}
