@@ -30,6 +30,11 @@ from ace_platform.api.middleware import (
     validate_csrf_token_value,
 )
 from ace_platform.config import get_settings
+from ace_platform.core.audit import (
+    audit_oauth_account_unlinked,
+    audit_oauth_login_failure,
+    audit_oauth_login_success,
+)
 from ace_platform.core.oauth import (
     is_github_oauth_enabled,
     is_google_oauth_enabled,
@@ -184,14 +189,22 @@ async def google_callback(
         token = await oauth.google.authorize_access_token(request)
     except Exception as e:
         logger.error("Google OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        await audit_oauth_login_failure(
+            db, request, provider="google", reason="Token exchange failed"
+        )
+        await db.commit()
         return _oauth_error_redirect("Failed to authenticate with Google. Please try again.")
 
     user_info = token.get("userinfo")
     if not user_info:
+        await audit_oauth_login_failure(db, request, provider="google", reason="No user info")
+        await db.commit()
         return _oauth_error_redirect("Failed to get user info from Google")
 
     email = user_info.get("email")
     if not email:
+        await audit_oauth_login_failure(db, request, provider="google", reason="No email provided")
+        await db.commit()
         return _oauth_error_redirect("No email provided by Google")
 
     # Get or create user
@@ -207,7 +220,15 @@ async def google_callback(
     )
 
     if not user.is_active:
+        await audit_oauth_login_failure(
+            db, request, provider="google", reason="Account disabled", email=email
+        )
+        await db.commit()
         return _oauth_error_redirect("Account is disabled")
+
+    # Audit log the successful OAuth login
+    await audit_oauth_login_success(db, user.id, request, provider="google", is_new_user=is_new)
+    await db.commit()
 
     # Create JWT tokens
     access_token = create_access_token(user.id)
@@ -262,6 +283,10 @@ async def github_callback(
         token = await oauth.github.authorize_access_token(request)
     except Exception as e:
         logger.error("GitHub OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        await audit_oauth_login_failure(
+            db, request, provider="github", reason="Token exchange failed"
+        )
+        await db.commit()
         return _oauth_error_redirect("Failed to authenticate with GitHub. Please try again.")
 
     # GitHub requires separate API call to get user info
@@ -270,6 +295,10 @@ async def github_callback(
         user_info = resp.json()
     except Exception as e:
         logger.error("GitHub user info fetch failed", exc_info=True, extra={"error": str(e)})
+        await audit_oauth_login_failure(
+            db, request, provider="github", reason="User info fetch failed"
+        )
+        await db.commit()
         return _oauth_error_redirect("Failed to get user info from GitHub. Please try again.")
 
     # GitHub may not return email in user endpoint, fetch from emails endpoint
@@ -291,6 +320,8 @@ async def github_callback(
             )
 
     if not email:
+        await audit_oauth_login_failure(db, request, provider="github", reason="No verified email")
+        await db.commit()
         return _oauth_error_redirect("No verified email found on GitHub account")
 
     # Get or create user
@@ -305,7 +336,15 @@ async def github_callback(
     )
 
     if not user.is_active:
+        await audit_oauth_login_failure(
+            db, request, provider="github", reason="Account disabled", email=email
+        )
+        await db.commit()
         return _oauth_error_redirect("Account is disabled")
+
+    # Audit log the successful OAuth login
+    await audit_oauth_login_success(db, user.id, request, provider="github", is_new_user=is_new)
+    await db.commit()
 
     # Create JWT tokens
     access_token = create_access_token(user.id)
@@ -342,6 +381,7 @@ async def get_linked_accounts(
 @router.delete("/accounts/{provider}", response_model=MessageResponse)
 async def unlink_account(
     provider: str,
+    request: Request,
     user: RequiredUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MessageResponse:
@@ -362,6 +402,10 @@ async def unlink_account(
 
     if not unlinked:
         raise HTTPException(status_code=404, detail="OAuth account not found")
+
+    # Audit log the OAuth account unlink
+    await audit_oauth_account_unlinked(db, user.id, request, provider=provider)
+    await db.commit()
 
     return MessageResponse(message=f"{provider.title()} account unlinked")
 

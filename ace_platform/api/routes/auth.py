@@ -27,6 +27,16 @@ from ace_platform.core.api_keys import (
     list_api_keys_async,
     revoke_api_key_async,
 )
+from ace_platform.core.audit import (
+    audit_account_created,
+    audit_api_key_created,
+    audit_api_key_revoked,
+    audit_email_verified,
+    audit_login_failure,
+    audit_login_success,
+    audit_password_reset_complete,
+    audit_password_reset_request,
+)
 from ace_platform.core.email import (
     PASSWORD_RESET_TOKEN_EXPIRE_HOURS,
     create_email_verification_token,
@@ -239,6 +249,7 @@ def create_tokens(user_id: UUID) -> TokenResponse:
 )
 async def register(
     request: UserRegisterRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     _rate_limit: RateLimitRegister,
 ) -> TokenResponse:
@@ -280,6 +291,10 @@ async def register(
         )
 
     await db.refresh(user)
+
+    # Audit log the account creation
+    await audit_account_created(db, user.id, http_request, method="email")
+    await db.commit()
 
     # Send verification email (fire and forget - don't fail registration if email fails)
     if is_email_enabled():
@@ -327,14 +342,27 @@ async def login(
     if not user:
         # Record failed attempt for lockout tracking
         await record_login_failure(http_request, request.email)
+        # Audit log the failed login
+        await audit_login_failure(
+            db, http_request, email=request.email, reason="Invalid credentials"
+        )
+        await db.commit()
         raise AuthenticationError("Invalid email or password")
 
     if not user.is_active:
         # Don't record as failed attempt - account exists but is disabled
+        await audit_login_failure(
+            db, http_request, email=request.email, user_id=user.id, reason="Account disabled"
+        )
+        await db.commit()
         raise AuthenticationError("Account is disabled")
 
     # Reset lockout counters on successful login
     await reset_login_lockout(http_request, request.email)
+
+    # Audit log the successful login
+    await audit_login_success(db, user.id, http_request, method="password")
+    await db.commit()
 
     return create_tokens(user.id)
 
@@ -415,6 +443,7 @@ async def get_current_user(user: RequiredUser) -> UserResponse:
 )
 async def create_api_key(
     request: CreateApiKeyRequest,
+    http_request: Request,
     user: VerifiedUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ApiKeyResponse:
@@ -431,6 +460,11 @@ async def create_api_key(
         user_id=user.id,
         name=request.name,
         scopes=request.scopes,
+    )
+
+    # Audit log the API key creation
+    await audit_api_key_created(
+        db, user.id, http_request, key_id=result.key_id, key_name=request.name
     )
     await db.commit()
 
@@ -494,6 +528,7 @@ async def list_api_keys(
 )
 async def revoke_api_key(
     key_id: UUID,
+    http_request: Request,
     user: RequiredUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
@@ -514,6 +549,8 @@ async def revoke_api_key(
             detail="API key not found or already revoked",
         )
 
+    # Audit log the API key revocation
+    await audit_api_key_revoked(db, user.id, http_request, key_id=key_id)
     await db.commit()
 
 
@@ -612,6 +649,7 @@ async def send_verification_email_endpoint(
 )
 async def verify_email_endpoint(
     request: VerifyEmailRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> VerifyEmailResponse:
     """Verify email address using the token sent via email.
@@ -653,6 +691,9 @@ async def verify_email_endpoint(
 
     # Mark as verified
     user.email_verified = True
+
+    # Audit log the email verification
+    await audit_email_verified(db, user.id, http_request)
     await db.commit()
 
     # Send welcome email (fire and forget)
@@ -747,6 +788,9 @@ async def forgot_password(
         expires_at=expires_at,
     )
     db.add(password_reset_token)
+
+    # Audit log the password reset request
+    await audit_password_reset_request(db, user.id, http_request)
     await db.commit()
 
     # Send reset email
@@ -766,6 +810,7 @@ async def forgot_password(
 )
 async def reset_password(
     request: ResetPasswordRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> MessageResponse:
     """Reset password using a token from the reset email.
@@ -808,6 +853,8 @@ async def reset_password(
     # Mark token as used
     token_record.used_at = datetime.now(UTC)
 
+    # Audit log the password reset
+    await audit_password_reset_complete(db, user.id, http_request)
     await db.commit()
 
     return MessageResponse(message="Password has been reset successfully")
