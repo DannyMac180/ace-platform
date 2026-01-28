@@ -167,6 +167,14 @@ class Settings(BaseSettings):
         default="",
         description="Secret key for OAuth session cookies (separate from JWT for security isolation)",
     )
+    session_cookie_secure: bool = Field(
+        default=False,
+        description="Set Secure flag on session cookies (required for SameSite=None, use True in production)",
+    )
+    session_cookie_samesite: str = Field(
+        default="lax",
+        description="SameSite policy for session cookies: 'lax', 'strict', or 'none' (use 'none' for cross-origin)",
+    )
 
     # Environment
     environment: str = Field(

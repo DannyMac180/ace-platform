@@ -170,11 +170,16 @@ def create_app() -> FastAPI:
 
     # Session middleware (innermost - required for OAuth state)
     # Uses dedicated session secret for security isolation from JWT tokens
+    # For cross-origin deployments (frontend != backend domain), requires:
+    #   SESSION_COOKIE_SAMESITE=none
+    #   SESSION_COOKIE_SECURE=true (required by browsers when SameSite=None)
     session_secret = settings.session_secret_key or settings.jwt_secret_key
     app.add_middleware(
         SessionMiddleware,
         secret_key=session_secret,
         max_age=600,  # 10 minutes for OAuth flow
+        same_site=settings.session_cookie_samesite,
+        https_only=settings.session_cookie_secure,
     )
 
     # CORS middleware (handles preflight requests)
