@@ -42,6 +42,7 @@ dependencies = [
 
     # MCP
     "mcp>=1.0.0",
+    "fastmcp-mount>=0.1.0",  # Fix MCP endpoint paths when mounted under sub-path
 
     # Billing (optional)
     "stripe>=7.0.0",

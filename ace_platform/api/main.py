@@ -6,6 +6,7 @@ This module sets up the FastAPI application with:
 - Request timing middleware for performance monitoring
 - Global error handling
 - Health check endpoints
+- MCP server integration (SSE transport)
 - Sentry error tracking (when configured)
 """
 
@@ -17,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastmcp_mount import MountFastMCP
 from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
@@ -374,6 +376,14 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(playbooks_router)
     app.include_router(usage_router)
     app.include_router(evolutions_router)
+
+    # Mount MCP server at /mcp for SSE transport
+    # This allows clients to connect to the MCP server via the same domain as the API
+    # using: https://aceagent.io/mcp/sse
+    from ace_platform.mcp.server import mcp as mcp_server
+
+    mcp_sse_app = mcp_server.sse_app()
+    app.mount("/mcp", app=MountFastMCP(app=mcp_sse_app), name="mcp")
 
     @app.get("/health", tags=["Health"])
     async def health_check():

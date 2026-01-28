@@ -11,7 +11,9 @@
 #   7. Deploy: fly deploy
 #
 # Scaling:
-#   fly scale count api=2 mcp=1 worker=2 beat=1
+#   fly scale count api=2 worker=2 beat=1
+#
+# Note: MCP server is mounted at /mcp on the API, no separate process needed
 
 app = "ace-platform"
 primary_region = "iad"
@@ -31,7 +33,6 @@ kill_timeout = 30
 # Define separate process groups for different components
 [processes]
   api = "uvicorn ace_platform.api.main:app --host 0.0.0.0 --port 8000 --workers 2"
-  mcp = "python -m ace_platform.mcp.server"
   worker = "celery -A ace_platform.workers.celery_app worker --loglevel=info --concurrency=2"
   beat = "celery -A ace_platform.workers.celery_app beat --loglevel=info"
 
@@ -87,12 +88,6 @@ kill_timeout = 30
   size = "shared-cpu-1x"
   memory = "512mb"
   processes = ["api"]
-
-# MCP server configuration
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "512mb"
-  processes = ["mcp"]
 
 # Worker configuration (needs more resources for LLM processing)
 [[vm]]
