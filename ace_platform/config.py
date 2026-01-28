@@ -175,6 +175,10 @@ class Settings(BaseSettings):
         default="lax",
         description="SameSite policy for session cookies: 'lax', 'strict', or 'none' (use 'none' for cross-origin)",
     )
+    session_cookie_domain: str = Field(
+        default="",
+        description="Cookie domain for session cookies (e.g., '.aceagent.io' for cross-subdomain). Empty for default.",
+    )
 
     # Environment
     environment: str = Field(
