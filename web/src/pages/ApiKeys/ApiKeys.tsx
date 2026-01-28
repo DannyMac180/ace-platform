@@ -19,6 +19,7 @@ import {
   Terminal,
   Info,
   Mail,
+  BookOpen,
 } from 'lucide-react';
 import type { ApiKey, ApiKeyCreate, ApiKeyCreateResponse } from '../../types';
 import styles from './ApiKeys.module.css';
@@ -35,6 +36,7 @@ export function ApiKeys() {
   const { user, refreshUser } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [showSetupDocsModal, setShowSetupDocsModal] = useState(false);
   const [newKey, setNewKey] = useState<ApiKeyCreateResponse | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
 
@@ -158,6 +160,7 @@ export function ApiKeys() {
               key={key.id}
               apiKey={key}
               onDelete={() => deleteMutation.mutate(key.id)}
+              onShowSetupDocs={() => setShowSetupDocsModal(true)}
               isDeleting={deleteMutation.isPending}
             />
           ))}
@@ -182,6 +185,11 @@ export function ApiKeys() {
       {showVerificationModal && (
         <VerificationRequiredModal onClose={() => setShowVerificationModal(false)} />
       )}
+
+      {/* Setup Documentation Modal */}
+      {showSetupDocsModal && (
+        <SetupDocsModal onClose={() => setShowSetupDocsModal(false)} />
+      )}
     </div>
   );
 }
@@ -189,10 +197,11 @@ export function ApiKeys() {
 interface ApiKeyCardProps {
   apiKey: ApiKey;
   onDelete: () => void;
+  onShowSetupDocs: () => void;
   isDeleting: boolean;
 }
 
-function ApiKeyCard({ apiKey, onDelete, isDeleting }: ApiKeyCardProps) {
+function ApiKeyCard({ apiKey, onDelete, onShowSetupDocs, isDeleting }: ApiKeyCardProps) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   return (
@@ -205,13 +214,22 @@ function ApiKeyCard({ apiKey, onDelete, isDeleting }: ApiKeyCardProps) {
           <h3>{apiKey.name}</h3>
           <code className={styles.keyPreview}>{apiKey.key_preview}</code>
         </div>
-        <button
-          className={styles.deleteButton}
-          onClick={() => setShowDeleteConfirm(true)}
-          disabled={isDeleting}
-        >
-          <Trash2 size={18} />
-        </button>
+        <div className={styles.keyActions}>
+          <button
+            className={styles.setupButton}
+            onClick={onShowSetupDocs}
+            title="View setup instructions"
+          >
+            <BookOpen size={18} />
+          </button>
+          <button
+            className={styles.deleteButton}
+            onClick={() => setShowDeleteConfirm(true)}
+            disabled={isDeleting}
+          >
+            <Trash2 size={18} />
+          </button>
+        </div>
       </div>
 
       <div className={styles.keyScopes}>
@@ -411,7 +429,7 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const mcpServerUrl = 'https://api.aceplatform.io/mcp/sse';
+  const mcpServerUrl = 'https://aceagent.io/mcp/sse';
 
   const promptInstructions = `Set up the ACE Platform MCP server with these settings:
 - Server Name: ace
@@ -570,6 +588,133 @@ function VerificationRequiredModal({ onClose }: { onClose: () => void }) {
             </Button>
           </Link>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SetupDocsModal({ onClose }: { onClose: () => void }) {
+  const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'json'>('prompt');
+  const [setupCopied, setSetupCopied] = useState(false);
+
+  const mcpServerUrl = 'https://aceagent.io/mcp/sse';
+  const keyPlaceholder = '<YOUR_API_KEY>';
+
+  const promptInstructions = `Set up the ACE Platform MCP server with these settings:
+- Server Name: ace
+- Server URL: ${mcpServerUrl}
+- API Key: ${keyPlaceholder}
+
+Store the API key in the ACE_API_KEY environment variable for security.`;
+
+  const claudeCommand = `claude mcp add --transport sse ace ${mcpServerUrl} -e ACE_API_KEY=${keyPlaceholder}`;
+
+  const jsonConfig = JSON.stringify({
+    "ace": {
+      "transport": "sse",
+      "url": mcpServerUrl,
+      "env": {
+        "ACE_API_KEY": keyPlaceholder
+      }
+    }
+  }, null, 2);
+
+  const getSetupContent = () => {
+    switch (setupTab) {
+      case 'prompt':
+        return promptInstructions;
+      case 'claude':
+        return claudeCommand;
+      case 'json':
+        return jsonConfig;
+    }
+  };
+
+  const copySetupContent = async () => {
+    await navigator.clipboard.writeText(getSetupContent());
+    setSetupCopied(true);
+    setTimeout(() => setSetupCopied(false), 2000);
+  };
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.setupDocsHeader}>
+          <div className={styles.setupDocsIcon}>
+            <BookOpen size={24} />
+          </div>
+          <h2>MCP Setup Guide</h2>
+        </div>
+        <p className={styles.setupDocsMessage}>
+          Connect your AI coding assistant to ACE Platform using the Model Context Protocol (MCP).
+        </p>
+
+        {/* Setup Instructions */}
+        <div className={styles.setupSectionStandalone}>
+          <div className={styles.setupTabs}>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'prompt' ? styles.active : ''}`}
+              onClick={() => setSetupTab('prompt')}
+            >
+              Any Agent
+            </button>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'claude' ? styles.active : ''}`}
+              onClick={() => setSetupTab('claude')}
+            >
+              Claude Code
+            </button>
+            <button
+              className={`${styles.setupTab} ${setupTab === 'json' ? styles.active : ''}`}
+              onClick={() => setSetupTab('json')}
+            >
+              MCP Config
+            </button>
+          </div>
+
+          <div className={styles.setupContent}>
+            {setupTab === 'prompt' && (
+              <p className={styles.setupInstructions}>
+                Copy and paste this into your AI coding assistant:
+              </p>
+            )}
+            {setupTab === 'claude' && (
+              <p className={styles.setupInstructions}>
+                Run this command in your terminal:
+              </p>
+            )}
+            {setupTab === 'json' && (
+              <p className={styles.setupInstructions}>
+                Add this to your MCP configuration file:
+              </p>
+            )}
+
+            <div className={styles.setupCodeBlock}>
+              <pre>{getSetupContent()}</pre>
+              <button className={styles.copyButton} onClick={copySetupContent}>
+                {setupCopied ? <Check size={18} /> : <Copy size={18} />}
+              </button>
+            </div>
+
+            <div className={styles.setupNote}>
+              <Info size={14} />
+              <span>
+                Replace <code>&lt;YOUR_API_KEY&gt;</code> with your API key. If you've lost your key, create a new one.
+              </span>
+            </div>
+
+            <div className={styles.setupNote}>
+              <Terminal size={14} />
+              <span>
+                The MCP server lets your coding agent read playbooks, record outcomes, and trigger evolution automatically.
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <Button onClick={onClose} className={styles.doneButton}>
+          Done
+        </Button>
       </div>
     </div>
   );

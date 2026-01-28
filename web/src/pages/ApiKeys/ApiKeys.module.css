@@ -150,6 +150,26 @@
   margin-top: var(--space-xs);
 }
 
+.keyActions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+.setupButton {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  padding: var(--space-sm);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.setupButton:hover {
+  background: var(--accent-glow);
+  color: var(--accent-primary);
+}
+
 .deleteButton {
   background: transparent;
   border: none;
@@ -722,4 +742,49 @@
 
 .verificationModalActions a {
   text-decoration: none;
+}
+
+/* Setup Docs Modal */
+.setupDocsHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.setupDocsHeader h2 {
+  margin: 0;
+  text-align: center;
+}
+
+.setupDocsIcon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-glow);
+  border-radius: 50%;
+  color: var(--accent-primary);
+}
+
+.setupDocsMessage {
+  text-align: center;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-lg) 0;
+  line-height: 1.5;
+}
+
+.setupSectionStandalone {
+  margin-bottom: var(--space-lg);
+}
+
+.setupNote code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--bg-tertiary);
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  color: var(--accent-primary);
 }
