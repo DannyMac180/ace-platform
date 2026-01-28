@@ -112,6 +112,33 @@ async def log_audit_event(
     return audit_log
 
 
+async def is_new_ip_for_user(
+    db: AsyncSession,
+    user_id: UUID,
+    ip_address: str,
+) -> bool:
+    """Check if this IP address is new for the given user.
+
+    Returns True if this is the first time this IP has been used for a successful login.
+    Checks both password logins and OAuth logins.
+    """
+    from sqlalchemy import func, or_, select
+
+    count = await db.scalar(
+        select(func.count())
+        .select_from(AuditLog)
+        .where(
+            AuditLog.user_id == user_id,
+            or_(
+                AuditLog.event_type == AuditEventType.LOGIN_SUCCESS,
+                AuditLog.event_type == AuditEventType.OAUTH_LOGIN_SUCCESS,
+            ),
+            AuditLog.ip_address == ip_address,
+        )
+    )
+    return count == 0
+
+
 # =============================================================================
 # Authentication Events
 # =============================================================================

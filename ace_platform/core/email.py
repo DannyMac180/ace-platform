@@ -299,3 +299,81 @@ async def send_password_reset_email(email: str, reset_url: str) -> EmailResult:
     except Exception as e:
         logger.error(f"Failed to send password reset email to {email}", exc_info=True)
         return EmailResult(success=False, error=str(e))
+
+
+# =============================================================================
+# Security Alerts
+# =============================================================================
+
+
+async def send_new_login_alert(
+    to_email: str,
+    ip_address: str,
+    login_time: datetime,
+    user_agent: str | None = None,
+) -> EmailResult:
+    """Send security alert email for login from new IP address.
+
+    Args:
+        to_email: Recipient email address.
+        ip_address: The new IP address used for login.
+        login_time: When the login occurred.
+        user_agent: Optional browser/client user agent string.
+
+    Returns:
+        EmailResult with success status.
+    """
+    if not is_email_enabled():
+        logger.warning("Email not configured, skipping new login alert")
+        return EmailResult(success=False, error="Email service not configured")
+
+    try:
+        import resend
+
+        resend.api_key = settings.resend_api_key
+
+        # Build user agent line if provided
+        user_agent_html = ""
+        if user_agent:
+            # Truncate very long user agents for display
+            display_agent = user_agent[:100] + "..." if len(user_agent) > 100 else user_agent
+            user_agent_html = f"<li><strong>Device:</strong> {display_agent}</li>"
+
+        result = resend.Emails.send(
+            {
+                "from": f"{settings.email_from_name} <{settings.email_from_address}>",
+                "to": [to_email],
+                "subject": "New Login to Your ACE Account",
+                "html": f"""
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                    <h1 style="color: #1a1a1a; font-size: 24px; margin-bottom: 20px;">New Login Detected</h1>
+                    <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                        We noticed a login to your ACE account from a new location:
+                    </p>
+                    <ul style="color: #4a4a4a; font-size: 16px; line-height: 1.8;">
+                        <li><strong>IP Address:</strong> {ip_address}</li>
+                        <li><strong>Time:</strong> {login_time.strftime("%Y-%m-%d %H:%M:%S UTC")}</li>
+                        {user_agent_html}
+                    </ul>
+                    <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                        If this was you, you can ignore this email.
+                    </p>
+                    <p style="color: #4a4a4a; font-size: 16px; line-height: 1.5;">
+                        If you don't recognize this activity, please
+                        <a href="{settings.frontend_url}/settings/security" style="color: #2563eb;">change your password</a>
+                        immediately.
+                    </p>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 30px;">
+                        This is an automated security notification. You're receiving this because someone logged into your account from a new IP address.
+                    </p>
+                </div>
+                """,
+            }
+        )
+
+        logger.info(f"New login alert sent to {to_email}", extra={"message_id": result.get("id")})
+        return EmailResult(success=True, message_id=result.get("id"))
+
+    except Exception as e:
+        logger.error(f"Failed to send new login alert to {to_email}", exc_info=True)
+        return EmailResult(success=False, error=str(e))
