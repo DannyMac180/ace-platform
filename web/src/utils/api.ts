@@ -154,6 +154,21 @@ export const authApi = {
     });
     return response.data;
   },
+
+  getOAuthCsrfToken: async (): Promise<string> => {
+    // Use fetch directly with credentials to ensure cookies are sent/received
+    // This is important for the session-based CSRF token
+    const apiBaseUrl = import.meta.env.VITE_API_URL || '';
+    const response = await fetch(`${apiBaseUrl}/auth/oauth/csrf-token`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to get CSRF token');
+    }
+    const data = await response.json();
+    return data.csrf_token;
+  },
 };
 
 // API Keys API

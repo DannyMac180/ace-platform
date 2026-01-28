@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { api } from '../../utils/api';
+import { api, authApi } from '../../utils/api';
 import styles from './Settings.module.css';
 
 interface LinkedAccounts {
@@ -29,6 +29,7 @@ export function Settings() {
   const [success, setSuccess] = useState<string | null>(null);
   const [managingSubscription, setManagingSubscription] = useState(false);
   const [sendingVerification, setSendingVerification] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,9 +51,23 @@ export function Settings() {
     fetchData();
   }, []);
 
-  const handleConnect = (provider: 'google' | 'github') => {
-    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-    window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login`;
+  const handleConnect = async (provider: 'google' | 'github') => {
+    if (connecting) return;
+
+    setConnecting(provider);
+    setError(null);
+
+    try {
+      // Get CSRF token first
+      const csrfToken = await authApi.getOAuthCsrfToken();
+
+      // Redirect with CSRF token
+      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
+    } catch {
+      setError('Failed to initiate connection. Please try again.');
+      setConnecting(null);
+    }
   };
 
   const handleUnlink = async (provider: 'google' | 'github') => {
@@ -220,8 +235,9 @@ export function Settings() {
                       <button
                         className={styles.connectButton}
                         onClick={() => handleConnect('google')}
+                        disabled={connecting === 'google'}
                       >
-                        Connect
+                        {connecting === 'google' ? 'Connecting...' : 'Connect'}
                       </button>
                     )}
                   </div>
@@ -250,8 +266,9 @@ export function Settings() {
                       <button
                         className={styles.connectButton}
                         onClick={() => handleConnect('github')}
+                        disabled={connecting === 'github'}
                       >
-                        Connect
+                        {connecting === 'github' ? 'Connecting...' : 'Connect'}
                       </button>
                     )}
                   </div>

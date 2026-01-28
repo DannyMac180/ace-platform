@@ -16,8 +16,14 @@ import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from ace_platform.core.rate_limit import rate_limit_oauth
 from ace_platform.core.security import hash_password
 from ace_platform.db.models import OAuthProvider, User, UserOAuthAccount
+
+
+async def _no_rate_limit():
+    """Mock rate limit that does nothing."""
+    pass
 
 # =============================================================================
 # OAuth Routes Tests
@@ -43,6 +49,7 @@ class TestOAuthProviders:
         """Test that OAuth routes are registered."""
         routes = [route.path for route in app.routes]
         assert "/auth/oauth/providers" in routes
+        assert "/auth/oauth/csrf-token" in routes
         assert "/auth/oauth/google/login" in routes
         assert "/auth/oauth/google/callback" in routes
         assert "/auth/oauth/github/login" in routes
@@ -71,15 +78,79 @@ class TestOAuthProviders:
         assert data["github"] is False
 
 
+class TestOAuthCSRFToken:
+    """Tests for OAuth CSRF token endpoint."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a test FastAPI app with rate limiting disabled."""
+        from ace_platform.api.main import create_app
+
+        app = create_app()
+        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_csrf_token_endpoint_returns_token(self, client):
+        """Test CSRF token endpoint returns a token."""
+        response = client.get("/auth/oauth/csrf-token")
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "csrf_token" in data
+        assert len(data["csrf_token"]) >= 40  # URL-safe base64 of 32 bytes
+
+    def test_csrf_token_stored_in_session(self, client):
+        """Test CSRF token is stored in session and consistent within same session."""
+        # First request gets a token
+        response1 = client.get("/auth/oauth/csrf-token")
+        token1 = response1.json()["csrf_token"]
+
+        # Second request with same session should get same token
+        response2 = client.get("/auth/oauth/csrf-token")
+        token2 = response2.json()["csrf_token"]
+
+        assert token1 == token2
+
+    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
+    @patch("ace_platform.api.routes.oauth.oauth")
+    def test_csrf_token_is_single_use_for_login(self, mock_oauth, mock_enabled, client):
+        """Test CSRF token is invalidated after OAuth login validation."""
+        mock_oauth.google.authorize_redirect = AsyncMock(
+            return_value=MagicMock(
+                status_code=302,
+                headers={"location": "https://accounts.google.com/o/oauth2/auth"},
+            )
+        )
+
+        # Get a CSRF token
+        csrf_response = client.get("/auth/oauth/csrf-token")
+        csrf_token = csrf_response.json()["csrf_token"]
+
+        # Use it for OAuth login - this should consume the token
+        client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
+        mock_oauth.google.authorize_redirect.assert_called_once()
+
+        # Now trying to use the same token again should fail with CSRF error
+        response = client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "CSRF" in response.json()["error"]["message"]
+
+
 class TestGoogleOAuthLogin:
     """Tests for Google OAuth login flow."""
 
     @pytest.fixture
     def app(self):
-        """Create a test FastAPI app."""
+        """Create a test FastAPI app with rate limiting disabled."""
         from ace_platform.api.main import create_app
 
-        return create_app()
+        app = create_app()
+        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
+        return app
 
     @pytest.fixture
     def client(self, app):
@@ -90,14 +161,21 @@ class TestGoogleOAuthLogin:
     def test_google_login_disabled(self, mock_enabled, client):
         """Test Google login returns 400 when not configured."""
         response = client.get("/auth/oauth/google/login")
+        # OAuth disabled check happens before CSRF validation
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        # App uses custom error format with 'error' wrapper
         assert "not configured" in response.json()["error"]["message"]
+
+    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
+    def test_google_login_requires_csrf(self, mock_enabled, client):
+        """Test Google login requires CSRF token when OAuth is enabled."""
+        response = client.get("/auth/oauth/google/login")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "CSRF" in response.json()["error"]["message"]
 
     @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
     @patch("ace_platform.api.routes.oauth.oauth")
     def test_google_login_redirects(self, mock_oauth, mock_enabled, client):
-        """Test Google login redirects to Google OAuth."""
+        """Test Google login redirects to Google OAuth with valid CSRF token."""
         # Mock the authorize_redirect to return a redirect response
         mock_oauth.google.authorize_redirect = AsyncMock(
             return_value=MagicMock(
@@ -106,7 +184,13 @@ class TestGoogleOAuthLogin:
             )
         )
 
-        client.get("/auth/oauth/google/login")
+        # First get a CSRF token
+        csrf_response = client.get("/auth/oauth/csrf-token")
+        assert csrf_response.status_code == status.HTTP_200_OK
+        csrf_token = csrf_response.json()["csrf_token"]
+
+        # Now call login with CSRF token
+        client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
         # The actual redirect behavior depends on Authlib, but we verify the call was made
         mock_oauth.google.authorize_redirect.assert_called_once()
 
@@ -116,10 +200,12 @@ class TestGitHubOAuthLogin:
 
     @pytest.fixture
     def app(self):
-        """Create a test FastAPI app."""
+        """Create a test FastAPI app with rate limiting disabled."""
         from ace_platform.api.main import create_app
 
-        return create_app()
+        app = create_app()
+        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
+        return app
 
     @pytest.fixture
     def client(self, app):
@@ -130,14 +216,21 @@ class TestGitHubOAuthLogin:
     def test_github_login_disabled(self, mock_enabled, client):
         """Test GitHub login returns 400 when not configured."""
         response = client.get("/auth/oauth/github/login")
+        # OAuth disabled check happens before CSRF validation
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        # App uses custom error format with 'error' wrapper
         assert "not configured" in response.json()["error"]["message"]
+
+    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=True)
+    def test_github_login_requires_csrf(self, mock_enabled, client):
+        """Test GitHub login requires CSRF token when OAuth is enabled."""
+        response = client.get("/auth/oauth/github/login")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "CSRF" in response.json()["error"]["message"]
 
     @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=True)
     @patch("ace_platform.api.routes.oauth.oauth")
     def test_github_login_redirects(self, mock_oauth, mock_enabled, client):
-        """Test GitHub login redirects to GitHub OAuth."""
+        """Test GitHub login redirects to GitHub OAuth with valid CSRF token."""
         mock_oauth.github.authorize_redirect = AsyncMock(
             return_value=MagicMock(
                 status_code=302,
@@ -145,7 +238,13 @@ class TestGitHubOAuthLogin:
             )
         )
 
-        client.get("/auth/oauth/github/login")
+        # First get a CSRF token
+        csrf_response = client.get("/auth/oauth/csrf-token")
+        assert csrf_response.status_code == status.HTTP_200_OK
+        csrf_token = csrf_response.json()["csrf_token"]
+
+        # Now call login with CSRF token
+        client.get(f"/auth/oauth/github/login?csrf_token={csrf_token}")
         mock_oauth.github.authorize_redirect.assert_called_once()
 
 
@@ -154,10 +253,12 @@ class TestOAuthCallback:
 
     @pytest.fixture
     def app(self):
-        """Create a test FastAPI app."""
+        """Create a test FastAPI app with rate limiting disabled."""
         from ace_platform.api.main import create_app
 
-        return create_app()
+        app = create_app()
+        app.dependency_overrides[rate_limit_oauth] = _no_rate_limit
+        return app
 
     @pytest.fixture
     def client(self, app):
