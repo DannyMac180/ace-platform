@@ -77,6 +77,46 @@ class TestIsNewIpForUser:
         assert callable(is_new_ip_for_user)
 
 
+class TestHasPreviousLogins:
+    """Tests for has_previous_logins function."""
+
+    @pytest.mark.asyncio
+    async def test_no_previous_logins_returns_false(self):
+        """Returns False when user has never logged in before."""
+        from ace_platform.core.audit import has_previous_logins
+
+        mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=0)
+
+        user_id = uuid4()
+
+        result = await has_previous_logins(mock_db, user_id)
+
+        assert result is False
+        mock_db.scalar.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_has_previous_logins_returns_true(self):
+        """Returns True when user has logged in before."""
+        from ace_platform.core.audit import has_previous_logins
+
+        mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
+
+        user_id = uuid4()
+
+        result = await has_previous_logins(mock_db, user_id)
+
+        assert result is True
+        mock_db.scalar.assert_called_once()
+
+    def test_has_previous_logins_importable(self):
+        """has_previous_logins can be imported from audit module."""
+        from ace_platform.core.audit import has_previous_logins
+
+        assert callable(has_previous_logins)
+
+
 class TestSendNewLoginAlert:
     """Tests for send_new_login_alert email function."""
 
