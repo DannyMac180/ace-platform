@@ -6,6 +6,7 @@ based on outcome feedback.
 """
 
 import json
+import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,11 @@ from ace_platform.config import Settings, get_settings
 ACE_CORE_PATH = Path(__file__).parent.parent.parent / "ace_core"
 if str(ACE_CORE_PATH) not in sys.path:
     sys.path.insert(0, str(ACE_CORE_PATH))
+
+# Import after ace_core path is set up
+from playbook_utils import update_bullet_counts  # noqa: E402
+
+logger = logging.getLogger(__name__)
 
 
 # Platform-specific batch reflection prompt
@@ -282,6 +288,8 @@ class EvolutionService:
         for i, outcome in enumerate(outcomes, 1):
             outcome_lines.append(f"{i}. Task: {outcome.task_description}")
             outcome_lines.append(f"   Result: {outcome.outcome_status}")
+            if outcome.reasoning_trace:
+                outcome_lines.append(f"   Reasoning: {outcome.reasoning_trace}")
             if outcome.notes:
                 outcome_lines.append(f"   Notes: {outcome.notes}")
             outcome_lines.append("")
@@ -315,11 +323,14 @@ class EvolutionService:
                 bullet_tags = result.get("bullet_tags", [])
                 return bullet_tags, token_usage
             except json.JSONDecodeError:
-                print("Warning: Failed to parse batch reflection response as JSON")
+                logger.warning("Failed to parse batch reflection response as JSON")
                 return [], token_usage
 
+        except openai.APIError as e:
+            logger.warning("Batch reflection API call failed: %s", e)
+            return [], {}
         except Exception as e:
-            print(f"Warning: Batch reflection failed: {e}")
+            logger.exception("Unexpected error during batch reflection: %s", e)
             return [], {}
 
     def evolve_playbook(
@@ -343,8 +354,6 @@ class EvolutionService:
         Returns:
             EvolutionResult with the evolved playbook and metadata.
         """
-        from playbook_utils import update_bullet_counts
-
         if not outcomes:
             return EvolutionResult(
                 original_playbook=playbook_content,
