@@ -1181,9 +1181,7 @@ class TestMCPToolsIntegration:
         assert "with version" not in result  # No version should be created
         assert "ID:" in result
 
-    async def test_create_playbook_no_scope(
-        self, async_session: AsyncSession, test_api_key
-    ):
+    async def test_create_playbook_no_scope(self, async_session: AsyncSession, test_api_key):
         """Test creating a playbook without write scope."""
         from ace_platform.mcp.server import create_playbook
 
