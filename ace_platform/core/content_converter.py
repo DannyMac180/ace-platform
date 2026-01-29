@@ -284,6 +284,10 @@ def format_bullets_output(bullets: list[dict[str, str]]) -> str:
         slug = re.sub(r"[^a-z0-9-]", "-", slug.lower())
         slug = re.sub(r"-+", "-", slug).strip("-")
 
+        # Fallback to "unknown" if slug is empty after sanitization
+        if not slug:
+            slug = "unknown"
+
         # Format the bullet
         lines.append(f"[{slug}] helpful=0 harmful=0 :: {content}")
 

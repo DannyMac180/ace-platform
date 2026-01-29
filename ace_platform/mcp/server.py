@@ -653,6 +653,10 @@ async def create_version(
 
         if conversion_result.conversion_succeeded and conversion_result.has_changes:
             content = conversion_result.converted_content
+            # Re-validate size after conversion (formatting can expand content)
+            error = validate_playbook_content(content)
+            if error:
+                return f"Error: Converted content exceeds size limit. {error}"
             conversion_note = f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
         elif not conversion_result.conversion_succeeded:
             # Conversion failed but we continue with original content

@@ -224,6 +224,17 @@ class TestFormatBulletsOutput:
         output = format_bullets_output(bullets)
 
         # Should use 'unknown' as fallback after cleaning
+        assert "[unknown]" in output
+        assert "helpful=0 harmful=0" in output
+
+    def test_handles_slug_that_sanitizes_to_empty(self):
+        """Test handling of slug that becomes empty after sanitization."""
+        # Slug with only punctuation/special chars becomes empty after sanitization
+        bullets = [{"slug": "!!!", "content": "Test content."}]
+        output = format_bullets_output(bullets)
+
+        # Should use 'unknown' as fallback
+        assert "[unknown]" in output
         assert "helpful=0 harmful=0" in output
 
 
