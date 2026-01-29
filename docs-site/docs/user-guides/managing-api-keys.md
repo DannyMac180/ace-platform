@@ -58,16 +58,16 @@ API keys authenticate your MCP tool requests to ACE. Each key has specific scope
 
 ### MCP Configuration
 
-For MCP servers, set the key in the environment:
+For MCP clients, configure the ACE server with your API key:
 
 ```json
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -201,15 +201,14 @@ If you hit a rate limit, wait and retry with exponential backoff.
 
 ### "API Key Required"
 
-- Verify the `Authorization` header is present
-- Check the format: `Bearer YOUR_KEY`
+- Verify the `X-API-Key` header is present
 - Ensure the key isn't empty or malformed
 
 ### Key Not Working with MCP
 
-- Verify the `AUTHORIZATION` env var is set
-- Check it includes `Bearer ` prefix
-- Restart the MCP server after changes
+- Verify the `X-API-Key` header is set in your MCP config
+- Check the key is correct (no extra spaces)
+- Restart your MCP client after config changes
 
 ## Next Steps
 

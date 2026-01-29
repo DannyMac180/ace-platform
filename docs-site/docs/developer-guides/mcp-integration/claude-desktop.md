@@ -50,10 +50,10 @@ Edit the config file to add the ACE MCP server:
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -121,17 +121,17 @@ Configure different environments by using multiple MCP servers:
 {
   "mcpServers": {
     "ace-prod": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer PROD_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "PROD_API_KEY"
       }
     },
     "ace-staging": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://ace-platform-staging.fly.dev/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer STAGING_API_KEY"
+      "type": "sse",
+      "url": "https://ace-platform-staging.fly.dev/mcp/sse",
+      "headers": {
+        "X-API-Key": "STAGING_API_KEY"
       }
     }
   }
@@ -197,25 +197,16 @@ Request specific sections for focused tasks:
 
 1. **Check config file location** - Ensure it's the correct path
 2. **Validate JSON syntax** - Use a JSON validator
-3. **Verify npx is available** - Run `npx --version` in terminal
+3. **Verify URL is correct** - `https://aceagent.io/mcp/sse`
 4. **Restart Claude Desktop** - Full quit, not just close
 
 ### Authentication Errors
 
 - **"Unauthorized"** - Check API key is correct
 - **"Forbidden"** - Verify key has required scopes
-- **"Invalid token"** - Ensure `Bearer ` prefix is included
+- **"Invalid token"** - Verify API key format is correct
 
 ### Connection Issues
-
-```json
-{
-  "env": {
-    "AUTHORIZATION": "Bearer YOUR_KEY",
-    "DEBUG": "mcp:*"
-  }
-}
-```
 
 Check Claude Desktop logs for debug output.
 

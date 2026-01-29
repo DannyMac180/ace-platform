@@ -27,32 +27,24 @@ Get up and running with ACE in 5 minutes.
 
 ## Step 2: Create Your First Playbook
 
-From the dashboard:
+### Option 1: Via Your AI Agent (Recommended)
 
-1. Click **New Playbook** in the sidebar
-2. Give it a name (e.g., "Code Review Assistant")
-3. Write your initial instructions in Markdown:
+Once connected via MCP, ask your AI agent to create a playbook:
 
-```markdown
-# Code Review Assistant
-
-## Role
-You are an expert code reviewer focused on code quality and best practices.
-
-## Guidelines
-- Check for potential bugs and edge cases
-- Suggest performance improvements
-- Ensure consistent code style
-- Look for security vulnerabilities
-
-## Output Format
-Provide feedback in sections:
-1. **Critical Issues** - Must fix before merge
-2. **Suggestions** - Recommended improvements
-3. **Praise** - What was done well
+```
+Create an ACE playbook called "Code Review Assistant" with guidelines
+for reviewing code quality, security, and best practices.
 ```
 
-4. Click **Save**
+Your agent will use the `create_playbook` tool to generate well-structured instructions automatically.
+
+### Option 2: Via the Dashboard
+
+1. Log in to your [ACE Dashboard](https://app.aceagent.io)
+2. Click **New Playbook** in the sidebar
+3. Give it a name (e.g., "Code Review Assistant")
+4. Optionally add initial content, or leave it blank to start—the playbook will evolve as you record outcomes
+5. Click **Save**
 
 ## Step 3: Connect via MCP
 
@@ -66,10 +58,10 @@ Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -84,27 +76,57 @@ Add to your Claude Code settings (`.claude/settings.json`):
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
 }
 ```
 
-## Step 4: Use Your Playbook
+### Any MCP Client
 
-Once connected, you can access your playbooks directly in Claude:
+Any MCP client that supports SSE transport can connect using the same configuration format above.
+
+## Step 4: Configure Your Agent
+
+Add these instructions to your agent's configuration file (`CLAUDE.md`, `AGENTS.md`, or Custom Instructions) to enable automatic playbook usage:
+
+```markdown
+## Using ACE Playbooks
+
+Before starting any task, check for relevant playbooks:
+
+1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
+2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
+3. **Follow the guidelines** - Apply the playbook instructions as you work
+
+After completing a task guided by a playbook:
+
+1. **Record the outcome** - Use the `record_outcome` tool with:
+   - `playbook_id`: The playbook you followed
+   - `task_description`: What you accomplished
+   - `outcome`: "success", "failure", or "partial"
+   - `notes`: What worked well, what didn't, and lessons learned
+
+2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
+```
+
+This ensures your agent automatically leverages playbooks and contributes to their improvement.
+
+## Step 5: Use Your Playbook
+
+Once connected, you can access your playbooks directly in your agent:
 
 ```
 Use the ace get_playbook tool with playbook_id "your-playbook-id"
 ```
 
-Claude will fetch the playbook content and follow the instructions.
+Your agent will fetch the playbook content and follow the instructions.
 
-## Step 5: Record Outcomes
+## Step 6: Record Outcomes
 
 After using your playbook, record the outcome to help it improve:
 
@@ -116,7 +138,7 @@ Use the ace record_outcome tool with:
 - notes: "Caught a security issue with token storage"
 ```
 
-## Step 6: Watch It Evolve
+## Step 7: Watch It Evolve
 
 After recording enough outcomes, ACE automatically evolves your playbook. Check the **Evolution** tab in your dashboard to see:
 

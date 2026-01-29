@@ -139,12 +139,12 @@ Check the status of an evolution job.
 
 ## Authentication
 
-MCP requires API key authentication via the `AUTHORIZATION` environment variable:
+MCP requires API key authentication via the `X-API-Key` header:
 
 ```json
 {
-  "env": {
-    "AUTHORIZATION": "Bearer YOUR_API_KEY"
+  "headers": {
+    "X-API-Key": "YOUR_API_KEY"
   }
 }
 ```
@@ -171,7 +171,7 @@ The default transport for remote connections:
 https://aceagent.io/mcp/sse
 ```
 
-Used with `mcp-remote` or similar SSE clients.
+Use the native SSE configuration in your MCP client.
 
 ### Stdio
 
@@ -193,10 +193,10 @@ Configure clients to use stdio transport.
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -211,10 +211,10 @@ Configure clients to use stdio transport.
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -223,17 +223,22 @@ Configure clients to use stdio transport.
 
 [Detailed Claude Code setup →](/docs/developer-guides/mcp-integration/claude-code)
 
-### Custom Agents
+### Any MCP Client
 
-Build your own MCP client:
+Any MCP client that supports SSE transport can connect to ACE:
 
-```python
-from mcp import ClientSession, StdioServerParameters
-
-async with ClientSession(
-    StdioServerParameters(command="npx", args=["-y", "mcp-remote", url])
-) as session:
-    result = await session.call_tool("get_playbook", {"playbook_id": "abc-123"})
+```json
+{
+  "mcpServers": {
+    "ace": {
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
+      }
+    }
+  }
+}
 ```
 
 [Custom agent guide →](/docs/developer-guides/mcp-integration/custom-agents)
@@ -268,6 +273,7 @@ When performing tasks that have a matching playbook:
    - `outcome`: "success", "partial", or "failure"
    - `task_description`: Brief description of what was done
    - `notes`: Any relevant feedback about what worked or didn't
+4. **Check for evolution**: If an evolution was triggered, use `get_evolution_status` to report the results
 
 ### Example
 
@@ -299,16 +305,26 @@ For a code review task:
 If you have many playbooks or they change frequently, instruct your agent to discover them:
 
 ```markdown
-## ACE Playbooks
+## Using ACE Playbooks
 
-Before starting a task, check if a relevant playbook exists:
-1. Call `list_playbooks` to see available playbooks
-2. If a playbook matches the task type, fetch it with `get_playbook`
-3. Follow the playbook instructions
-4. Record the outcome when complete
+Before starting any task, check for relevant playbooks:
+
+1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
+2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
+3. **Follow the guidelines** - Apply the playbook instructions as you work
+
+After completing a task guided by a playbook:
+
+1. **Record the outcome** - Use the `record_outcome` tool with:
+   - `playbook_id`: The playbook you followed
+   - `task_description`: What you accomplished
+   - `outcome`: "success", "failure", or "partial"
+   - `notes`: What worked well, what didn't, and lessons learned
+
+2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
 ```
 
-This approach is more flexible but adds latency to each task.
+This approach is more flexible as it doesn't require maintaining a static list of playbook IDs.
 
 ## Usage Patterns
 

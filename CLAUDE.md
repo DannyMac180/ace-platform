@@ -329,3 +329,22 @@ This matches what CI runs, so if it passes locally, CI should pass too.
 ## Context management
 
 You are a LLM and therefore don't always have up to date knowledge in your internal knowledge. Due to this, always gather context about specific libraries, frameworks, technologies or coding patterns before generating files or writing code. This allows your output to be much more accurate and higher quality. Use the context7 MCP to do this when possible and use web search when context7 doesn't have the info you need.
+
+## Using ACE Playbooks
+
+Before starting any task, check for relevant playbooks:
+
+1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
+2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
+3. **Follow the guidelines** - Apply the playbook instructions as you work
+
+After completing a task guided by a playbook:
+
+1. **Record the outcome** - Use the `record_outcome` tool with:
+   - `playbook_id`: The playbook you followed
+   - `task_description`: What you accomplished
+   - `outcome`: "success", "failure", or "partial"
+   - `notes`: What worked well, what didn't, and lessons learned
+
+2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
+```

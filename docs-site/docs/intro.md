@@ -21,7 +21,7 @@ Playbooks are structured instructions that guide AI agents on how to perform spe
 
 - **Evolve automatically** based on recorded outcomes
 - **Version controlled** so you can track changes over time
-- **Accessible via MCP** for seamless integration with Claude and other agents
+- **Accessible via MCP** for seamless integration with AI agents that support MCP
 
 ## Key Features
 

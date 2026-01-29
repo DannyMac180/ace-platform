@@ -34,10 +34,10 @@ Add ACE to your Claude Code MCP settings.
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -50,10 +50,10 @@ Add ACE to your Claude Code MCP settings.
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer YOUR_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "YOUR_API_KEY"
       }
     }
   }
@@ -175,10 +175,10 @@ Create a hook that prompts for outcome recording:
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "http://localhost:8000/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer DEV_API_KEY"
+      "type": "sse",
+      "url": "http://localhost:8000/mcp/sse",
+      "headers": {
+        "X-API-Key": "DEV_API_KEY"
       }
     }
   }
@@ -191,10 +191,10 @@ Create a hook that prompts for outcome recording:
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://ace-platform-staging.fly.dev/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer STAGING_API_KEY"
+      "type": "sse",
+      "url": "https://ace-platform-staging.fly.dev/mcp/sse",
+      "headers": {
+        "X-API-Key": "STAGING_API_KEY"
       }
     }
   }
@@ -207,10 +207,10 @@ Create a hook that prompts for outcome recording:
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer PROD_API_KEY"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "PROD_API_KEY"
       }
     }
   }
@@ -219,16 +219,16 @@ Create a hook that prompts for outcome recording:
 
 ## Using Environment Variables
 
-Keep API keys out of config files:
+Keep API keys out of config files by using environment variable substitution:
 
 ```json
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer ${ACE_API_KEY}"
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "${ACE_API_KEY}"
       }
     }
   }
@@ -285,20 +285,13 @@ Instead of one generic playbook, create focused ones:
    cat ~/.claude/settings.json | jq .
    ```
 
-2. Verify npx works:
-   ```bash
-   npx --version
-   ```
+2. Verify the URL is correct: `https://aceagent.io/mcp/sse`
 
-3. Test MCP connection manually:
-   ```bash
-   npx -y mcp-remote https://aceagent.io/mcp/sse
-   ```
+3. Check your API key is set in the `headers` section
 
 ### Authentication Errors
 
-- Ensure `Bearer ` prefix (with space) is included
-- Verify API key in dashboard
+- Verify API key is correct in dashboard
 - Check key has required scopes
 - Try regenerating the key
 

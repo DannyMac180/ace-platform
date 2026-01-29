@@ -78,23 +78,23 @@ If a key lacks required scopes:
 
 ## MCP Authentication
 
-For MCP connections, pass the API key via environment variable:
+For MCP connections, pass the API key via the `X-API-Key` header:
 
 ```json
 {
   "mcpServers": {
     "ace": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://aceagent.io/mcp/sse"],
-      "env": {
-        "AUTHORIZATION": "Bearer ace_live_abc123..."
+      "type": "sse",
+      "url": "https://aceagent.io/mcp/sse",
+      "headers": {
+        "X-API-Key": "ace_live_abc123..."
       }
     }
   }
 }
 ```
 
-The MCP server reads the `AUTHORIZATION` header from the SSE connection.
+The MCP server reads the `X-API-Key` header from the SSE connection.
 
 ## JWT Authentication (Web App)
 
@@ -114,8 +114,7 @@ JWT tokens are for web app use only. Use API keys for MCP tool access.
 ### Unauthorized
 
 **Causes:**
-- No `Authorization` header
-- Malformed header (missing `Bearer ` prefix)
+- No `X-API-Key` header
 - Invalid API key
 - Revoked API key
 
@@ -235,7 +234,7 @@ def make_request_with_retry(func, max_retries=3):
 
 ### "Invalid token format"
 
-- Include `Bearer ` prefix (with space)
+- Verify the API key is correct
 - Check for extra whitespace
 - Verify no encoding issues
 
