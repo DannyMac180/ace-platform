@@ -56,6 +56,9 @@ from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
 settings = get_settings()
 
+# Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
+ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
+
 # Context variable for storing API key extracted from HTTP headers
 # This allows tools to access the API key without it being passed as a parameter
 _request_api_key: ContextVar[str | None] = ContextVar("request_api_key", default=None)
@@ -529,9 +532,8 @@ async def create_playbook(
     # Create initial version if content provided
     version_info = ""
     if initial_content:
-        # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
-        ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
-        bullet_count = len(re.findall(ace_bullet_pattern, initial_content))
+        # Count ACE-format bullets
+        bullet_count = len(re.findall(ACE_BULLET_PATTERN, initial_content))
 
         version = PlaybookVersion(
             playbook_id=playbook.id,
@@ -625,11 +627,11 @@ async def create_version(
         return f"Error: Playbook {playbook_id} not found"
 
     if playbook.user_id != user.id:
-        return "Error: Access denied - playbook belongs to another user"
+        # Use generic "not found" to avoid confirming playbook existence to unauthorized users
+        return f"Error: Playbook {playbook_id} not found"
 
     # Calculate bullet count (done once, outside retry loop)
-    ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
-    bullet_count = len(re.findall(ace_bullet_pattern, content))
+    bullet_count = len(re.findall(ACE_BULLET_PATTERN, content))
 
     # Retry loop to handle race conditions on version_number
     max_retries = 3

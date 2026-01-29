@@ -1314,7 +1314,11 @@ class TestMCPToolsIntegration:
     async def test_create_version_access_denied(
         self, async_session: AsyncSession, test_playbook: Playbook
     ):
-        """Test that users cannot create versions for other users' playbooks."""
+        """Test that users cannot create versions for other users' playbooks.
+
+        For security, unauthorized access returns a generic 'not found' error
+        to avoid confirming the playbook's existence.
+        """
         from ace_platform.mcp.server import create_version
 
         # Create a different user and API key
@@ -1344,7 +1348,9 @@ class TestMCPToolsIntegration:
             ctx=mock_ctx,
         )
 
-        assert "Error: Access denied" in result
+        # Returns generic "not found" to avoid confirming playbook existence
+        assert "Error: Playbook" in result
+        assert "not found" in result
 
     async def test_create_playbook_counts_ace_bullets(
         self, async_session: AsyncSession, test_api_key_with_write
@@ -1371,6 +1377,46 @@ class TestMCPToolsIntegration:
 
         assert "Playbook created successfully" in result
         assert "3 bullets" in result
+
+    async def test_create_playbook_max_limit_exceeded(
+        self, async_session: AsyncSession, test_user: User
+    ):
+        """Test that playbook creation fails when max_playbooks limit is reached."""
+        from ace_platform.mcp.server import create_playbook
+
+        # Create an API key with write scope for test_user
+        key_result = await create_api_key_async(
+            async_session,
+            test_user.id,
+            "Write Key for Limit Test",
+            scopes=["playbooks:write"],
+        )
+        await async_session.commit()
+
+        # test_user has FREE tier by default, which allows max 1 playbook
+        # Create one playbook to hit the limit
+        first_playbook = Playbook(
+            user_id=test_user.id,
+            name="First Playbook",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        async_session.add(first_playbook)
+        await async_session.commit()
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = async_session
+
+        # Try to create a second playbook - should fail
+        result = await create_playbook(
+            name="Second Playbook Should Fail",
+            api_key=key_result.full_key,
+            ctx=mock_ctx,
+        )
+
+        assert "Error:" in result
+        assert "maximum number of playbooks" in result
+        assert "free" in result.lower()
 
 
 @pytestmark_integration
