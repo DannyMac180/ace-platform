@@ -561,6 +561,9 @@ async def create_version(
         str | None, "API key for authentication (optional if ACE_API_KEY env var is set)"
     ] = None,
     diff_summary: Annotated[str | None, "Brief description of changes (max 500 chars)"] = None,
+    auto_convert: Annotated[
+        bool, "Convert content to ACE bullet format using AI (default: False)"
+    ] = False,
 ) -> str:
     """Create a new version of a playbook.
 
@@ -568,6 +571,10 @@ async def create_version(
     The playbook's current_version is updated to point to the new version.
 
     Requires a valid API key with 'playbooks:write' scope.
+
+    When auto_convert=True, the content will be processed by an AI model to
+    extract actionable instructions and convert them to ACE bullet format:
+    [semantic-slug] helpful=0 harmful=0 :: Instruction content
 
     Size limits:
     - content: 100KB max
@@ -578,6 +585,7 @@ async def create_version(
         content: New version content in markdown format.
         api_key: API key for authentication (optional if ACE_API_KEY env var is set).
         diff_summary: Optional brief description of what changed.
+        auto_convert: If True, convert content to ACE bullet format using AI.
 
     Returns:
         Success message with version number, or error message.
@@ -630,6 +638,29 @@ async def create_version(
         # Use generic "not found" to avoid confirming playbook existence to unauthorized users
         return f"Error: Playbook {playbook_id} not found"
 
+    # Apply auto-conversion if requested
+    conversion_note = ""
+    if auto_convert:
+        from ace_platform.core.content_converter import convert_content_to_bullets
+
+        conversion_result = await convert_content_to_bullets(
+            content=content,
+            db=db,
+            user_id=user.id,
+            playbook_id=pb_uuid,
+            settings=settings,
+        )
+
+        if conversion_result.conversion_succeeded and conversion_result.has_changes:
+            content = conversion_result.converted_content
+            conversion_note = f", converted from markdown ({conversion_result.bullets_extracted} bullets extracted)"
+        elif not conversion_result.conversion_succeeded:
+            # Conversion failed but we continue with original content
+            conversion_note = f" (auto-convert failed: {conversion_result.error_message})"
+        elif conversion_result.error_message:
+            # Succeeded but no changes (e.g., no candidates found)
+            conversion_note = f" ({conversion_result.error_message})"
+
     # Calculate bullet count (done once, outside retry loop)
     bullet_count = len(re.findall(ACE_BULLET_PATTERN, content))
 
@@ -662,7 +693,7 @@ async def create_version(
 
             return (
                 f"Version {new_version_number} created successfully "
-                f"({bullet_count} bullets) (ID: {version.id})"
+                f"({bullet_count} bullets{conversion_note}) (ID: {version.id})"
             )
         except IntegrityError:
             # Race condition: another request created this version number
