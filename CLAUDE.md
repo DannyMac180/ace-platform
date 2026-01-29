@@ -4,6 +4,8 @@ A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capabili
 
 ## Claude Code Instructions
 
+**GitHub Repository:** This repo is `DannyMac180/ace-platform`. Always use `--repo DannyMac180/ace-platform` when creating PRs with `gh` to ensure they go to the correct repository.
+
 **Virtual Environment:** Always activate the venv before running Python, pip, pytest, alembic, or any Python-based commands:
 ```bash
 source venv/bin/activate && <command>
