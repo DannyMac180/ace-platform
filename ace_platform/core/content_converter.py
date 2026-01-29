@@ -22,7 +22,7 @@ from ace_platform.config import Settings, get_settings
 # Constants
 CONVERSION_MODEL = "gpt-5-mini"
 CONVERSION_MAX_TOKENS = 4096
-CONVERSION_TEMPERATURE = 0.2  # Low for consistency
+# Note: gpt-5-mini doesn't support custom temperature, uses default (1.0)
 
 # Regex patterns for rule-based extraction
 BULLET_LIST_PATTERN = r"^[\s]*[-*]\s+(.+)$"
@@ -351,7 +351,6 @@ async def convert_content_to_bullets(
             operation="content_to_bullets",
             playbook_id=playbook_id,
             max_completion_tokens=CONVERSION_MAX_TOKENS,
-            temperature=CONVERSION_TEMPERATURE,
             response_format={"type": "json_object"},
         )
 
