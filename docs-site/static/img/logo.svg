@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 80" width="45" height="60">
+  <!-- Card background -->
+  <rect x="2" y="2" width="56" height="76" rx="4" ry="4" fill="#ffffff" stroke="#b8860b" stroke-width="2"/>
+
+  <!-- Inner border -->
+  <rect x="6" y="6" width="48" height="68" rx="2" ry="2" fill="none" stroke="#b8860b" stroke-width="0.5" opacity="0.5"/>
+
+  <!-- Top left corner - A and small spade -->
+  <text x="10" y="20" font-family="Georgia, serif" font-size="14" font-weight="normal" fill="#1a1a1a">A</text>
+  <path d="M12 24 C12 24 9 28 9 30 C9 32 10.5 33 12 31.5 C13.5 33 15 32 15 30 C15 28 12 24 12 24 Z" fill="#1a1a1a" transform="scale(0.5) translate(8, 38)"/>
+
+  <!-- Center spade -->
+  <path d="M30 25
+           C30 25 18 38 18 48
+           C18 54 23 57 30 51
+           C37 57 42 54 42 48
+           C42 38 30 25 30 25
+           Z"
+        fill="#1a1a1a"/>
+  <!-- Spade stem -->
+  <path d="M27 51 L27 62 L24 62 L30 70 L36 62 L33 62 L33 51 Z" fill="#1a1a1a"/>
+
+  <!-- Bottom right corner - A and small spade (rotated) -->
+  <g transform="rotate(180, 30, 40)">
+    <text x="10" y="20" font-family="Georgia, serif" font-size="14" font-weight="normal" fill="#1a1a1a">A</text>
+    <path d="M12 24 C12 24 9 28 9 30 C9 32 10.5 33 12 31.5 C13.5 33 15 32 15 30 C15 28 12 24 12 24 Z" fill="#1a1a1a" transform="scale(0.5) translate(8, 38)"/>
+  </g>
+</svg>

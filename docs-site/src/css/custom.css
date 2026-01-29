@@ -1,0 +1,483 @@
+/**
+ * ACE Platform - Playing Card Theme for Docusaurus
+ * Matches the aesthetic from web/src/styles/globals.css
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700;800&family=Cormorant+Garamond:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap');
+
+/* Custom CSS variables for playing card theme */
+:root {
+  /* Docusaurus theme tokens mapped to playing card palette */
+  --ifm-color-primary: #c41e3a;
+  --ifm-color-primary-dark: #a31830;
+  --ifm-color-primary-darker: #8b1528;
+  --ifm-color-primary-darkest: #6b1020;
+  --ifm-color-primary-light: #d63050;
+  --ifm-color-primary-lighter: #e04060;
+  --ifm-color-primary-lightest: #ea5070;
+
+  /* Background colors - ivory card stock */
+  --ifm-background-color: #fdfcfa;
+  --ifm-background-surface-color: #ffffff;
+
+  /* Text colors - rich black */
+  --ifm-font-color-base: #1a1a1a;
+  --ifm-font-color-secondary: #4a4a4a;
+
+  /* Typography */
+  --ifm-font-family-base: 'Cormorant Garamond', Garamond, Georgia, serif;
+  --ifm-heading-font-family: 'Playfair Display', Georgia, serif;
+  --ifm-font-family-monospace: 'Fira Code', SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Font sizes */
+  --ifm-font-size-base: 106.25%; /* 17px */
+  --ifm-line-height-base: 1.65;
+
+  /* Code blocks */
+  --ifm-code-font-size: 87.5%;
+  --ifm-code-background: #f5f3ee;
+  --ifm-code-border-radius: 4px;
+  --ifm-code-padding-horizontal: 0.4em;
+  --ifm-code-padding-vertical: 0.2em;
+
+  /* Links */
+  --ifm-link-color: var(--ifm-color-primary);
+  --ifm-link-hover-color: var(--ifm-color-primary-dark);
+
+  /* Borders */
+  --ifm-global-border-width: 1px;
+  --ifm-global-radius: 8px;
+
+  /* Navbar */
+  --ifm-navbar-background-color: #ffffff;
+  --ifm-navbar-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --ifm-navbar-height: 4rem;
+  --ifm-navbar-link-color: #2d2d2d;
+  --ifm-navbar-link-hover-color: var(--ifm-color-primary);
+
+  /* Footer */
+  --ifm-footer-background-color: #f8f6f1;
+  --ifm-footer-color: #4a4a4a;
+  --ifm-footer-link-color: #2d2d2d;
+  --ifm-footer-link-hover-color: var(--ifm-color-primary);
+
+  /* Sidebar */
+  --doc-sidebar-width: 280px;
+
+  /* Gold accent for special elements */
+  --ace-gold-primary: #b8860b;
+  --ace-gold-secondary: #9a7209;
+  --ace-gold-glow: rgba(184, 134, 11, 0.1);
+
+  /* Status colors */
+  --ace-success: #1e7a4d;
+  --ace-warning: #b8860b;
+  --ace-error: #c41e3a;
+}
+
+/* ========================================
+   Global Styles
+   ======================================== */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle card pattern overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 0L30 60M0 30L60 30M0 0L60 60M60 0L0 60' stroke='%23000000' stroke-width='0.2' fill='none' opacity='0.02'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ========================================
+   Typography
+   ======================================== */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* Article content */
+article {
+  font-size: 1.0625rem;
+}
+
+article p {
+  color: var(--ifm-font-color-secondary);
+  max-width: 70ch;
+}
+
+/* ========================================
+   Navbar
+   ======================================== */
+
+.navbar {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.navbar__title {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.01em;
+}
+
+.navbar__link {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 500;
+  font-size: 0.9375rem;
+}
+
+.navbar__link--active {
+  color: var(--ifm-color-primary);
+}
+
+/* ========================================
+   Sidebar
+   ======================================== */
+
+.menu__link {
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border-radius: 6px;
+  transition: all 150ms ease;
+}
+
+.menu__link:hover {
+  background: rgba(196, 30, 58, 0.05);
+  color: var(--ifm-color-primary);
+}
+
+.menu__link--active {
+  background: rgba(196, 30, 58, 0.1) !important;
+  color: var(--ifm-color-primary) !important;
+  font-weight: 600;
+}
+
+.menu__list-item-collapsible .menu__link {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  color: var(--ifm-font-color-secondary);
+}
+
+/* ========================================
+   Content Area
+   ======================================== */
+
+.markdown {
+  --ifm-h1-vertical-rhythm-top: 3;
+  --ifm-h2-vertical-rhythm-top: 2;
+  --ifm-h3-vertical-rhythm-top: 1.5;
+}
+
+.markdown h1:first-child {
+  --ifm-h1-font-size: 2.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.markdown > h2 {
+  --ifm-h2-font-size: 1.75rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding-bottom: 0.5rem;
+}
+
+.markdown > h3 {
+  --ifm-h3-font-size: 1.375rem;
+}
+
+/* Code blocks */
+.prism-code {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+code {
+  color: var(--ifm-color-primary);
+  background: var(--ifm-code-background);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid var(--ifm-color-primary);
+  background: rgba(196, 30, 58, 0.03);
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+  border-radius: 0 8px 8px 0;
+}
+
+blockquote p {
+  color: var(--ifm-font-color-base);
+}
+
+/* Tables */
+table {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+table thead {
+  background: #f5f3ee;
+}
+
+table thead th {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ifm-font-color-secondary);
+}
+
+table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* ========================================
+   Admonitions / Alerts
+   ======================================== */
+
+.alert {
+  border-radius: 8px;
+  border-width: 1px;
+  border-left-width: 4px;
+}
+
+.alert--info {
+  --ifm-alert-background-color: rgba(196, 30, 58, 0.05);
+  --ifm-alert-border-color: var(--ifm-color-primary);
+}
+
+.alert--warning {
+  --ifm-alert-background-color: rgba(184, 134, 11, 0.08);
+  --ifm-alert-border-color: var(--ace-gold-primary);
+}
+
+.alert--success {
+  --ifm-alert-background-color: rgba(30, 122, 77, 0.08);
+  --ifm-alert-border-color: var(--ace-success);
+}
+
+.alert--danger {
+  --ifm-alert-background-color: rgba(196, 30, 58, 0.08);
+  --ifm-alert-border-color: var(--ace-error);
+}
+
+.alert .admonitionHeading_node_modules-\@docusaurus-theme-classic-lib-theme-Admonition-Layout-styles-module {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+}
+
+/* ========================================
+   Footer
+   ======================================== */
+
+.footer {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.footer__title {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.footer__link-item {
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.9375rem;
+}
+
+.footer__copyright {
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.875rem;
+  color: var(--ifm-font-color-secondary);
+}
+
+/* ========================================
+   Buttons
+   ======================================== */
+
+.button {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  border-radius: 8px;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.button--primary {
+  background: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
+}
+
+.button--primary:hover {
+  background: var(--ifm-color-primary-dark);
+  border-color: var(--ifm-color-primary-dark);
+  box-shadow: 0 4px 12px rgba(196, 30, 58, 0.3);
+}
+
+.button--secondary {
+  color: var(--ifm-color-primary);
+  border-color: var(--ifm-color-primary);
+}
+
+.button--secondary:hover {
+  background: rgba(196, 30, 58, 0.05);
+  color: var(--ifm-color-primary-dark);
+}
+
+/* ========================================
+   Search
+   ======================================== */
+
+.DocSearch-Button {
+  border-radius: 8px !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.DocSearch-Button:hover {
+  border-color: var(--ifm-color-primary) !important;
+  box-shadow: 0 0 0 3px rgba(196, 30, 58, 0.1) !important;
+}
+
+/* ========================================
+   Table of Contents
+   ======================================== */
+
+.table-of-contents__link {
+  font-size: 0.875rem;
+  color: var(--ifm-font-color-secondary);
+}
+
+.table-of-contents__link:hover,
+.table-of-contents__link--active {
+  color: var(--ifm-color-primary);
+}
+
+.table-of-contents__link--active {
+  font-weight: 600;
+}
+
+/* ========================================
+   Pagination
+   ======================================== */
+
+.pagination-nav__link {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  transition: all 150ms ease;
+}
+
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary);
+  box-shadow: 0 2px 8px rgba(196, 30, 58, 0.1);
+}
+
+.pagination-nav__sublabel {
+  font-family: var(--ifm-heading-font-family);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--ifm-font-color-secondary);
+}
+
+.pagination-nav__label {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 600;
+}
+
+/* ========================================
+   Custom utility classes
+   ======================================== */
+
+.text-gold {
+  color: var(--ace-gold-primary);
+}
+
+.bg-gold-subtle {
+  background: var(--ace-gold-glow);
+}
+
+/* Card-style callout */
+.card-callout {
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card-callout:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* Suit decorations */
+.suit-hearts::before { content: '\2665'; color: var(--ifm-color-primary); margin-right: 0.5rem; }
+.suit-diamonds::before { content: '\2666'; color: var(--ifm-color-primary); margin-right: 0.5rem; }
+.suit-clubs::before { content: '\2663'; color: #1a1a1a; margin-right: 0.5rem; }
+.suit-spades::before { content: '\2660'; color: #1a1a1a; margin-right: 0.5rem; }
+
+/* ========================================
+   Responsive adjustments
+   ======================================== */
+
+@media (max-width: 996px) {
+  .navbar__title {
+    font-size: 1.125rem;
+  }
+
+  article {
+    font-size: 1rem;
+  }
+}
+
+/* ========================================
+   Selection highlight
+   ======================================== */
+
+::selection {
+  background: rgba(196, 30, 58, 0.2);
+  color: #1a1a1a;
+}
+
+/* ========================================
+   Scrollbar styling
+   ======================================== */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f5f3ee;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #eceae4;
+  border-radius: 5px;
+  border: 2px solid #f5f3ee;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}

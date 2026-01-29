@@ -1,0 +1,33 @@
+# fly.staging.toml - Staging configuration for ACE Platform Documentation
+# Deploy with: fly deploy -c fly.staging.toml
+
+app = "ace-platform-docs-staging"
+primary_region = "iad"
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+[checks]
+  [checks.health]
+    grace_period = "10s"
+    interval = "30s"
+    method = "get"
+    path = "/health"
+    port = 8080
+    timeout = "5s"
+    type = "http"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[deploy]
+  strategy = "rolling"

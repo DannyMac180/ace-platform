@@ -1,0 +1,172 @@
+/* Homepage styles - Playing card aesthetic */
+
+.heroBanner {
+  padding: 6rem 0;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fdfcfa 0%, #f5f3ee 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.heroTitle {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 3.5rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.heroSubtitle {
+  font-family: 'Cormorant Garamond', Garamond, serif;
+  font-size: 1.5rem;
+  color: #4a4a4a;
+  margin-bottom: 2rem;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.buttons {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.heroButton {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Features section */
+.features {
+  padding: 4rem 0;
+  background: #ffffff;
+}
+
+.feature {
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.featureIcon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  line-height: 1;
+}
+
+/* Red suits */
+.feature:nth-child(2) .featureIcon,
+.feature:nth-child(3) .featureIcon {
+  color: #c41e3a;
+}
+
+/* Black suits */
+.feature:nth-child(1) .featureIcon,
+.feature:nth-child(4) .featureIcon {
+  color: #1a1a1a;
+}
+
+.featureTitle {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 0.75rem;
+}
+
+.featureDescription {
+  font-family: 'Cormorant Garamond', Garamond, serif;
+  font-size: 1rem;
+  color: #4a4a4a;
+  line-height: 1.6;
+}
+
+/* Quick links section */
+.quickLinks {
+  padding: 4rem 0;
+  background: #f8f6f1;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.sectionTitle {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 2rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.linkCards {
+  justify-content: center;
+}
+
+.linkCard {
+  display: block;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  padding: 1.5rem;
+  text-decoration: none;
+  transition: all 250ms ease;
+  height: 100%;
+}
+
+.linkCard:hover {
+  border-color: #c41e3a;
+  box-shadow: 0 4px 12px rgba(196, 30, 58, 0.1);
+  text-decoration: none;
+  transform: translateY(-2px);
+}
+
+.linkCard h3 {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 0.5rem;
+}
+
+.linkCard p {
+  font-family: 'Cormorant Garamond', Garamond, serif;
+  font-size: 0.9375rem;
+  color: #4a4a4a;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 996px) {
+  .heroBanner {
+    padding: 4rem 2rem;
+  }
+
+  .heroTitle {
+    font-size: 2.5rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1.25rem;
+  }
+
+  .feature {
+    margin-bottom: 2rem;
+  }
+}
+
+@media screen and (max-width: 576px) {
+  .buttons {
+    flex-direction: column;
+  }
+
+  .heroButton {
+    width: 100%;
+  }
+}

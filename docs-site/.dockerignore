@@ -1,0 +1,34 @@
+# Dependencies
+node_modules
+
+# Build output
+build
+.docusaurus
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test files
+coverage
+
+# Fly.io configs (we COPY the appropriate one)
+fly.*.toml
+
+# Documentation files not needed in image
+*.md
+!docs/**/*.md
