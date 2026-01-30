@@ -194,6 +194,15 @@
   box-shadow: 0 0 8px var(--accent-glow);
 }
 
+.externalIcon {
+  margin-left: auto;
+  opacity: 0.5;
+}
+
+.navLink:hover .externalIcon {
+  opacity: 1;
+}
+
 /* Trial banner */
 .trialBanner {
   display: flex;

@@ -10,6 +10,8 @@ import {
   Menu,
   X,
   CreditCard,
+  FileText,
+  ExternalLink,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '../Logo';
@@ -40,6 +42,8 @@ export function Layout({ children }: LayoutProps) {
   };
 
   const trialDaysRemaining = getTrialDaysRemaining();
+
+  const docsUrl = import.meta.env.VITE_DOCS_URL || 'https://docs.aceagent.io';
 
   const navItems = [
     { to: '/dashboard', icon: BookOpen, label: 'Playbooks' },
@@ -87,6 +91,18 @@ export function Layout({ children }: LayoutProps) {
                 <span>{label}</span>
               </NavLink>
             ))}
+            {/* External docs link */}
+            <a
+              href={docsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.navLink}
+              onClick={() => setIsSidebarOpen(false)}
+            >
+              <FileText size={20} />
+              <span>Docs</span>
+              <ExternalLink size={14} className={styles.externalIcon} />
+            </a>
           </nav>
 
           {/* Trial banner */}

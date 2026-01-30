@@ -5,6 +5,7 @@ primary_region = 'iad'
   dockerfile = "Dockerfile"
   [build.args]
     VITE_API_URL = "https://aceagent.io"
+    VITE_DOCS_URL = "https://docs.aceagent.io"
 
 [http_service]
   internal_port = 80

@@ -3,8 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Build arg for API URL
+# Build args for environment configuration
 ARG VITE_API_URL=https://aceagent.io
+ARG VITE_DOCS_URL=https://docs.aceagent.io
 
 # Copy package files
 COPY package*.json ./
@@ -15,8 +16,9 @@ RUN npm ci
 # Copy source files
 COPY . .
 
-# Set environment variable for build
+# Set environment variables for build
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_DOCS_URL=$VITE_DOCS_URL
 
 # Build the app
 RUN npm run build
