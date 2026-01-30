@@ -7,6 +7,7 @@ import styles from './index.module.css';
 
 function HomepageHeader() {
   const {siteConfig} = useDocusaurusContext();
+  const appUrl = siteConfig.customFields?.appUrl as string || 'https://app.aceagent.io';
   return (
     <header className={clsx('hero', styles.heroBanner)}>
       <div className="container">
@@ -17,7 +18,7 @@ function HomepageHeader() {
         <div className={styles.buttons}>
           <Link
             className={clsx('button button--primary button--lg', styles.heroButton)}
-            href="https://app.aceagent.io/login">
+            href={`${appUrl}/login`}>
             Get Started
           </Link>
           <Link

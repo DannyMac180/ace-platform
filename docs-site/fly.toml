@@ -5,6 +5,9 @@ app = "ace-platform-docs"
 primary_region = "iad"
 
 [build]
+  [build.args]
+    APP_URL = "https://app.aceagent.io"
+    API_URL = "https://aceagent.io"
 
 [http_service]
   internal_port = 8080

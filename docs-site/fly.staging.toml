@@ -5,6 +5,9 @@ app = "ace-platform-docs-staging"
 primary_region = "iad"
 
 [build]
+  [build.args]
+    APP_URL = "https://ace-platform-web-staging.fly.dev"
+    API_URL = "https://ace-platform-staging.fly.dev"
 
 [http_service]
   internal_port = 8080

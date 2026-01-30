@@ -2,6 +2,10 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+// Environment-specific URLs (set via build args)
+const APP_URL = process.env.APP_URL || 'https://app.aceagent.io';
+const API_URL = process.env.API_URL || 'https://aceagent.io';
+
 const config: Config = {
   title: 'ACE',
   tagline: 'Playbooks as a Service - Self-improving AI instructions',
@@ -26,6 +30,11 @@ const config: Config = {
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
+  },
+
+  customFields: {
+    appUrl: APP_URL,
+    apiUrl: API_URL,
   },
 
   presets: [
@@ -59,7 +68,7 @@ const config: Config = {
           label: 'Documentation',
         },
         {
-          href: 'https://app.aceagent.io',
+          href: APP_URL,
           label: 'Dashboard',
           position: 'right',
         },
@@ -90,11 +99,11 @@ const config: Config = {
           items: [
             {
               label: 'Dashboard',
-              href: 'https://app.aceagent.io',
+              href: APP_URL,
             },
             {
               label: 'Pricing',
-              href: 'https://aceagent.io/pricing',
+              href: `${APP_URL}/pricing`,
             },
           ],
         },
