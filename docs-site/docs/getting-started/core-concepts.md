@@ -225,7 +225,6 @@ ACE offers tiered subscriptions:
 | Starter | 5 | 100 | $9/mo |
 | Pro | 20 | 500 | $29/mo |
 | Ultra | 100 | 2,000 | $79/mo |
-| Enterprise | Unlimited | Unlimited | Custom |
 
 ### Usage Tracking
 

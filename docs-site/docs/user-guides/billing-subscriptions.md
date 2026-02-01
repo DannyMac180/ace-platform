@@ -8,14 +8,13 @@ Manage your ACE subscription, usage, and billing.
 
 ## Plans Overview
 
-ACE offers four subscription tiers:
+ACE offers three subscription tiers:
 
 | Plan | Playbooks | Evolutions/month | Price |
 |------|-----------|------------------|-------|
 | **Starter** | 5 | 100 | $9/month |
 | **Pro** | 20 | 500 | $29/month |
 | **Ultra** | 100 | 2,000 | $79/month |
-| **Enterprise** | Custom | Custom | Contact us |
 
 ## Choosing a Plan
 
@@ -39,15 +38,6 @@ Best for:
 - Power users
 - Larger teams
 - High-volume usage
-
-### Enterprise
-
-Best for:
-- Organizations with custom requirements
-- SLA guarantees needed
-- Dedicated support
-
-Contact sales@aceagent.io for Enterprise pricing.
 
 ## Subscribing
 
@@ -197,17 +187,6 @@ Email billing@aceagent.io with:
 - Account email
 - Reason for refund
 - Invoice number
-
-## Enterprise & Custom Plans
-
-For organizations needing:
-- Custom limits
-- SLA guarantees
-- Dedicated support
-- On-premise deployment
-- Custom integrations
-
-Contact sales@aceagent.io to discuss options.
 
 ## Tax Information
 
