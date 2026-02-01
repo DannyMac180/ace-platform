@@ -173,17 +173,7 @@ ACE API keys have prefixes indicating their type:
 
 ## Rate Limits
 
-API keys are subject to MCP tool call rate limits:
-
-| Plan | Requests/Minute | Requests/Day |
-|------|-----------------|--------------|
-| Free | 60 | 1,000 |
-| Pro | 300 | 10,000 |
-| Team | 1,000 | Unlimited |
-
-### Handling Rate Limits
-
-If you hit a rate limit, wait and retry with exponential backoff.
+If you encounter rate limits, wait and retry with exponential backoff.
 
 ## Troubleshooting
 
@@ -213,5 +203,4 @@ If you hit a rate limit, wait and retry with exponential backoff.
 ## Next Steps
 
 - [Set up MCP integration](/docs/developer-guides/mcp-integration/overview)
-- [MCP integration](/docs/developer-guides/mcp-integration/overview)
 - [Monitor usage](/docs/user-guides/billing-subscriptions)

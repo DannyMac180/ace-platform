@@ -8,57 +8,46 @@ Manage your ACE subscription, usage, and billing.
 
 ## Plans Overview
 
-ACE offers three subscription tiers:
+ACE offers four subscription tiers:
 
-| Feature | Free | Pro | Team |
-|---------|------|-----|------|
-| **Playbooks** | 3 | 25 | Unlimited |
-| **Evolutions/month** | 10 | 100 | Unlimited |
-| **MCP tool calls/day** | 1,000 | 10,000 | Unlimited |
-| **Outcome storage** | 30 days | 1 year | Unlimited |
-| **Version history** | 10 versions | 50 versions | Unlimited |
-| **Support** | Community | Email | Priority |
-| **Price** | $0 | $29/month | $99/month |
+| Plan | Playbooks | Evolutions/month | Price |
+|------|-----------|------------------|-------|
+| **Starter** | 5 | 100 | $9/month |
+| **Pro** | 20 | 500 | $29/month |
+| **Ultra** | 100 | 2,000 | $79/month |
+| **Enterprise** | Custom | Custom | Contact us |
 
 ## Choosing a Plan
 
-### Free Plan
+### Starter Plan
 
 Best for:
-- Trying out ACE
+- Individual developers
 - Personal projects
-- Learning and experimentation
-
-Limitations:
-- 3 playbooks maximum
-- 10 evolutions per month
-- 30-day outcome retention
+- Getting started with ACE
 
 ### Pro Plan
 
 Best for:
-- Individual developers
+- Professional developers
 - Small teams
-- Production applications
+- Multiple active projects
 
-Includes:
-- 25 playbooks
-- 100 evolutions per month
-- 1-year outcome history
-- Email support
-
-### Team Plan
+### Ultra Plan
 
 Best for:
+- Power users
 - Larger teams
-- Enterprise applications
 - High-volume usage
 
-Includes:
-- Unlimited everything
-- Priority support
-- Advanced analytics (coming soon)
-- Custom integrations (coming soon)
+### Enterprise
+
+Best for:
+- Organizations with custom requirements
+- SLA guarantees needed
+- Dedicated support
+
+Contact sales@aceagent.io for Enterprise pricing.
 
 ## Subscribing
 
@@ -122,33 +111,9 @@ After cancellation:
 
 ## Usage Monitoring
 
-### Dashboard View
-
-The billing page shows:
-
-```
-┌─────────────────────────────────────┐
-│ Current Usage                       │
-├─────────────────────────────────────┤
-│ Playbooks:    5 / 25                │
-│ ███████░░░░░░░░░░░░░░░░░░░░ 20%    │
-│                                     │
-│ Evolutions:   45 / 100              │
-│ █████████████░░░░░░░░░░░░░░ 45%    │
-│                                     │
-│ Tool Calls:   3,200 / 10,000        │
-│ █████████░░░░░░░░░░░░░░░░░░ 32%    │
-└─────────────────────────────────────┘
-```
-
-### Usage Alerts
-
-Configure alerts when approaching limits:
-
-1. Go to **Settings** > **Notifications**
-2. Enable **Usage Alerts**
-3. Set threshold (e.g., 80%)
-4. Choose notification method (email, dashboard)
+The billing page shows your current usage including:
+- Playbooks used vs. plan limit
+- Evolutions used this month vs. plan limit
 
 ## Billing Portal
 
@@ -200,9 +165,9 @@ If a payment fails:
 3. You have 7 days to update payment
 
 After 7 days without payment:
-- Account downgraded to Free plan
-- Data above Free limits archived (not deleted)
-- Access restored when payment succeeds
+- Account access restricted
+- Data retained but read-only
+- Full access restored when payment succeeds
 
 ### Updating Payment Method
 

@@ -40,18 +40,6 @@ const sidebars: SidebarsConfig = {
         'developer-guides/recording-outcomes',
       ],
     },
-    {
-      type: 'category',
-      label: 'API Reference',
-      items: [
-        'api-reference/overview',
-        'api-reference/authentication',
-        'api-reference/playbooks',
-        'api-reference/outcomes',
-        'api-reference/evolution',
-        'api-reference/usage-billing',
-      ],
-    },
   ],
 };
 

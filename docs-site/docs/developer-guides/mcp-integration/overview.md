@@ -32,19 +32,7 @@ ACE's MCP server exposes these tools:
 
 List all playbooks accessible with your API key.
 
-**Returns:**
-```json
-{
-  "playbooks": [
-    {
-      "id": "abc-123",
-      "name": "Code Review Assistant",
-      "description": "Reviews PRs for quality",
-      "current_version": 3
-    }
-  ]
-}
-```
+**Returns:** Markdown-formatted list of playbooks with IDs and descriptions.
 
 ### get_playbook
 
@@ -57,14 +45,7 @@ Get the content of a specific playbook.
 | `version` | integer | No | Specific version (default: current) |
 | `section` | string | No | Filter to section by heading |
 
-**Returns:**
-```json
-{
-  "name": "Code Review Assistant",
-  "version": 3,
-  "content": "# Code Review Assistant\n\n## Role\n..."
-}
-```
+**Returns:** Markdown-formatted playbook content including name, description, and version.
 
 ### create_playbook
 
@@ -74,8 +55,11 @@ Create a new playbook.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Playbook name |
-| `content` | string | Yes | Markdown content |
 | `description` | string | No | Brief description |
+| `initial_content` | string | No | Markdown content for version 1 |
+| `auto_convert` | boolean | No | Convert content to ACE bullet format using AI |
+
+**Returns:** Success message with playbook ID.
 
 ### create_version
 
@@ -86,7 +70,10 @@ Create a new version of an existing playbook.
 |-----------|------|----------|-------------|
 | `playbook_id` | string | Yes | Playbook UUID |
 | `content` | string | Yes | New markdown content |
-| `change_summary` | string | No | Description of changes |
+| `diff_summary` | string | No | Description of changes |
+| `auto_convert` | boolean | No | Convert content to ACE bullet format using AI |
+
+**Returns:** Success message with version number.
 
 ### record_outcome
 
@@ -101,6 +88,8 @@ Record the outcome of a task performed with a playbook.
 | `notes` | string | No | Additional context |
 | `reasoning_trace` | string | No | Agent's reasoning process |
 
+**Returns:** Success message confirming the outcome was recorded.
+
 ### trigger_evolution
 
 Manually trigger playbook evolution.
@@ -110,13 +99,7 @@ Manually trigger playbook evolution.
 |-----------|------|----------|-------------|
 | `playbook_id` | string | Yes | Playbook UUID |
 
-**Returns:**
-```json
-{
-  "job_id": "job-xyz-789",
-  "status": "pending"
-}
-```
+**Returns:** Job ID and status for tracking the evolution.
 
 ### get_evolution_status
 
@@ -127,15 +110,7 @@ Check the status of an evolution job.
 |-----------|------|----------|-------------|
 | `job_id` | string | Yes | Evolution job ID |
 
-**Returns:**
-```json
-{
-  "job_id": "job-xyz-789",
-  "status": "completed",
-  "new_version": 4,
-  "change_summary": "Added input validation guidelines..."
-}
-```
+**Returns:** Job status, progress, timing, and any error information.
 
 ## Authentication
 
@@ -348,16 +323,7 @@ This approach is more flexible as it doesn't require maintaining a static list o
 
 ## Error Handling
 
-MCP tools return errors in a consistent format:
-
-```json
-{
-  "error": {
-    "code": "not_found",
-    "message": "Playbook not found"
-  }
-}
-```
+MCP tools return error messages when something goes wrong.
 
 Common error codes:
 

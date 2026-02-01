@@ -261,4 +261,3 @@ Truncate longer content or summarize key points.
 
 - [Understanding evolution](/docs/user-guides/understanding-evolution)
 - [MCP integration](/docs/developer-guides/mcp-integration/overview)
-- [MCP integration](/docs/developer-guides/mcp-integration/overview)
