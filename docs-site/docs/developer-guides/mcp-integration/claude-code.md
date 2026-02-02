@@ -167,56 +167,6 @@ Create a hook that prompts for outcome recording:
 }
 ```
 
-## Environment-Specific Configuration
-
-### Development
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "http://localhost:8000/mcp/sse",
-      "headers": {
-        "X-API-Key": "DEV_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Staging
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://ace-platform-staging.fly.dev/mcp/sse",
-      "headers": {
-        "X-API-Key": "STAGING_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Production
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "PROD_API_KEY"
-      }
-    }
-  }
-}
-```
-
 ## Using Environment Variables
 
 Keep API keys out of config files by using environment variable substitution:

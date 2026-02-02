@@ -16,13 +16,11 @@ Benefits of MCP integration:
 - **Real-time** - Changes reflect immediately
 - **Secure** - API key authentication
 
-## MCP Server Endpoints
+## MCP Server Endpoint
 
-| Environment | URL | Use Case |
-|-------------|-----|----------|
-| Production | `https://aceagent.io/mcp/sse` | Production agents |
-| Staging | `https://ace-platform-staging.fly.dev/mcp/sse` | Testing |
-| Local | `http://localhost:8000/mcp/sse` | Development |
+```
+https://aceagent.io/mcp/sse
+```
 
 ## Available Tools
 

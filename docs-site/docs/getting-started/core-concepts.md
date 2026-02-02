@@ -207,12 +207,11 @@ Never expose API keys with write scopes in client-side code or public repositori
 | `trigger_evolution` | Manually trigger evolution |
 | `get_evolution_status` | Check evolution job status |
 
-### MCP Endpoints
+### MCP Endpoint
 
-| Environment | URL |
-|-------------|-----|
-| Production | `https://aceagent.io/mcp/sse` |
-| Staging | `https://ace-platform-staging.fly.dev/mcp/sse` |
+```
+https://aceagent.io/mcp/sse
+```
 
 ## Subscriptions & Usage
 
