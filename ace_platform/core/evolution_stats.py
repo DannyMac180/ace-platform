@@ -324,7 +324,9 @@ async def get_recent_evolutions(
     )
 
     # Use started_at when present; fall back to created_at for queued/legacy rows.
-    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at).label("activity_at")
+    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at).label(
+        "activity_at"
+    )
 
     query = (
         select(

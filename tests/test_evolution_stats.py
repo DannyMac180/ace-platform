@@ -166,4 +166,3 @@ class TestRecentEvolutions:
         assert recent[0].status == EvolutionJobStatus.COMPLETED
         assert recent[0].started_at == row.activity_at
         assert recent[0].completed_at == row.completed_at
-
