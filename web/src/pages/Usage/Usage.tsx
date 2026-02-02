@@ -20,29 +20,44 @@ import styles from './Usage.module.css';
 import { useNavigate } from 'react-router-dom';
 
 export function Usage() {
-  const { data: summary, isLoading: summaryLoading } = useQuery<EvolutionSummary>({
+  const summaryQuery = useQuery<EvolutionSummary>({
     queryKey: ['evolution-summary'],
     queryFn: evolutionsApi.getSummary,
   });
 
-  const { data: dailyEvolutions, isLoading: dailyLoading } = useQuery<DailyEvolution[]>({
+  const dailyQuery = useQuery<DailyEvolution[]>({
     queryKey: ['evolution-daily'],
     queryFn: () => evolutionsApi.getDaily(30),
   });
 
-  const { data: playbookStats, isLoading: playbookLoading } = useQuery<PlaybookEvolutionStats[]>({
+  const playbookQuery = useQuery<PlaybookEvolutionStats[]>({
     queryKey: ['evolution-by-playbook'],
     queryFn: () => evolutionsApi.getByPlaybook(5),
   });
 
-  const { data: recentEvolutions, isLoading: recentLoading } = useQuery<RecentEvolution[]>({
+  const recentQuery = useQuery<RecentEvolution[]>({
     queryKey: ['evolution-recent'],
     queryFn: () => evolutionsApi.getRecent(10),
   });
 
-  const isLoading = summaryLoading || dailyLoading || playbookLoading || recentLoading;
+  const isLoading =
+    summaryQuery.isLoading || dailyQuery.isLoading || playbookQuery.isLoading || recentQuery.isLoading;
+  const isError =
+    summaryQuery.isError || dailyQuery.isError || playbookQuery.isError || recentQuery.isError;
+
+  const summary = summaryQuery.data;
+  const dailyEvolutions = dailyQuery.data;
+  const playbookStats = playbookQuery.data;
+  const recentEvolutions = recentQuery.data;
 
   const hasAnyData = summary && summary.total_evolutions > 0;
+
+  const handleRetry = () => {
+    summaryQuery.refetch();
+    dailyQuery.refetch();
+    playbookQuery.refetch();
+    recentQuery.refetch();
+  };
 
   return (
     <div className={styles.container}>
@@ -56,6 +71,8 @@ export function Usage() {
           <div className={styles.spinner} />
           <span>Loading activity data...</span>
         </div>
+      ) : isError ? (
+        <ErrorState onRetry={handleRetry} />
       ) : !hasAnyData ? (
         <EmptyState />
       ) : (
@@ -361,6 +378,23 @@ function EmptyState() {
       </p>
       <button className={styles.emptyButton} onClick={() => navigate('/dashboard')}>
         Go to Playbooks
+      </button>
+    </div>
+  );
+}
+
+function ErrorState({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className={styles.emptyState}>
+      <div className={styles.emptyIcon}>
+        <AlertCircle size={48} />
+      </div>
+      <h2>Couldn&apos;t Load Activity</h2>
+      <p>
+        Something went wrong while loading your usage activity. Please try again.
+      </p>
+      <button className={styles.emptyButton} onClick={onRetry}>
+        Retry
       </button>
     </div>
   );

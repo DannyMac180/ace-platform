@@ -99,22 +99,25 @@ async def get_evolution_summary(
     if start_date is None:
         start_date = end_date - timedelta(days=30)
 
+    # Use started_at when present; fall back to created_at for queued/legacy rows.
+    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at)
+
     # Query evolution jobs joined with playbooks to filter by user
     query = (
         select(
             func.count(EvolutionJob.id).label("total_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.COMPLETED, func.INTEGER())
-            ).label("completed_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.FAILED, func.INTEGER())
-            ).label("failed_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.RUNNING, func.INTEGER())
-            ).label("running_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.QUEUED, func.INTEGER())
-            ).label("queued_evolutions"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.COMPLETED)
+            .label("completed_evolutions"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.FAILED)
+            .label("failed_evolutions"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.RUNNING)
+            .label("running_evolutions"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.QUEUED)
+            .label("queued_evolutions"),
             func.coalesce(func.sum(EvolutionJob.outcomes_processed), 0).label(
                 "total_outcomes_processed"
             ),
@@ -123,8 +126,8 @@ async def get_evolution_summary(
         .join(Playbook, EvolutionJob.playbook_id == Playbook.id)
         .where(
             Playbook.user_id == user_id,
-            EvolutionJob.started_at >= start_date,
-            EvolutionJob.started_at <= end_date,
+            activity_at >= start_date,
+            activity_at <= end_date,
         )
     )
 
@@ -171,32 +174,35 @@ async def get_evolution_by_day(
     if start_date is None:
         start_date = end_date - timedelta(days=30)
 
+    # Use started_at when present; fall back to created_at for queued/legacy rows.
+    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at)
+
     # Group by date (truncate to day)
-    date_trunc = func.date_trunc("day", EvolutionJob.started_at)
+    date_trunc = func.date_trunc("day", activity_at)
 
     query = (
         select(
             date_trunc.label("date"),
             func.count(EvolutionJob.id).label("total_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.COMPLETED, func.INTEGER())
-            ).label("completed"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.FAILED, func.INTEGER())
-            ).label("failed"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.RUNNING, func.INTEGER())
-            ).label("running"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.QUEUED, func.INTEGER())
-            ).label("queued"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.COMPLETED)
+            .label("completed"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.FAILED)
+            .label("failed"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.RUNNING)
+            .label("running"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.QUEUED)
+            .label("queued"),
         )
         .select_from(EvolutionJob)
         .join(Playbook, EvolutionJob.playbook_id == Playbook.id)
         .where(
             Playbook.user_id == user_id,
-            EvolutionJob.started_at >= start_date,
-            EvolutionJob.started_at <= end_date,
+            activity_at >= start_date,
+            activity_at <= end_date,
         )
         .group_by(date_trunc)
         .order_by(date_trunc)
@@ -242,25 +248,28 @@ async def get_evolution_by_playbook(
     if start_date is None:
         start_date = end_date - timedelta(days=30)
 
+    # Use started_at when present; fall back to created_at for queued/legacy rows.
+    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at)
+
     query = (
         select(
             Playbook.id.label("playbook_id"),
             Playbook.name.label("playbook_name"),
             func.count(EvolutionJob.id).label("total_evolutions"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.COMPLETED, func.INTEGER())
-            ).label("completed"),
-            func.sum(
-                func.cast(EvolutionJob.status == EvolutionJobStatus.FAILED, func.INTEGER())
-            ).label("failed"),
-            func.max(EvolutionJob.started_at).label("last_evolution_at"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.COMPLETED)
+            .label("completed"),
+            func.count(EvolutionJob.id)
+            .filter(EvolutionJob.status == EvolutionJobStatus.FAILED)
+            .label("failed"),
+            func.max(activity_at).label("last_evolution_at"),
         )
         .select_from(Playbook)
         .join(EvolutionJob, Playbook.id == EvolutionJob.playbook_id)
         .where(
             Playbook.user_id == user_id,
-            EvolutionJob.started_at >= start_date,
-            EvolutionJob.started_at <= end_date,
+            activity_at >= start_date,
+            activity_at <= end_date,
         )
         .group_by(Playbook.id, Playbook.name)
         .order_by(func.count(EvolutionJob.id).desc())
@@ -314,6 +323,9 @@ async def get_recent_evolutions(
         .scalar_subquery()
     )
 
+    # Use started_at when present; fall back to created_at for queued/legacy rows.
+    activity_at = func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at).label("activity_at")
+
     query = (
         select(
             EvolutionJob.id,
@@ -323,14 +335,14 @@ async def get_recent_evolutions(
             EvolutionJob.outcomes_processed,
             from_version_subq.label("from_version_number"),
             to_version_subq.label("to_version_number"),
-            EvolutionJob.started_at,
+            activity_at,
             EvolutionJob.completed_at,
             EvolutionJob.error_message,
         )
         .select_from(EvolutionJob)
         .join(Playbook, EvolutionJob.playbook_id == Playbook.id)
         .where(Playbook.user_id == user_id)
-        .order_by(EvolutionJob.started_at.desc().nullslast())
+        .order_by(activity_at.desc())
         .limit(limit)
     )
 
@@ -346,7 +358,7 @@ async def get_recent_evolutions(
             outcomes_processed=row.outcomes_processed or 0,
             from_version_number=row.from_version_number,
             to_version_number=row.to_version_number,
-            started_at=row.started_at,
+            started_at=row.activity_at,
             completed_at=row.completed_at,
             error_message=row.error_message,
         )

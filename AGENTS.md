@@ -1,0 +1,350 @@
+# ACE Platform
+
+A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capability Enhancement) three-agent architecture.
+
+## Claude Code Instructions
+
+**GitHub Repository:** This repo is `DannyMac180/ace-platform`. Always use `--repo DannyMac180/ace-platform` when creating PRs with `gh` to ensure they go to the correct repository.
+
+**Virtual Environment:** Always activate the venv before running Python, pip, pytest, alembic, or any Python-based commands:
+```bash
+source venv/bin/activate && <command>
+```
+
+**Package Installation:** Always install packages into the venv, never globally:
+```bash
+source venv/bin/activate && pip install <package>
+```
+
+**Local Frontend Development:** Always run the frontend on port 3000. Kill any existing process on port 3000 before starting:
+```bash
+lsof -ti :3000 | xargs kill -9 2>/dev/null; cd web && npm run dev -- --port 3000
+```
+
+## Architecture Overview
+
+- **ace_core/**: Core ACE implementation (Generator, Reflector, Curator agents)
+- **ace_platform/**: Hosted platform layer (FastAPI API, MCP server, Celery workers)
+- **web/**: Dashboard frontend
+- **playbooks/**: Starter playbook templates
+- **docs/ARCHITECTURE.md**: Detailed project architecture mermaid diagram
+
+### MCP Server Access
+
+The MCP server is mounted within the API and accessible at:
+- **Production**: `https://aceagent.io/mcp/sse`
+- **Staging**: `https://ace-platform-staging.fly.dev/mcp/sse`
+- **Local**: `http://localhost:8000/mcp/sse`
+
+For local development with stdio transport (e.g., Claude Desktop):
+```bash
+python -m ace_platform.mcp.server
+```
+
+## Development Setup
+
+### Prerequisites
+
+- Python 3.10+
+- Docker & Docker Compose for local development
+- OpenAI API key
+
+### Quick Start (Hybrid - Recommended)
+
+Run infrastructure in containers, application locally for hot-reload:
+
+```bash
+# 1. Clone and enter the project
+cd ace-platform
+
+# 2. Start infrastructure services
+docker compose up -d postgres redis
+
+# 3. Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# 4. Install dependencies
+pip install -e ".[dev]"
+
+# 5. Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys and database URLs
+
+# 6. Run database migrations
+alembic upgrade head
+
+# 7. Start the development servers (in separate terminals)
+uvicorn ace_platform.api.main:app --reload          # API server (port 8000)
+python -m ace_platform.mcp.server                    # MCP server
+celery -A ace_platform.workers.celery_app worker -l info  # Background worker
+```
+
+### Quick Start (Full Docker Stack)
+
+Run everything in containers:
+
+```bash
+# 1. Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys (especially OPENAI_API_KEY)
+
+# 2. Start complete stack (uses --profile full)
+docker compose --profile full up -d
+
+# This starts: postgres, redis, migrate, api, mcp, worker, beat
+
+# 3. View logs
+docker compose logs -f api       # API server logs
+docker compose logs -f worker    # Worker logs
+
+# 4. Stop everything
+docker compose --profile full down
+```
+
+For minimal infrastructure only (postgres + redis):
+```bash
+docker compose up -d postgres redis
+```
+
+### Environment Variables
+
+Required in `.env`:
+```
+DATABASE_URL=postgresql://user:pass@localhost:5432/ace_platform
+REDIS_URL=redis://localhost:6379/0
+OPENAI_API_KEY=sk-...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+JWT_SECRET_KEY=your-secret-key
+```
+
+### Running ACE Core Standalone
+
+The `ace_core/` module can run independently for testing:
+
+```bash
+cd ace_core
+source venv/bin/activate
+python -m finance.run --task_name finer --mode offline --save_path results
+```
+
+### Testing
+
+All new code written should have accompanying unit and integration tests.
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test suites
+pytest tests/test_api/ -v      # API tests
+pytest tests/test_mcp/ -v      # MCP server tests
+pytest tests/test_evolution/ -v # Evolution logic tests
+
+# With coverage
+pytest --cov=ace_platform tests/
+```
+
+### Code Quality
+
+```bash
+# Linting
+ruff check .
+
+# Format
+ruff format .
+```
+
+## Key Commands
+
+| Command | Description |
+|---------|-------------|
+| `docker compose up -d postgres redis` | Start infrastructure only |
+| `docker compose --profile full up -d` | Start complete Docker stack |
+| `docker compose --profile full down` | Stop complete Docker stack |
+| `alembic upgrade head` | Run database migrations |
+| `alembic revision --autogenerate -m "msg"` | Create new migration |
+| `uvicorn ace_platform.api.main:app --reload` | Start API server (local) |
+| `python -m ace_platform.mcp.server` | Start MCP server (local) |
+| `celery -A ace_platform.workers.celery_app worker -l info` | Start Celery worker (local) |
+| `pytest tests/ -v` | Run tests |
+
+## Production Deployment (Fly.io)
+
+Deploy to Fly.io for production:
+
+```bash
+# 1. Install flyctl
+curl -L https://fly.io/install.sh | sh
+
+# 2. Login to Fly.io
+fly auth login
+
+# 3. Create the app (first time only)
+fly launch --no-deploy
+
+# 4. Create Postgres database
+fly postgres create --name ace-platform-db
+fly postgres attach ace-platform-db
+
+# 5. Create Redis instance
+fly redis create --name ace-platform-redis
+
+# 6. Set required secrets
+fly secrets set \
+  OPENAI_API_KEY=sk-... \
+  JWT_SECRET_KEY=your-secure-secret \
+  STRIPE_SECRET_KEY=sk_live_... \
+  STRIPE_WEBHOOK_SECRET=whsec_...
+
+# 7. Deploy
+fly deploy
+
+# 8. Scale processes as needed
+fly scale count api=2 worker=2 beat=1
+```
+
+### Fly.io Commands
+
+| Command | Description |
+|---------|-------------|
+| `fly deploy` | Deploy latest changes |
+| `fly logs` | View application logs |
+| `fly status` | Check app status |
+| `fly scale count api=N worker=N` | Scale processes |
+| `fly ssh console` | SSH into a running machine |
+| `fly secrets list` | List configured secrets |
+| `fly postgres connect -a ace-platform-db` | Connect to Postgres |
+
+### CI/CD Workflows (GitHub Actions)
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `staging.yml` | Push to `main` | Runs tests → Auto-deploys to staging |
+| `production.yml` | Manual dispatch | Requires "deploy" confirmation → Deploys to production |
+
+**Development Flow:**
+1. Develop locally with tests
+2. Push to `main` → Automatically deploys to staging
+3. Validate on staging (https://ace-platform-staging.fly.dev)
+4. Trigger production deploy manually from GitHub Actions
+
+### Environment Details
+
+#### Production
+| Component | Fly.io App | Domain |
+|-----------|------------|--------|
+| Backend (API) | `ace-platform` | `aceagent.io` |
+| Frontend | `ace-platform-web` | `app.aceagent.io` |
+| Database | `ace-platform-db` | (internal) |
+
+**Important Production Settings:**
+- `VITE_API_URL` (frontend build arg): `https://aceagent.io`
+- `FRONTEND_URL` (backend secret): `https://app.aceagent.io`
+- `OAUTH_REDIRECT_BASE_URL` (backend secret): `https://aceagent.io`
+- `CORS_ORIGINS` (backend secret): `["https://app.aceagent.io", "https://ace-platform-web.fly.dev", "http://localhost:3000"]`
+
+#### Staging
+| Component | Fly.io App | Domain |
+|-----------|------------|--------|
+| Backend (API) | `ace-platform-staging` | `ace-platform-staging.fly.dev` |
+| Frontend | `ace-platform-web-staging` | `ace-platform-web-staging.fly.dev` |
+| Database | `ace-platform-staging-db` | (internal) |
+
+**Important Staging Settings:**
+- `VITE_API_URL` (frontend build arg): `https://ace-platform-staging.fly.dev`
+- `FRONTEND_URL` (backend secret): `https://ace-platform-web-staging.fly.dev`
+- `OAUTH_REDIRECT_BASE_URL` (backend secret): `https://ace-platform-staging.fly.dev`
+- `CORS_ORIGINS` (backend secret): `["https://ace-platform-web-staging.fly.dev", "http://localhost:3000"]`
+
+#### OAuth Configuration
+For OAuth to work correctly:
+1. Frontend `VITE_API_URL` must point to the backend domain
+2. Backend `OAUTH_REDIRECT_BASE_URL` must match where OAuth callbacks are received
+3. Backend `FRONTEND_URL` must point to the frontend domain (for post-OAuth redirects)
+4. Google/GitHub OAuth apps must have the callback URL: `https://{OAUTH_REDIRECT_BASE_URL}/auth/oauth/{provider}/callback`
+
+---
+
+# Project Management
+
+**Important:** This project uses the beads CLI `bd` for issue and project tracking, NOT GitHub issues. Always use `bd` commands for creating, closing, and managing issues.
+
+Common bd commands:
+- `bd create` - Create a new issue
+- `bd list` - List issues
+- `bd close <issue-id>` - Close an issue
+- `bd search <query>` - Search issues
+
+1. File/update issues for remaining work
+
+Agents should proactively create issues for discovered bugs, TODOs, and follow-up tasks
+Close completed issues and update status for in-progress work
+2. Run quality gates (if applicable)
+
+Tests, linters, builds - only if code changes were made
+File P0 issues if builds are broken
+3. Sync the issue tracker carefully
+
+Work methodically to ensure local and remote issues merge safely
+Handle git conflicts thoughtfully (sometimes accepting remote and re-importing)
+Goal: clean reconciliation where no issues are lost
+4. Verify clean state
+
+All changes committed and pushed
+No untracked files remain
+5. Choose next work
+
+Provide a formatted prompt for the next session with context.
+
+## Git Workflow
+
+**Always use feature branches and pull requests:**
+- Never commit directly to `main`
+- Create a feature branch for all changes: `git checkout -b feature/description` or `git checkout -b fix/description`
+- Push the feature branch and open a PR for review before merging to main
+- PRs should include a summary of changes and test plan
+
+## Pre-PR Checklist
+
+**Before opening a PR, always run these checks locally to avoid CI failures:**
+
+```bash
+# 1. Run linting (fix any errors)
+source venv/bin/activate && ruff check ace_platform/ tests/
+
+# 2. Run formatting check (or just format directly)
+source venv/bin/activate && ruff format ace_platform/ tests/
+
+# 3. Run tests
+source venv/bin/activate && pytest tests/ -v
+
+# All-in-one command:
+source venv/bin/activate && ruff check ace_platform/ tests/ && ruff format ace_platform/ tests/ && pytest tests/ -v
+```
+
+This matches what CI runs, so if it passes locally, CI should pass too.
+
+## Context management
+
+You are a LLM and therefore don't always have up to date knowledge in your internal knowledge. Due to this, always gather context about specific libraries, frameworks, technologies or coding patterns before generating files or writing code. This allows your output to be much more accurate and higher quality. Use the context7 MCP to do this when possible and use web search when context7 doesn't have the info you need.
+
+## Using ACE Playbooks
+
+Before starting any task, check for relevant playbooks:
+
+1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
+2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
+3. **Follow the guidelines** - Apply the playbook instructions as you work
+
+After completing a task guided by a playbook:
+
+1. **Record the outcome** - Use the `record_outcome` tool with:
+   - `playbook_id`: The playbook you followed
+   - `task_description`: What you accomplished
+   - `outcome`: "success", "failure", or "partial"
+   - `notes`: What worked well, what didn't, and lessons learned
+
+2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
+```
