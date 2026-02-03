@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.api.auth import require_user
+from ace_platform.api.auth import require_paid_access
 from ace_platform.api.deps import get_db
 from ace_platform.core.metering import (
     get_usage_by_model,
@@ -95,7 +95,7 @@ class ModelUsageResponse(BaseModel):
 
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(require_user)]
+CurrentUser = Annotated[User, Depends(require_paid_access)]
 
 
 # Route handlers

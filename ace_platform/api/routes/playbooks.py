@@ -29,8 +29,7 @@ from ace_platform.api.auth import (
     AuthorizationError,
     SubscriptionError,
     get_user_tier,
-    require_active_subscription,
-    require_user,
+    require_paid_access,
 )
 from ace_platform.api.deps import get_db
 from ace_platform.core.limits import get_tier_limits
@@ -263,8 +262,7 @@ class PaginatedEvolutionJobResponse(BaseModel):
 
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(require_user)]
-SubscribedUser = Annotated[User, Depends(require_active_subscription)]
+PaidUser = Annotated[User, Depends(require_paid_access)]
 
 
 # Route handlers
@@ -273,7 +271,7 @@ SubscribedUser = Annotated[User, Depends(require_active_subscription)]
 @router.get("", response_model=PaginatedPlaybookResponse)
 async def list_playbooks(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     status_filter: PlaybookStatus | None = Query(None, description="Filter by status"),
@@ -334,7 +332,7 @@ async def list_playbooks(
 @router.post("", response_model=PlaybookResponse, status_code=status.HTTP_201_CREATED)
 async def create_playbook(
     db: DbSession,
-    current_user: SubscribedUser,
+    current_user: PaidUser,
     data: PlaybookCreate,
 ) -> PlaybookResponse:
     """Create a new playbook.
@@ -421,7 +419,7 @@ async def create_playbook(
 @router.get("/{playbook_id}", response_model=PlaybookResponse)
 async def get_playbook(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     playbook_id: UUID,
 ) -> PlaybookResponse:
     """Get a specific playbook by ID.
@@ -468,7 +466,7 @@ async def get_playbook(
 @router.put("/{playbook_id}", response_model=PlaybookResponse)
 async def update_playbook(
     db: DbSession,
-    current_user: SubscribedUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     data: PlaybookUpdate,
 ) -> PlaybookResponse:
@@ -531,7 +529,7 @@ async def update_playbook(
 @router.delete("/{playbook_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_playbook(
     db: DbSession,
-    current_user: SubscribedUser,
+    current_user: PaidUser,
     playbook_id: UUID,
 ) -> None:
     """Delete a playbook.
@@ -558,7 +556,7 @@ async def delete_playbook(
 @router.get("/{playbook_id}/versions", response_model=PaginatedVersionResponse)
 async def list_playbook_versions(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -628,7 +626,7 @@ async def list_playbook_versions(
 )
 async def get_playbook_version(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     version_number: int,
 ) -> PlaybookVersionDetailResponse:
@@ -683,7 +681,7 @@ async def get_playbook_version(
 )
 async def create_version(
     db: DbSession,
-    current_user: SubscribedUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     data: VersionCreate,
 ) -> PlaybookVersionDetailResponse:
@@ -772,7 +770,7 @@ async def create_version(
 @router.get("/{playbook_id}/outcomes", response_model=PaginatedOutcomeResponse)
 async def list_playbook_outcomes(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
@@ -858,7 +856,7 @@ async def list_playbook_outcomes(
 async def create_outcome(
     request: Request,
     db: DbSession,
-    current_user: SubscribedUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     data: OutcomeCreate,
 ) -> OutcomeCreateResponse:
@@ -924,7 +922,7 @@ async def create_outcome(
 @router.get("/{playbook_id}/evolutions", response_model=PaginatedEvolutionJobResponse)
 async def list_playbook_evolutions(
     db: DbSession,
-    current_user: CurrentUser,
+    current_user: PaidUser,
     playbook_id: UUID,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),

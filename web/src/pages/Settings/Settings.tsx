@@ -1,6 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { api, authApi } from '../../utils/api';
+import { accountApi, api, authApi } from '../../utils/api';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import type { AuditLogItem } from '../../types';
 import styles from './Settings.module.css';
 
 interface LinkedAccounts {
@@ -15,7 +19,8 @@ interface OAuthProviders {
 }
 
 export function Settings() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
+  const navigate = useNavigate();
 
   // Refresh user data on mount to get latest verification status
   useEffect(() => {
@@ -30,6 +35,16 @@ export function Settings() {
   const [managingSubscription, setManagingSubscription] = useState(false);
   const [sendingVerification, setSendingVerification] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [exportingData, setExportingData] = useState(false);
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
+  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
+  const [auditLogsError, setAuditLogsError] = useState<string | null>(null);
+  const [auditLogsPage, setAuditLogsPage] = useState(1);
+  const [auditLogsTotalPages, setAuditLogsTotalPages] = useState(1);
+  const [showAllAuditLogs, setShowAllAuditLogs] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,6 +65,89 @@ export function Settings() {
     };
     fetchData();
   }, []);
+
+  useEffect(() => {
+    const fetchAuditLogs = async () => {
+      setAuditLogsLoading(true);
+      setAuditLogsError(null);
+
+      try {
+        const res = await accountApi.listAuditLogs(1, 20);
+        setAuditLogs(res.items);
+        setAuditLogsPage(res.page);
+        setAuditLogsTotalPages(res.total_pages);
+      } catch {
+        setAuditLogsError('Failed to load security activity.');
+      } finally {
+        setAuditLogsLoading(false);
+      }
+    };
+
+    fetchAuditLogs();
+  }, []);
+
+  const loadMoreAuditLogs = async () => {
+    if (auditLogsLoading || auditLogsPage >= auditLogsTotalPages) return;
+
+    setAuditLogsLoading(true);
+    setAuditLogsError(null);
+
+    try {
+      const nextPage = auditLogsPage + 1;
+      const res = await accountApi.listAuditLogs(nextPage, 20);
+      setAuditLogs((prev) => [...prev, ...res.items]);
+      setAuditLogsPage(res.page);
+      setAuditLogsTotalPages(res.total_pages);
+    } catch {
+      setAuditLogsError('Failed to load more activity.');
+    } finally {
+      setAuditLogsLoading(false);
+    }
+  };
+
+  const handleSetPassword = async (newPassword: string) => {
+    const res = await authApi.setPassword(newPassword);
+    setLinkedAccounts((prev) => (prev ? { ...prev, has_password: true } : prev));
+    setSuccess(res.message);
+    setShowSetPasswordModal(false);
+  };
+
+  const handleChangePassword = async (currentPassword: string, newPassword: string) => {
+    const res = await authApi.changePassword(currentPassword, newPassword);
+    setSuccess(res.message);
+    setShowChangePasswordModal(false);
+  };
+
+  const handleDownloadData = async () => {
+    if (exportingData) return;
+
+    setExportingData(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await accountApi.exportData();
+      const blob = response.data as Blob;
+      const url = window.URL.createObjectURL(blob);
+
+      const contentDisposition = response.headers?.['content-disposition'] as string | undefined;
+      const filename = contentDisposition ? extractFilename(contentDisposition) : null;
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename || `ace-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+
+      setSuccess('Download started.');
+    } catch {
+      setError('Failed to download your data. Please try again.');
+    } finally {
+      setExportingData(false);
+    }
+  };
 
   const handleConnect = async (provider: 'google' | 'github') => {
     if (connecting) return;
@@ -134,6 +232,7 @@ export function Settings() {
 
   const showOAuthSection = providers && (providers.google || providers.github);
   const hasSubscription = user?.subscription_tier && user?.subscription_status === 'active';
+  const hasPassword = linkedAccounts?.has_password ?? true;
 
   return (
     <div className={styles.container}>
@@ -284,8 +383,373 @@ export function Settings() {
           )}
         </section>
       )}
+
+      {/* Security Section */}
+      <section className={styles.section}>
+        <h2>Security</h2>
+        <p className={styles.sectionDescription}>Manage your password and account security</p>
+
+        <div className={styles.card}>
+          <div className={styles.field}>
+            <label>Password</label>
+            <div className={styles.fieldActions}>
+              <span>{hasPassword ? 'Set' : 'Not set'}</span>
+              {hasPassword ? (
+                <button className={styles.manageButton} onClick={() => setShowChangePasswordModal(true)}>
+                  Change
+                </button>
+              ) : (
+                <button className={styles.manageButton} onClick={() => setShowSetPasswordModal(true)}>
+                  Set
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Data & Privacy Section */}
+      <section className={styles.section}>
+        <h2>Data & Privacy</h2>
+        <p className={styles.sectionDescription}>Download your data or delete your account</p>
+
+        <div className={styles.card}>
+          <div className={styles.field}>
+            <label>Data export</label>
+            <button className={styles.manageButton} onClick={handleDownloadData} disabled={exportingData}>
+              {exportingData ? 'Preparing…' : 'Download my data'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Recent Security Activity */}
+      <section className={styles.section}>
+        <h2>Recent Security Activity</h2>
+        <p className={styles.sectionDescription}>Review recent account and security events</p>
+
+        {auditLogsError && <div className={styles.error}>{auditLogsError}</div>}
+
+        <div className={styles.card}>
+          {auditLogsLoading && auditLogs.length === 0 ? (
+            <div className={styles.loading}>Loading...</div>
+          ) : auditLogs.length === 0 ? (
+            <div className={styles.loading}>No recent activity.</div>
+          ) : (
+            <>
+              <div className={styles.auditList}>
+                {(showAllAuditLogs ? auditLogs : auditLogs.slice(0, 10)).map((log) => (
+                  <div key={log.id} className={styles.auditRow}>
+                    <div className={styles.auditEvent}>{formatAuditEvent(log.event_type)}</div>
+                    <div className={styles.auditMeta}>
+                      <span className={styles.auditSeverity}>{log.severity}</span>
+                      <span className={styles.auditTime}>
+                        {new Date(log.created_at).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className={styles.auditActions}>
+                <button
+                  className={styles.manageButton}
+                  onClick={() => setShowAllAuditLogs((prev) => !prev)}
+                >
+                  {showAllAuditLogs ? 'Show less' : 'View all'}
+                </button>
+                {showAllAuditLogs && auditLogsPage < auditLogsTotalPages && (
+                  <button
+                    className={styles.manageButton}
+                    onClick={loadMoreAuditLogs}
+                    disabled={auditLogsLoading}
+                  >
+                    {auditLogsLoading ? 'Loading…' : 'Load more'}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* Danger Zone */}
+      <section className={styles.section}>
+        <h2>Danger Zone</h2>
+        <p className={styles.sectionDescription}>Delete your account and all associated data</p>
+
+        <div className={styles.card}>
+          <div className={styles.dangerRow}>
+            <div>
+              <div className={styles.dangerTitle}>Delete account</div>
+              <div className={styles.dangerDescription}>
+                This permanently deletes your account, playbooks, outcomes, and API keys.
+              </div>
+            </div>
+            <Button variant="danger" onClick={() => setShowDeleteAccountModal(true)}>
+              Delete
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {showSetPasswordModal && (
+        <SetPasswordModal
+          onClose={() => setShowSetPasswordModal(false)}
+          onSave={handleSetPassword}
+        />
+      )}
+
+      {showChangePasswordModal && (
+        <ChangePasswordModal
+          onClose={() => setShowChangePasswordModal(false)}
+          onSave={handleChangePassword}
+        />
+      )}
+
+      {showDeleteAccountModal && (
+        <DeleteAccountModal
+          requiresPassword={hasPassword}
+          onClose={() => setShowDeleteAccountModal(false)}
+          onDelete={async (password) => {
+            await accountApi.deleteAccount('DELETE', password);
+            logout();
+            navigate('/register', { replace: true });
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function extractFilename(contentDisposition: string): string | null {
+  // Example: attachment; filename="ace-export-2026-02-03.json"
+  const match = /filename\*?=(?:UTF-8''|")?([^";]+)"?/i.exec(contentDisposition);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+}
+
+function formatAuditEvent(eventType: string): string {
+  return eventType
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <h2>{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SetPasswordModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (newPassword: string) => Promise<void>;
+}) {
+  const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      await onSave(newPassword);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to set password. Please try again.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Set password" onClose={onClose}>
+      <form onSubmit={handleSubmit} className={styles.modalForm}>
+        {error && <div className={styles.modalError}>{error}</div>}
+        <Input
+          label="New password"
+          name="new_password"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
+        <div className={styles.modalActions}>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={saving} disabled={newPassword.length < 8}>
+            Set password
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ChangePasswordModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (currentPassword: string, newPassword: string) => Promise<void>;
+}) {
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      await onSave(currentPassword, newPassword);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to change password. Please try again.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Change password" onClose={onClose}>
+      <form onSubmit={handleSubmit} className={styles.modalForm}>
+        {error && <div className={styles.modalError}>{error}</div>}
+        <Input
+          label="Current password"
+          name="current_password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          required
+          autoComplete="current-password"
+        />
+        <Input
+          label="New password"
+          name="new_password"
+          type="password"
+          value={newPassword}
+          onChange={(e) => setNewPassword(e.target.value)}
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
+        <div className={styles.modalActions}>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" isLoading={saving} disabled={newPassword.length < 8}>
+            Change password
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function DeleteAccountModal({
+  requiresPassword,
+  onClose,
+  onDelete,
+}: {
+  requiresPassword: boolean;
+  onClose: () => void;
+  onDelete: (password?: string) => Promise<void>;
+}) {
+  const [confirmText, setConfirmText] = useState('');
+  const [password, setPassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canDelete =
+    confirmText === 'DELETE' && (!requiresPassword || (requiresPassword && password.length > 0));
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setDeleting(true);
+
+    try {
+      await onDelete(requiresPassword ? password : undefined);
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to delete account. Please try again.'));
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Modal title="Delete account" onClose={onClose}>
+      <form onSubmit={handleSubmit} className={styles.modalForm}>
+        <p className={styles.modalDescription}>
+          This is permanent. Type <strong>DELETE</strong> to confirm.
+        </p>
+        {error && <div className={styles.modalError}>{error}</div>}
+        <Input
+          label="Confirmation"
+          name="confirm"
+          value={confirmText}
+          onChange={(e) => setConfirmText(e.target.value)}
+          placeholder="DELETE"
+          required
+        />
+        {requiresPassword && (
+          <Input
+            label="Password"
+            name="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+          />
+        )}
+        <div className={styles.modalActions}>
+          <Button variant="ghost" type="button" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" type="submit" isLoading={deleting} disabled={!canDelete}>
+            Delete account
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function getErrorMessage(err: unknown, fallback: string): string {
+  if (!err || typeof err !== 'object') return fallback;
+  if (!('response' in err)) return fallback;
+
+  const response = (err as { response?: { data?: { error?: { message?: string } } } }).response;
+  const message = response?.data?.error?.message;
+  return message || fallback;
 }
 
 function GoogleIcon() {

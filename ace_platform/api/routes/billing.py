@@ -120,7 +120,7 @@ CurrentUser = Annotated[User, Depends(require_user)]
 
 
 def _get_current_period_end() -> datetime:
-    """Get the end of the current billing period (last day of month)."""
+    """Get the end of the current billing period (start of next month)."""
     now = datetime.now(UTC)
     # Get first day of next month
     if now.month == 12:
@@ -133,13 +133,19 @@ def _get_current_period_end() -> datetime:
 def _get_user_tier(user: User) -> SubscriptionTier:
     """Get user's subscription tier.
 
-    For now, users with stripe_customer_id are assumed to be on starter tier,
-    otherwise free tier. This will be enhanced when Stripe integration is complete.
+    Defaults to FREE for pre-subscribe users.
     """
-    # TODO: Look up actual subscription from Stripe or database
-    if user.stripe_customer_id:
-        return SubscriptionTier.STARTER
-    return SubscriptionTier.FREE
+    if not user.subscription_tier:
+        return SubscriptionTier.FREE
+    try:
+        return SubscriptionTier(user.subscription_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+def _get_user_period_end(user: User) -> datetime:
+    """Get the current subscription period end for a user."""
+    return user.subscription_current_period_end or _get_current_period_end()
 
 
 # Route handlers
@@ -158,9 +164,9 @@ async def get_subscription(
 
     return SubscriptionResponse(
         tier=tier,
-        status="active",
+        status=current_user.subscription_status.value,
         current_period_start=get_billing_period_start(),
-        current_period_end=_get_current_period_end(),
+        current_period_end=_get_user_period_end(current_user),
         limits=TierLimitsResponse(
             monthly_requests=limits.monthly_evolution_runs,
             monthly_tokens=None,  # Not tracked separately
@@ -172,7 +178,7 @@ async def get_subscription(
             priority_support=limits.priority_support,
         ),
         stripe_customer_id=current_user.stripe_customer_id,
-        stripe_subscription_id=None,  # TODO: Add when Stripe integration complete
+        stripe_subscription_id=current_user.stripe_subscription_id,
     )
 
 
@@ -190,11 +196,11 @@ async def get_billing_usage(
 
     return UsageResponse(
         period_start=get_billing_period_start(),
-        period_end=_get_current_period_end(),
+        period_end=_get_user_period_end(current_user),
         requests_used=status.current_evolution_runs,
         requests_limit=status.limits.monthly_evolution_runs,
         requests_remaining=status.remaining_evolution_runs,
-        tokens_used=0,  # Token tracking not implemented
+        tokens_used=status.current_total_tokens,
         tokens_limit=None,
         tokens_remaining=None,
         cost_usd=status.current_cost_usd,

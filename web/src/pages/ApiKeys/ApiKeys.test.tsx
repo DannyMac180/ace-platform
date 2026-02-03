@@ -103,12 +103,12 @@ describe('ApiKeys', () => {
       return user;
     }
 
-    it('displays three tabs: Any Agent, Claude Code, MCP Config', async () => {
+    it('displays three tabs: Any Agent, Claude Code, JSON Config', async () => {
       await openSetupDocsModal();
 
       expect(screen.getByRole('button', { name: 'Any Agent' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Claude Code' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'MCP Config' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'JSON Config' })).toBeInTheDocument();
     });
 
     it('shows correct MCP server URL', async () => {
@@ -135,15 +135,14 @@ describe('ApiKeys', () => {
 
       // Click "Claude Code" tab
       await user.click(screen.getByRole('button', { name: 'Claude Code' }));
-      expect(screen.getByText('Run this command in your terminal:')).toBeInTheDocument();
-      expect(screen.getByText(/claude mcp add/)).toBeInTheDocument();
+      expect(screen.getByText(/Add this to your/i)).toBeInTheDocument();
+      expect(screen.getByText('~/.claude.json')).toBeInTheDocument();
+      expect(screen.getByText(/"X-API-Key": "<YOUR_API_KEY>"/)).toBeInTheDocument();
 
-      // Click "MCP Config" tab
-      await user.click(screen.getByRole('button', { name: 'MCP Config' }));
-      expect(
-        screen.getByText('Add this to your MCP configuration file:')
-      ).toBeInTheDocument();
-      expect(screen.getByText(/"transport": "sse"/)).toBeInTheDocument();
+      // Click "JSON Config" tab
+      await user.click(screen.getByRole('button', { name: 'JSON Config' }));
+      expect(screen.getByText(/Add this to your MCP client configuration:/)).toBeInTheDocument();
+      expect(screen.getByText(/"type": "sse"/)).toBeInTheDocument();
     });
 
     it('has copy buttons in the code block', async () => {

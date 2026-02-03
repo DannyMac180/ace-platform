@@ -36,6 +36,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
+from ace_platform.core.limits import SubscriptionTier
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
@@ -51,6 +52,8 @@ from ace_platform.db.models import (
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
+    SubscriptionStatus,
+    User,
 )
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
@@ -231,6 +234,36 @@ def get_api_key(api_key_param: str | None = None) -> str | None:
     return os.environ.get("ACE_API_KEY")
 
 
+def _get_user_tier(user: User) -> SubscriptionTier:
+    if not user.subscription_tier:
+        return SubscriptionTier.FREE
+    try:
+        return SubscriptionTier(user.subscription_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+def _require_paid_access(user: User) -> str | None:
+    user_tier = _get_user_tier(user)
+
+    if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:
+        return None
+
+    if user.subscription_status == SubscriptionStatus.NONE or user_tier == SubscriptionTier.FREE:
+        return "Error: Start your free trial or subscribe to continue."
+
+    if user.subscription_status == SubscriptionStatus.PAST_DUE:
+        return (
+            "Error: Your subscription payment is past due. Please update your payment method."
+        )
+    if user.subscription_status == SubscriptionStatus.CANCELED:
+        return "Error: Your subscription has been canceled. Please resubscribe to continue."
+    if user.subscription_status == SubscriptionStatus.UNPAID:
+        return "Error: Your subscription is unpaid. Please update your payment method."
+
+    return "Error: Subscription required."
+
+
 @mcp.tool()
 async def get_playbook(
     playbook_id: Annotated[str, "UUID of the playbook to retrieve"],
@@ -271,6 +304,10 @@ async def get_playbook(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
+
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
 
     # Check scope
     from ace_platform.core.api_keys import check_scope
@@ -401,6 +438,10 @@ async def list_playbooks(
 
     api_key_record, user = auth_result
 
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
+
     # Check scope
     from ace_platform.core.api_keys import check_scope
 
@@ -467,7 +508,7 @@ async def create_playbook(
         Success message with playbook ID, or error message.
     """
     from ace_platform.core.api_keys import check_scope
-    from ace_platform.core.limits import SubscriptionTier, get_tier_limits
+    from ace_platform.core.limits import get_tier_limits
 
     db = get_db(ctx)
 
@@ -482,6 +523,10 @@ async def create_playbook(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
+
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
 
     # Check scope
     if not check_scope(api_key_record, "playbooks:write"):
@@ -506,11 +551,7 @@ async def create_playbook(
             return f"Error: {error}"
 
     # Check max_playbooks limit for user's tier
-    user_tier = (
-        SubscriptionTier(user.subscription_tier)
-        if user.subscription_tier
-        else SubscriptionTier.FREE
-    )
+    user_tier = _get_user_tier(user)
     limits = get_tier_limits(user_tier)
 
     if limits.max_playbooks is not None:
@@ -640,6 +681,10 @@ async def create_version(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
+
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
 
     # Check scope
     if not check_scope(api_key_record, "playbooks:write"):
@@ -791,6 +836,10 @@ async def record_outcome(
 
     api_key_record, user = auth_result
 
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
+
     # Check email verification (required to prevent abuse)
     if not user.email_verified:
         return "Error: Email verification required. Please verify your email before recording outcomes."
@@ -871,6 +920,10 @@ async def get_evolution_status(
         return "Error: Invalid or revoked API key"
 
     api_key_record, user = auth_result
+
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
 
     # Check scope
     from ace_platform.core.api_keys import check_scope
@@ -966,6 +1019,10 @@ async def trigger_evolution(
 
     api_key_record, user = auth_result
 
+    paid_error = _require_paid_access(user)
+    if paid_error:
+        return paid_error
+
     # Check email verification (required for evolution to prevent abuse)
     if not user.email_verified:
         return "Error: Email verification required. Please verify your email before triggering evolutions."
@@ -1006,14 +1063,10 @@ async def trigger_evolution(
         pass
 
     # Check spending/evolution limits
-    from ace_platform.core.limits import SubscriptionTier, check_can_evolve
+    from ace_platform.core.limits import check_can_evolve
 
     # Get user's subscription tier (defaults to FREE if not set)
-    user_tier = (
-        SubscriptionTier(user.subscription_tier)
-        if user.subscription_tier
-        else SubscriptionTier.FREE
-    )
+    user_tier = _get_user_tier(user)
     can_proceed, error_message = await check_can_evolve(
         db, user.id, user_tier, has_payment_method=user.has_payment_method
     )

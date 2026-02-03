@@ -3,6 +3,7 @@ import type {
   ApiKey,
   ApiKeyCreate,
   ApiKeyCreateResponse,
+  AuditLogItem,
   DailyEvolution,
   DailyUsage,
   EvolutionJob,
@@ -155,6 +156,24 @@ export const authApi = {
     return response.data;
   },
 
+  setPassword: async (newPassword: string): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>('/auth/set-password', {
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
+  changePassword: async (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>('/auth/change-password', {
+      current_password: currentPassword,
+      new_password: newPassword,
+    });
+    return response.data;
+  },
+
   getOAuthCsrfToken: async (): Promise<string> => {
     // NOTE: We use native fetch instead of axios here because:
     // 1. CSRF tokens require session cookies (credentials: 'include')
@@ -171,6 +190,30 @@ export const authApi = {
     }
     const data = await response.json();
     return data.csrf_token;
+  },
+};
+
+// Account API
+export const accountApi = {
+  exportData: async () => {
+    return api.get('/account/export', { responseType: 'blob' });
+  },
+
+  deleteAccount: async (confirm: string, password?: string): Promise<{ message: string }> => {
+    const response = await api.delete<{ message: string }>('/account', {
+      data: { confirm, password },
+    });
+    return response.data;
+  },
+
+  listAuditLogs: async (
+    page = 1,
+    pageSize = 20
+  ): Promise<PaginatedResponse<AuditLogItem>> => {
+    const response = await api.get<PaginatedResponse<AuditLogItem>>(
+      `/account/audit-logs?page=${page}&page_size=${pageSize}`
+    );
+    return response.data;
   },
 };
 

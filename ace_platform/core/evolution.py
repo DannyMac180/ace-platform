@@ -96,7 +96,7 @@ class EvolutionResult:
     evolved_playbook: str
     outcomes_processed: int
     operations_applied: list[dict[str, Any]]
-    token_usage: dict[str, int]
+    token_usage: dict[str, Any]
 
     @property
     def has_changes(self) -> bool:
@@ -270,7 +270,7 @@ class EvolutionService:
         self,
         playbook_content: str,
         outcomes: list[OutcomeData],
-    ) -> tuple[list[dict[str, str]], dict[str, int]]:
+    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
         """Run batch reflection to tag bullets based on outcomes.
 
         This is a platform-specific reflection that analyzes the entire playbook
@@ -364,18 +364,32 @@ class EvolutionService:
             )
 
         # Initialize token usage tracking
-        total_token_usage = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
+        operations_usage: dict[str, dict[str, Any]] = {}
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_tokens = 0
 
         # Step 1: Run batch reflection to get bullet tags
         bullet_tags, reflection_token_usage = self._run_batch_reflection(playbook_content, outcomes)
 
-        # Accumulate reflection token usage
-        for key in total_token_usage:
-            total_token_usage[key] += reflection_token_usage.get(key, 0)
+        # Track reflection token usage
+        if reflection_token_usage:
+            prompt_tokens = int(reflection_token_usage.get("prompt_tokens", 0) or 0)
+            completion_tokens = int(reflection_token_usage.get("completion_tokens", 0) or 0)
+            reflection_total = int(
+                reflection_token_usage.get("total_tokens", prompt_tokens + completion_tokens) or 0
+            )
+
+            operations_usage["evolution_reflection"] = {
+                "model": self.settings.evolution_reflector_model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": reflection_total,
+            }
+
+            total_prompt_tokens += prompt_tokens
+            total_completion_tokens += completion_tokens
+            total_tokens += reflection_total
 
         # Step 2: Update bullet counts based on tags
         playbook_with_updated_counts = playbook_content
@@ -410,20 +424,40 @@ class EvolutionService:
             next_global_id=next_global_id,
         )
 
-        # Accumulate curator token usage
+        # Track curator token usage
+        curator_prompt_tokens = 0
+        curator_completion_tokens = 0
         if call_info:
-            total_token_usage["prompt_tokens"] += call_info.get("prompt_num_tokens", 0)
-            total_token_usage["completion_tokens"] += call_info.get("response_num_tokens", 0)
-            total_token_usage["total_tokens"] += call_info.get(
-                "prompt_num_tokens", 0
-            ) + call_info.get("response_num_tokens", 0)
+            curator_prompt_tokens = int(call_info.get("prompt_num_tokens", 0) or 0)
+            curator_completion_tokens = int(call_info.get("response_num_tokens", 0) or 0)
+
+        curator_total_tokens = curator_prompt_tokens + curator_completion_tokens
+
+        operations_usage["evolution_curator"] = {
+            "model": self.settings.evolution_curator_model,
+            "prompt_tokens": curator_prompt_tokens,
+            "completion_tokens": curator_completion_tokens,
+            "total_tokens": curator_total_tokens,
+        }
+
+        total_prompt_tokens += curator_prompt_tokens
+        total_completion_tokens += curator_completion_tokens
+        total_tokens += curator_total_tokens
 
         return EvolutionResult(
             original_playbook=playbook_content,
             evolved_playbook=evolved_playbook,
             outcomes_processed=len(outcomes),
             operations_applied=operations,
-            token_usage=total_token_usage,
+            token_usage={
+                "prompt_tokens": total_prompt_tokens,
+                "completion_tokens": total_completion_tokens,
+                "total_tokens": total_tokens,
+                # Backward-compatible "primary" model for logs/metrics
+                "model": self.settings.evolution_curator_model,
+                # Per-operation breakdown for metering
+                "operations": operations_usage,
+            },
         )
 
     async def evolve_playbook_async(

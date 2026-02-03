@@ -188,6 +188,17 @@ export interface RecentEvolution {
   error_message: string | null;
 }
 
+// Audit log types
+export interface AuditLogItem {
+  id: string;
+  event_type: string;
+  severity: string;
+  created_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  details: Record<string, unknown> | null;
+}
+
 export interface PaginatedResponse<T> {
   items: T[];
   total: number;

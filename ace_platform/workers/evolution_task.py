@@ -240,6 +240,19 @@ def _execute_evolution(db, job: EvolutionJob) -> dict:
     job.outcomes_processed = len(outcomes)
     job.token_totals = evolution_result.token_usage
 
+    # Write usage records for billing/metering (best effort; never fail the job)
+    try:
+        _write_usage_records_for_evolution(
+            db=db,
+            user_id=playbook.user_id,
+            playbook_id=playbook.id,
+            evolution_job_id=job.id,
+            token_usage=evolution_result.token_usage,
+        )
+    except Exception:
+        # Avoid failing evolution completion due to metering issues
+        sentry_sdk.capture_exception()
+
     db.commit()
 
     return {
@@ -249,6 +262,58 @@ def _execute_evolution(db, job: EvolutionJob) -> dict:
         "new_version": new_version.version_number if new_version else None,
         "has_changes": evolution_result.has_changes,
     }
+
+
+def _write_usage_records_for_evolution(
+    *,
+    db,
+    user_id: UUID,
+    playbook_id: UUID,
+    evolution_job_id: UUID,
+    token_usage: dict | None,
+) -> None:
+    """Persist per-operation usage records for an evolution job (sync session)."""
+    from ace_platform.core.llm_proxy import calculate_cost
+    from ace_platform.db.models import UsageRecord
+
+    if not token_usage or not isinstance(token_usage, dict):
+        return
+
+    # Idempotency: if usage records already exist for this job, skip.
+    existing = db.execute(
+        select(UsageRecord.id).where(UsageRecord.evolution_job_id == evolution_job_id).limit(1)
+    ).scalar_one_or_none()
+    if existing:
+        return
+
+    operations = token_usage.get("operations")
+    if not operations or not isinstance(operations, dict):
+        return
+
+    for operation, info in operations.items():
+        if not isinstance(info, dict):
+            continue
+
+        model = info.get("model") or token_usage.get("model") or "unknown"
+        prompt_tokens = int(info.get("prompt_tokens", 0) or 0)
+        completion_tokens = int(info.get("completion_tokens", 0) or 0)
+        total_tokens = int(info.get("total_tokens", prompt_tokens + completion_tokens) or 0)
+
+        cost_usd = calculate_cost(str(model), prompt_tokens, completion_tokens)
+
+        db.add(
+            UsageRecord(
+                user_id=user_id,
+                playbook_id=playbook_id,
+                evolution_job_id=evolution_job_id,
+                operation=str(operation),
+                model=str(model),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                cost_usd=cost_usd,
+            )
+        )
 
 
 def _create_diff_summary(operations: list[dict]) -> str:

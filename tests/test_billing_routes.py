@@ -369,21 +369,21 @@ class TestSubscriptionTierHelpers:
     """Tests for subscription tier helper functions."""
 
     def test_get_user_tier_free(self):
-        """Test user without Stripe ID gets free tier."""
+        """Test user without subscription_tier gets free tier."""
         from ace_platform.api.routes.billing import _get_user_tier
 
         user = MagicMock()
-        user.stripe_customer_id = None
+        user.subscription_tier = None
 
         tier = _get_user_tier(user)
         assert tier == SubscriptionTier.FREE
 
     def test_get_user_tier_starter_with_stripe(self):
-        """Test user with Stripe ID gets starter tier."""
+        """Test user with subscription_tier gets that tier."""
         from ace_platform.api.routes.billing import _get_user_tier
 
         user = MagicMock()
-        user.stripe_customer_id = "cus_test123"
+        user.subscription_tier = "starter"
 
         tier = _get_user_tier(user)
         assert tier == SubscriptionTier.STARTER

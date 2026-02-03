@@ -474,6 +474,61 @@ async def require_active_subscription(
     return user
 
 
+async def require_paid_access(
+    user: Annotated[User, Depends(require_user)],
+) -> User:
+    """Require an active paid/trial subscription for core features.
+
+    This dependency blocks access unless the user has:
+    - subscription_status = ACTIVE, and
+    - a non-free SubscriptionTier (starter/pro/ultra/enterprise)
+
+    It returns 402 Payment Required for all non-eligible states.
+    """
+    user_tier = get_user_tier(user)
+
+    if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:
+        return user
+
+    # Unsubscribed / missing tier / invalid tier
+    if user.subscription_status == SubscriptionStatus.NONE or user_tier == SubscriptionTier.FREE:
+        raise SubscriptionError(
+            "Start your free trial or subscribe to continue.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+
+    # All other statuses require action
+    if user.subscription_status == SubscriptionStatus.PAST_DUE:
+        raise SubscriptionError(
+            "Your subscription payment is past due. Please update your payment method.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+    elif user.subscription_status == SubscriptionStatus.CANCELED:
+        raise SubscriptionError(
+            "Your subscription has been canceled. Please resubscribe to continue.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+    elif user.subscription_status == SubscriptionStatus.UNPAID:
+        raise SubscriptionError(
+            "Your subscription is unpaid. Please update your payment method.",
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        )
+
+    raise SubscriptionError(
+        "Invalid subscription status",
+        status_code=status.HTTP_402_PAYMENT_REQUIRED,
+    )
+
+
+async def require_verified_paid_user(
+    user: Annotated[User, Depends(require_paid_access)],
+) -> User:
+    """Require an email-verified user with paid access."""
+    if not user.email_verified:
+        raise AuthorizationError("Email verification required")
+    return user
+
+
 def require_tier(minimum_tier: SubscriptionTier):
     """Create a dependency that requires a minimum subscription tier.
 
@@ -558,3 +613,5 @@ def require_feature(feature: str):
 
 # Type aliases for subscription-based auth
 SubscribedUser = Annotated[User, Depends(require_active_subscription)]
+PaidUser = Annotated[User, Depends(require_paid_access)]
+VerifiedPaidUser = Annotated[User, Depends(require_verified_paid_user)]

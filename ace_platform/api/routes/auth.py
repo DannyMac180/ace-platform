@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedUser
+from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedPaidUser
 from ace_platform.api.deps import get_db
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import (
@@ -34,6 +34,7 @@ from ace_platform.core.audit import (
     audit_email_verified,
     audit_login_failure,
     audit_login_success,
+    audit_password_change,
     audit_password_reset_complete,
     audit_password_reset_request,
     get_client_ip,
@@ -131,6 +132,19 @@ class MessageResponse(BaseModel):
     """Simple message response."""
 
     message: str
+
+
+class SetPasswordRequest(BaseModel):
+    """Request body for setting a password (OAuth-only users)."""
+
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
+
+
+class ChangePasswordRequest(BaseModel):
+    """Request body for changing an existing password."""
+
+    current_password: str = Field(..., description="Current password")
+    new_password: str = Field(..., min_length=8, description="New password (min 8 characters)")
 
 
 # =============================================================================
@@ -454,6 +468,66 @@ async def get_current_user(user: RequiredUser) -> UserResponse:
 
 
 # =============================================================================
+# Password Management (while logged in)
+# =============================================================================
+
+
+@router.post(
+    "/set-password",
+    response_model=MessageResponse,
+    summary="Set a password for OAuth-only accounts",
+    responses={
+        401: {"description": "Not authenticated"},
+        400: {"description": "Password already set"},
+    },
+)
+async def set_password(
+    body: SetPasswordRequest,
+    request: Request,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Set a password for an account that currently has no password."""
+    if user.hashed_password is not None:
+        raise HTTPException(status_code=400, detail="Password is already set")
+
+    user.hashed_password = hash_password(body.new_password)
+    await audit_password_change(db, user.id, request)
+    await db.commit()
+
+    return MessageResponse(message="Password set")
+
+
+@router.post(
+    "/change-password",
+    response_model=MessageResponse,
+    summary="Change your password",
+    responses={
+        401: {"description": "Not authenticated"},
+        400: {"description": "Invalid current password or no password set"},
+    },
+)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Change the user's password after verifying the current password."""
+    if user.hashed_password is None:
+        raise HTTPException(status_code=400, detail="No password set for this account")
+
+    if not verify_password(body.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect current password")
+
+    user.hashed_password = hash_password(body.new_password)
+    await audit_password_change(db, user.id, request)
+    await db.commit()
+
+    return MessageResponse(message="Password changed")
+
+
+# =============================================================================
 # API Key Management Routes
 # =============================================================================
 
@@ -471,7 +545,7 @@ async def get_current_user(user: RequiredUser) -> UserResponse:
 async def create_api_key(
     request: CreateApiKeyRequest,
     http_request: Request,
-    user: VerifiedUser,
+    user: VerifiedPaidUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> ApiKeyResponse:
     """Create a new API key for the authenticated user.
@@ -513,7 +587,7 @@ async def create_api_key(
     },
 )
 async def list_api_keys(
-    user: RequiredUser,
+    user: VerifiedPaidUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     include_revoked: bool = False,
 ) -> list[ApiKeyInfo]:
@@ -556,7 +630,7 @@ async def list_api_keys(
 async def revoke_api_key(
     key_id: UUID,
     http_request: Request,
-    user: RequiredUser,
+    user: VerifiedPaidUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     """Revoke an API key.

@@ -111,10 +111,11 @@ class TestUsageStatus:
         """Test usage status when within limits."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
 
         # Mock usage summary - low usage
         mock_summary = MagicMock()
-        mock_summary.total_requests = 5  # 5 evolution runs
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under $1 limit
 
         with patch(
@@ -127,6 +128,7 @@ class TestUsageStatus:
         assert status.limit_exceeded is None
         assert status.current_evolution_runs == 5
         assert status.remaining_evolution_runs == 5  # 10 - 5
+        assert status.current_total_tokens == 1234
         assert status.current_cost_usd == Decimal("0.50")
         assert status.remaining_cost_usd == Decimal("0.50")  # $1 - $0.50
 
@@ -135,9 +137,10 @@ class TestUsageStatus:
         """Test usage status when evolution runs exceed limit."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=15)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 15  # Over 10 limit for FREE tier
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
         with patch(
@@ -155,9 +158,10 @@ class TestUsageStatus:
         """Test usage status for starter tier (100 runs/month)."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=50)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 50  # 50 evolution runs used
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("4.50")  # Under $9 limit
 
         with patch(
@@ -175,9 +179,10 @@ class TestUsageStatus:
         """Test enterprise tier is always within limits."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=1_000_000)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 1_000_000  # Huge usage
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("10000.00")  # Huge cost
 
         with patch(
@@ -199,9 +204,10 @@ class TestCheckCanEvolve:
         """Test evolution allowed when within limits and has payment method."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 5
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")
 
         with patch(
@@ -222,7 +228,7 @@ class TestCheckCanEvolve:
         mock_db = AsyncMock()
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 0
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0")
 
         with patch(
@@ -242,9 +248,10 @@ class TestCheckCanEvolve:
         """Test STARTER tier can evolve without explicit payment method (subscription implies card)."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 5
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")
 
         with patch(
@@ -264,9 +271,10 @@ class TestCheckCanEvolve:
         """Test evolution blocked when over evolution run limit."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=15)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 15  # Over FREE tier limit of 10
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
         with patch(
@@ -286,9 +294,10 @@ class TestCheckCanEvolve:
         """Test evolution blocked when over spending limit."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 5  # Under evolution run limit
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("1.50")  # Over $1 cost limit for FREE tier
 
         with patch(
@@ -311,7 +320,7 @@ class TestCheckCanEvolve:
 
         # Even with usage under limits, no payment method should block
         mock_summary = MagicMock()
-        mock_summary.total_requests = 0
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0")
 
         with patch(
@@ -384,6 +393,7 @@ class TestDataclasses:
             tier=SubscriptionTier.STARTER,
             limits=get_tier_limits(SubscriptionTier.STARTER),
             current_evolution_runs=50,
+            current_total_tokens=1234,
             current_cost_usd=Decimal("4.50"),
             remaining_evolution_runs=50,
             remaining_cost_usd=Decimal("4.50"),
@@ -414,9 +424,10 @@ class TestSpendingCap:
         """Test spending limit takes precedence over evolution run limit."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=5)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 5  # Under run limit
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
 
         with patch(
@@ -433,9 +444,10 @@ class TestSpendingCap:
         """Test cost limit message returned when both limits exceeded."""
         user_id = uuid4()
         mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(return_value=15)
 
         mock_summary = MagicMock()
-        mock_summary.total_requests = 15  # Over 10 run limit
+        mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
 
         with patch(

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from ace_platform.core.metering import get_user_usage_summary
-from ace_platform.db.models import UsageRecord
+from ace_platform.db.models import EvolutionJob, Playbook, UsageRecord
 
 
 class SubscriptionTier(str, Enum):
@@ -116,6 +116,7 @@ class UsageStatus:
 
     # Current usage (this billing period)
     current_evolution_runs: int
+    current_total_tokens: int
     current_cost_usd: Decimal
 
     # Remaining quota (None if unlimited)
@@ -170,13 +171,26 @@ async def get_user_usage_status(
     period_start = get_billing_period_start()
     now = datetime.now(UTC)
 
-    # Get current usage - total_requests represents evolution runs
+    # Evolution run limits are based on EvolutionJob count, not UsageRecord count.
+    evolution_runs = await db.scalar(
+        select(func.count())
+        .select_from(EvolutionJob)
+        .join(Playbook, EvolutionJob.playbook_id == Playbook.id)
+        .where(
+            Playbook.user_id == user_id,
+            func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at) >= period_start,
+            func.coalesce(EvolutionJob.started_at, EvolutionJob.created_at) <= now,
+        )
+    )
+    evolution_runs = int(evolution_runs or 0)
+
+    # Spending limits are based on metered UsageRecord cost.
     summary = await get_user_usage_summary(db, user_id, period_start, now)
 
     # Calculate remaining evolution runs quota
     remaining_evolution_runs = None
     if limits.monthly_evolution_runs is not None:
-        remaining_evolution_runs = max(0, limits.monthly_evolution_runs - summary.total_requests)
+        remaining_evolution_runs = max(0, limits.monthly_evolution_runs - evolution_runs)
 
     # Calculate remaining cost budget
     current_cost_usd = summary.total_cost_usd
@@ -191,7 +205,7 @@ async def get_user_usage_status(
     # Check evolution runs limit
     if (
         limits.monthly_evolution_runs is not None
-        and summary.total_requests >= limits.monthly_evolution_runs
+        and evolution_runs >= limits.monthly_evolution_runs
     ):
         is_within_limits = False
         limit_exceeded = "monthly_evolution_runs"
@@ -207,7 +221,8 @@ async def get_user_usage_status(
     return UsageStatus(
         tier=tier,
         limits=limits,
-        current_evolution_runs=summary.total_requests,
+        current_evolution_runs=evolution_runs,
+        current_total_tokens=summary.total_tokens,
         current_cost_usd=current_cost_usd,
         remaining_evolution_runs=remaining_evolution_runs,
         remaining_cost_usd=remaining_cost_usd,

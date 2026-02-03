@@ -467,6 +467,42 @@ async def audit_account_unlocked(
     )
 
 
+async def audit_account_deleted(
+    db: AsyncSession,
+    user_id: UUID,
+    request: Request,
+) -> AuditLog:
+    """Log a user-initiated account deletion."""
+    return await log_audit_event(
+        db,
+        AuditEventType.ACCOUNT_DELETED,
+        user_id=user_id,
+        severity=AuditSeverity.CRITICAL,
+        ip_address=get_client_ip(request),
+        user_agent=get_user_agent(request),
+    )
+
+
+async def audit_data_exported(
+    db: AsyncSession,
+    user_id: UUID,
+    request: Request,
+    *,
+    export_size_bytes: int | None = None,
+) -> AuditLog:
+    """Log a user-initiated data export."""
+    details = {"export_size_bytes": export_size_bytes} if export_size_bytes is not None else None
+    return await log_audit_event(
+        db,
+        AuditEventType.DATA_EXPORTED,
+        user_id=user_id,
+        severity=AuditSeverity.INFO,
+        ip_address=get_client_ip(request),
+        user_agent=get_user_agent(request),
+        details=details,
+    )
+
+
 # =============================================================================
 # Authorization Events
 # =============================================================================

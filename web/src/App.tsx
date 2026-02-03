@@ -46,8 +46,35 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return <Layout>{children}</Layout>;
 }
 
+function SubscribedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const hasPaidAccess =
+    user?.subscription_status === 'active' &&
+    !!user.subscription_tier &&
+    user.subscription_tier !== 'free';
+
+  if (!hasPaidAccess) {
+    return <Navigate to="/pricing" replace />;
+  }
+
+  return <Layout>{children}</Layout>;
+}
+
 function PublicRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -58,7 +85,12 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (isAuthenticated) {
-    return <Navigate to="/dashboard" replace />;
+    const hasPaidAccess =
+      user?.subscription_status === 'active' &&
+      !!user.subscription_tier &&
+      user.subscription_tier !== 'free';
+
+    return <Navigate to={hasPaidAccess ? '/dashboard' : '/pricing'} replace />;
   }
 
   return <>{children}</>;
@@ -126,41 +158,41 @@ function AppRoutes() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute>
+          <SubscribedRoute>
             <Dashboard />
-          </ProtectedRoute>
+          </SubscribedRoute>
         }
       />
       <Route
         path="/playbooks/:id"
         element={
-          <ProtectedRoute>
+          <SubscribedRoute>
             <PlaybookDetail />
-          </ProtectedRoute>
+          </SubscribedRoute>
         }
       />
       <Route
         path="/playbooks/:id/edit"
         element={
-          <ProtectedRoute>
+          <SubscribedRoute>
             <PlaybookContentEditor />
-          </ProtectedRoute>
+          </SubscribedRoute>
         }
       />
       <Route
         path="/api-keys"
         element={
-          <ProtectedRoute>
+          <SubscribedRoute>
             <ApiKeys />
-          </ProtectedRoute>
+          </SubscribedRoute>
         }
       />
       <Route
         path="/usage"
         element={
-          <ProtectedRoute>
+          <SubscribedRoute>
             <Usage />
-          </ProtectedRoute>
+          </SubscribedRoute>
         }
       />
 

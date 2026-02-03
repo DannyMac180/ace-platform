@@ -119,6 +119,10 @@ class AuditEventType(str, enum.Enum):
     ACCOUNT_CREATED = "account_created"
     ACCOUNT_LOCKED = "account_locked"
     ACCOUNT_UNLOCKED = "account_unlocked"
+    ACCOUNT_DELETED = "account_deleted"
+
+    # Data & privacy
+    DATA_EXPORTED = "data_exported"
 
     # Authorization events
     PERMISSION_DENIED = "permission_denied"

@@ -8,6 +8,7 @@ from ace_platform.api.auth import (
     SubscriptionError,
     get_user_tier,
     require_active_subscription,
+    require_paid_access,
     require_feature,
     require_tier,
 )
@@ -131,6 +132,60 @@ class TestRequireActiveSubscription:
 
         assert exc_info.value.status_code == 402
         assert "unpaid" in exc_info.value.detail.lower()
+
+
+class TestRequirePaidAccess:
+    """Tests for require_paid_access dependency."""
+
+    @pytest.mark.asyncio
+    async def test_allows_active_paid_tier(self):
+        """Allows users with ACTIVE status and a paid tier."""
+        user = MagicMock(spec=User)
+        user.subscription_status = SubscriptionStatus.ACTIVE
+        user.subscription_tier = "starter"
+
+        result = await require_paid_access(user)
+
+        assert result == user
+
+    @pytest.mark.asyncio
+    async def test_rejects_none_status(self):
+        """Rejects users with NONE subscription status."""
+        user = MagicMock(spec=User)
+        user.subscription_status = SubscriptionStatus.NONE
+        user.subscription_tier = None
+
+        with pytest.raises(SubscriptionError) as exc_info:
+            await require_paid_access(user)
+
+        assert exc_info.value.status_code == 402
+        assert "subscribe" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_active_without_paid_tier(self):
+        """Rejects users with ACTIVE status but missing/invalid tier."""
+        user = MagicMock(spec=User)
+        user.subscription_status = SubscriptionStatus.ACTIVE
+        user.subscription_tier = None
+
+        with pytest.raises(SubscriptionError) as exc_info:
+            await require_paid_access(user)
+
+        assert exc_info.value.status_code == 402
+        assert "subscribe" in exc_info.value.detail.lower()
+
+    @pytest.mark.asyncio
+    async def test_rejects_past_due_status(self):
+        """Rejects users with PAST_DUE subscription status."""
+        user = MagicMock(spec=User)
+        user.subscription_status = SubscriptionStatus.PAST_DUE
+        user.subscription_tier = "starter"
+
+        with pytest.raises(SubscriptionError) as exc_info:
+            await require_paid_access(user)
+
+        assert exc_info.value.status_code == 402
+        assert "past due" in exc_info.value.detail.lower()
 
 
 class TestRequireTier:
