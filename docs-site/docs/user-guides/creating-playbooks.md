@@ -28,148 +28,104 @@ Use the ace create_playbook tool with:
 
 ## Playbook Structure
 
-A well-structured playbook includes these sections:
+Playbooks use the **ACE bullet format**—structured instructions that can be tracked and evolved over time.
 
-### 1. Title and Role
+### Basic Structure
+
+```markdown
+# Playbook Title
+
+A brief description of what this playbook is for.
+
+## STRATEGIES & INSIGHTS
+
+[strategy-name] helpful=0 harmful=0 :: Actionable instruction content here.
+[another-strategy] helpful=0 harmful=0 :: Another instruction.
+
+## COMMON MISTAKES TO AVOID
+
+[mistake-name] helpful=0 harmful=0 :: Description of what to avoid.
+
+## OTHERS
+
+[misc-instruction] helpful=0 harmful=0 :: Any other instructions.
+```
+
+### ACE Bullet Format
+
+Each instruction follows this format:
+
+```
+[semantic-slug] helpful=N harmful=N :: Instruction content
+```
+
+- **`[semantic-slug]`** - A unique identifier for the instruction (lowercase, hyphens)
+- **`helpful=N`** - Score tracking how often this instruction helped (starts at 0)
+- **`harmful=N`** - Score tracking how often this instruction caused issues (starts at 0)
+- **`::`** - Separator between metadata and content
+- **Instruction content** - The actual guidance
+
+### Common Sections
+
+| Section | Purpose |
+|---------|---------|
+| `STRATEGIES & INSIGHTS` | High-level approaches and wisdom |
+| `CODE SNIPPETS & TEMPLATES` | Reusable patterns and examples |
+| `COMMON MISTAKES TO AVOID` | Anti-patterns and pitfalls |
+| `PROBLEM-SOLVING HEURISTICS` | Debugging and troubleshooting tips |
+| `CONTEXT CLUES & INDICATORS` | When to apply certain approaches |
+| `OTHERS` | Miscellaneous instructions |
+
+### Example Playbook
 
 ```markdown
 # Code Review Assistant
 
-## Role
-You are a senior software engineer with expertise in code review,
-security best practices, and clean code principles.
+Reviews pull requests for code quality and security issues.
+
+## STRATEGIES & INSIGHTS
+
+[read-before-changing] helpful=5 harmful=0 :: Read and understand existing code before suggesting changes. Look for patterns and conventions to preserve.
+[simple-first] helpful=4 harmful=0 :: Start with the simplest solution that works. Avoid premature optimization.
+
+## COMMON MISTAKES TO AVOID
+
+[silent-catch] helpful=5 harmful=0 :: Don't catch and silently ignore exceptions. Either handle them meaningfully or let them propagate.
+[hardcoded-values] helpful=4 harmful=0 :: Avoid hardcoding values that might change (URLs, API keys, timeouts). Use configuration.
+
+## OTHERS
+
+[document-why] helpful=2 harmful=0 :: Document the "why" not the "what". Code shows what it does; comments should explain why.
 ```
 
-### 2. Context
+### Auto-Convert
 
-```markdown
-## Context
-You will be reviewing pull requests for a TypeScript/React codebase.
-The team values:
-- Type safety
-- Test coverage
-- Accessibility
-- Performance
-```
-
-### 3. Guidelines
-
-```markdown
-## Guidelines
-
-### Code Quality
-- Check for proper error handling
-- Verify edge cases are considered
-- Look for potential race conditions
-- Ensure consistent naming conventions
-
-### Security
-- Identify SQL injection risks
-- Check for XSS vulnerabilities
-- Verify authentication/authorization
-- Look for exposed secrets
-```
-
-### 4. Output Format
-
-```markdown
-## Output Format
-
-Structure your review as:
-
-### Critical Issues
-Must be fixed before merging.
-
-### Suggestions
-Recommended improvements.
-
-### Questions
-Areas needing clarification.
-
-### Praise
-What was done well.
-```
-
-### 5. Examples (Optional)
-
-````markdown
-## Examples
-
-### Example Input
-```typescript
-function getUserData(id) {
-  return db.query(`SELECT * FROM users WHERE id = ${id}`);
-}
-```
-
-### Example Output
-**Critical Issue:** SQL injection vulnerability.
-
-Use parameterized queries instead:
-```typescript
-function getUserData(id: string) {
-  return db.query('SELECT * FROM users WHERE id = $1', [id]);
-}
-```
-````
+When creating a playbook, you can use the **auto_convert** option to automatically convert free-form markdown into ACE bullet format using AI.
 
 ## Best Practices
 
 ### Be Specific
 
 ❌ **Too vague:**
-```markdown
-Review the code carefully.
+```
+[review-code] helpful=0 harmful=0 :: Review the code carefully.
 ```
 
 ✅ **Specific:**
-```markdown
-Check for:
-- Null/undefined handling
-- Error boundaries
-- Input validation
-- Memory leaks in useEffect cleanup
+```
+[check-null-handling] helpful=0 harmful=0 :: Check for null/undefined handling in all function parameters and return values.
+[verify-error-boundaries] helpful=0 harmful=0 :: Verify React error boundaries wrap components that might throw.
 ```
 
-### Include Constraints
+### Use Meaningful Slugs
 
-```markdown
-## Constraints
-- Keep reviews concise (under 500 words)
-- Focus on issues, not style preferences
-- Don't suggest complete rewrites
-- Assume good intent from the author
-```
+Slugs should describe the instruction:
+- `[validate-inputs]` ✅
+- `[instruction-1]` ❌
 
-### Define Quality Criteria
+### One Instruction Per Bullet
 
-```markdown
-## Quality Criteria
-
-A good review should:
-- Be actionable (author knows what to do)
-- Be specific (point to exact lines)
-- Be educational (explain the "why")
-- Be respectful (no condescension)
-```
-
-### Use Markdown Features
-
-```markdown
-## Checklist
-- [ ] Error handling present
-- [ ] Types are correct
-- [ ] Tests are included
-- [ ] Docs updated if needed
-
-## Priority Levels
-| Priority | Action Required |
-|----------|-----------------|
-| P0 | Block merge |
-| P1 | Should fix |
-| P2 | Consider fixing |
-| P3 | Nice to have |
-```
+Each bullet should contain a single, actionable instruction rather than a list of items.
 
 ## Editing Playbooks
 
@@ -192,72 +148,9 @@ Use clear, descriptive names:
 - `incident-response-p0` - Priority-based
 - `onboarding-backend` - Team/area based
 
-### Tags (Coming Soon)
+## Starter Playbook
 
-Organize playbooks with tags:
-
-- `#code-review`
-- `#documentation`
-- `#security`
-- `#team-backend`
-
-## Templates
-
-Start with these templates for common use cases:
-
-### Code Review
-
-```markdown
-# Code Review - [Language]
-
-## Role
-Expert code reviewer for [language/framework].
-
-## Focus Areas
-1. Correctness
-2. Security
-3. Performance
-4. Maintainability
-
-## Output
-Structured feedback with priority levels.
-```
-
-### Documentation Writer
-
-```markdown
-# Documentation Writer
-
-## Role
-Technical writer creating clear, concise documentation.
-
-## Guidelines
-- Use active voice
-- Keep sentences short
-- Include code examples
-- Define technical terms
-
-## Output
-Markdown-formatted documentation.
-```
-
-### Data Analysis
-
-```markdown
-# Data Analysis Assistant
-
-## Role
-Data analyst providing insights from datasets.
-
-## Approach
-1. Understand the data structure
-2. Identify patterns and anomalies
-3. Generate visualizations
-4. Provide actionable insights
-
-## Output
-Analysis report with charts and recommendations.
-```
+A starter playbook for coding tasks is available in the repository at `playbooks/coding_agent.md`. You can use it as a reference or starting point for your own playbooks.
 
 ## Troubleshooting
 
