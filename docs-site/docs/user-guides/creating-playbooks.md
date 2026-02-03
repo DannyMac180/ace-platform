@@ -15,7 +15,7 @@ Learn how to create effective playbooks that improve over time.
 3. Fill in the details:
    - **Name** - Clear, descriptive name
    - **Description** - Brief summary of the playbook's purpose
-   - **Content** - The playbook instructions in Markdown
+   - **Content** (optional) - The playbook instructions in Markdown
 4. Click **Create Playbook**
 
 ### Via MCP
