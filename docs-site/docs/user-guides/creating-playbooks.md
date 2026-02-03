@@ -32,24 +32,27 @@ Playbooks use the **ACE bullet format**—structured instructions that can be tr
 
 ### Basic Structure
 
-```markdown
-# Playbook Title
+<div style={{background: 'var(--ifm-color-emphasis-100)', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem'}}>
+
+#### Playbook Title
 
 A brief description of what this playbook is for.
 
-## STRATEGIES & INSIGHTS
+**STRATEGIES & INSIGHTS**
 
-[strategy-name] helpful=0 harmful=0 :: Actionable instruction content here.
-[another-strategy] helpful=0 harmful=0 :: Another instruction.
+`[strategy-name] helpful=0 harmful=0 ::` Actionable instruction content here.
 
-## COMMON MISTAKES TO AVOID
+`[another-strategy] helpful=0 harmful=0 ::` Another instruction.
 
-[mistake-name] helpful=0 harmful=0 :: Description of what to avoid.
+**COMMON MISTAKES TO AVOID**
 
-## OTHERS
+`[mistake-name] helpful=0 harmful=0 ::` Description of what to avoid.
 
-[misc-instruction] helpful=0 harmful=0 :: Any other instructions.
-```
+**OTHERS**
+
+`[misc-instruction] helpful=0 harmful=0 ::` Any other instructions.
+
+</div>
 
 ### ACE Bullet Format
 
