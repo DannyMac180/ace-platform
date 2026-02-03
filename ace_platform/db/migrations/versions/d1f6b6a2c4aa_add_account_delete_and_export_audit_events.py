@@ -27,4 +27,3 @@ def downgrade() -> None:
     """Downgrade schema."""
     # Postgres enum values cannot be removed safely in a downgrade.
     pass
-

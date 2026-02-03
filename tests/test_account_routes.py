@@ -17,7 +17,11 @@ from fastapi import HTTPException, Request, status
 from fastapi.testclient import TestClient
 
 from ace_platform.api.main import create_app
-from ace_platform.api.routes.account import DeleteAccountRequest, delete_account, export_account_data
+from ace_platform.api.routes.account import (
+    DeleteAccountRequest,
+    delete_account,
+    export_account_data,
+)
 from ace_platform.db.models import (
     AuditEventType,
     AuditSeverity,

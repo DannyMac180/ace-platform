@@ -9,8 +9,8 @@ This package contains FastAPI routers for different resource types:
 - evolutions: Evolution statistics and activity
 """
 
-from .auth import router as auth_router
 from .account import router as account_router
+from .auth import router as auth_router
 from .billing import router as billing_router
 from .evolutions import router as evolutions_router
 from .oauth import router as oauth_router

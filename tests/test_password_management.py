@@ -119,4 +119,3 @@ async def test_change_password_rejects_when_current_incorrect():
         )
 
     assert exc_info.value.status_code == 400
-

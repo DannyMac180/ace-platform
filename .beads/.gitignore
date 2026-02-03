@@ -8,6 +8,7 @@
 daemon.log
 daemon.pid
 bd.sock
+sync-state.json
 
 # Legacy database files
 db.sqlite

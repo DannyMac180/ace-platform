@@ -336,15 +336,15 @@ async def export_account_data(
         ],
         "audit_logs": [
             {
-                "id": str(l.id),
-                "event_type": l.event_type.value,
-                "severity": l.severity.value,
-                "created_at": l.created_at.isoformat(),
-                "ip_address": l.ip_address,
-                "user_agent": l.user_agent,
-                "details": l.details,
+                "id": str(log.id),
+                "event_type": log.event_type.value,
+                "severity": log.severity.value,
+                "created_at": log.created_at.isoformat(),
+                "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
+                "details": log.details,
             }
-            for l in audit_logs
+            for log in audit_logs
         ],
     }
 
@@ -366,7 +366,7 @@ async def export_account_data(
     return Response(
         content=payload,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename=\"{filename}\"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -401,15 +401,15 @@ async def list_audit_logs(
     return PaginatedAuditLogResponse(
         items=[
             AuditLogItem(
-                id=str(l.id),
-                event_type=l.event_type.value,
-                severity=l.severity.value,
-                created_at=l.created_at,
-                ip_address=l.ip_address,
-                user_agent=l.user_agent,
-                details=l.details,
+                id=str(log.id),
+                event_type=log.event_type.value,
+                severity=log.severity.value,
+                created_at=log.created_at,
+                ip_address=log.ip_address,
+                user_agent=log.user_agent,
+                details=log.details,
             )
-            for l in logs
+            for log in logs
         ],
         total=total,
         page=page,

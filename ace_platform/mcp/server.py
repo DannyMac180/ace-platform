@@ -253,9 +253,7 @@ def _require_paid_access(user: User) -> str | None:
         return "Error: Start your free trial or subscribe to continue."
 
     if user.subscription_status == SubscriptionStatus.PAST_DUE:
-        return (
-            "Error: Your subscription payment is past due. Please update your payment method."
-        )
+        return "Error: Your subscription payment is past due. Please update your payment method."
     if user.subscription_status == SubscriptionStatus.CANCELED:
         return "Error: Your subscription has been canceled. Please resubscribe to continue."
     if user.subscription_status == SubscriptionStatus.UNPAID:

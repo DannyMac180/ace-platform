@@ -64,4 +64,3 @@ def test_write_usage_records_is_idempotent_when_records_exist():
     )
 
     db.add.assert_not_called()
-
