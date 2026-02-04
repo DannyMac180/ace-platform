@@ -4,7 +4,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import { accountApi, api, authApi } from '../../utils/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import type { AuditLogItem } from '../../types';
 import styles from './Settings.module.css';
 
 interface LinkedAccounts {
@@ -39,12 +38,6 @@ export function Settings() {
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
-  const [auditLogsLoading, setAuditLogsLoading] = useState(false);
-  const [auditLogsError, setAuditLogsError] = useState<string | null>(null);
-  const [auditLogsPage, setAuditLogsPage] = useState(1);
-  const [auditLogsTotalPages, setAuditLogsTotalPages] = useState(1);
-  const [showAllAuditLogs, setShowAllAuditLogs] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -65,45 +58,6 @@ export function Settings() {
     };
     fetchData();
   }, []);
-
-  useEffect(() => {
-    const fetchAuditLogs = async () => {
-      setAuditLogsLoading(true);
-      setAuditLogsError(null);
-
-      try {
-        const res = await accountApi.listAuditLogs(1, 20);
-        setAuditLogs(res.items);
-        setAuditLogsPage(res.page);
-        setAuditLogsTotalPages(res.total_pages);
-      } catch {
-        setAuditLogsError('Failed to load security activity.');
-      } finally {
-        setAuditLogsLoading(false);
-      }
-    };
-
-    fetchAuditLogs();
-  }, []);
-
-  const loadMoreAuditLogs = async () => {
-    if (auditLogsLoading || auditLogsPage >= auditLogsTotalPages) return;
-
-    setAuditLogsLoading(true);
-    setAuditLogsError(null);
-
-    try {
-      const nextPage = auditLogsPage + 1;
-      const res = await accountApi.listAuditLogs(nextPage, 20);
-      setAuditLogs((prev) => [...prev, ...res.items]);
-      setAuditLogsPage(res.page);
-      setAuditLogsTotalPages(res.total_pages);
-    } catch {
-      setAuditLogsError('Failed to load more activity.');
-    } finally {
-      setAuditLogsLoading(false);
-    }
-  };
 
   const handleSetPassword = async (newPassword: string) => {
     const res = await authApi.setPassword(newPassword);
@@ -423,56 +377,6 @@ export function Settings() {
         </div>
       </section>
 
-      {/* Recent Security Activity */}
-      <section className={styles.section}>
-        <h2>Recent Security Activity</h2>
-        <p className={styles.sectionDescription}>Review recent account and security events</p>
-
-        {auditLogsError && <div className={styles.error}>{auditLogsError}</div>}
-
-        <div className={styles.card}>
-          {auditLogsLoading && auditLogs.length === 0 ? (
-            <div className={styles.loading}>Loading...</div>
-          ) : auditLogs.length === 0 ? (
-            <div className={styles.loading}>No recent activity.</div>
-          ) : (
-            <>
-              <div className={styles.auditList}>
-                {(showAllAuditLogs ? auditLogs : auditLogs.slice(0, 10)).map((log) => (
-                  <div key={log.id} className={styles.auditRow}>
-                    <div className={styles.auditEvent}>{formatAuditEvent(log.event_type)}</div>
-                    <div className={styles.auditMeta}>
-                      <span className={styles.auditSeverity}>{log.severity}</span>
-                      <span className={styles.auditTime}>
-                        {new Date(log.created_at).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className={styles.auditActions}>
-                <button
-                  className={styles.manageButton}
-                  onClick={() => setShowAllAuditLogs((prev) => !prev)}
-                >
-                  {showAllAuditLogs ? 'Show less' : 'View all'}
-                </button>
-                {showAllAuditLogs && auditLogsPage < auditLogsTotalPages && (
-                  <button
-                    className={styles.manageButton}
-                    onClick={loadMoreAuditLogs}
-                    disabled={auditLogsLoading}
-                  >
-                    {auditLogsLoading ? 'Loading…' : 'Load more'}
-                  </button>
-                )}
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
       {/* Danger Zone */}
       <section className={styles.section}>
         <h2>Danger Zone</h2>
@@ -531,14 +435,6 @@ function extractFilename(contentDisposition: string): string | null {
   } catch {
     return match[1];
   }
-}
-
-function formatAuditEvent(eventType: string): string {
-  return eventType
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
 }
 
 function Modal({

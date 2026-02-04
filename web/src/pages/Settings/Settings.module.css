@@ -298,64 +298,6 @@
   gap: 0.75rem;
 }
 
-/* Audit log list */
-.auditList {
-  display: flex;
-  flex-direction: column;
-}
-
-.auditRow {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.auditRow:last-child {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-.auditRow:first-child {
-  padding-top: 0;
-}
-
-.auditEvent {
-  font-family: var(--font-display);
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-
-.auditMeta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.25rem;
-  flex-shrink: 0;
-}
-
-.auditSeverity {
-  font-family: var(--font-display);
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: capitalize;
-}
-
-.auditTime {
-  font-family: var(--font-body);
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-}
-
-.auditActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1rem;
-}
-
 /* Danger zone */
 .dangerRow {
   display: flex;
