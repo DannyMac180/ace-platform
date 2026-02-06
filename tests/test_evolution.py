@@ -168,6 +168,53 @@ class TestEvolutionService:
         assert bullet_tags[0]["tag"] == "helpful"
         assert token_usage["total_tokens"] == 150
 
+    def test_run_batch_reflection_uses_correct_token_param(self):
+        """Test _run_batch_reflection uses max_completion_tokens for newer models."""
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock(message=MagicMock(content='{"bullet_tags": []}'))]
+        mock_response.usage = MagicMock(prompt_tokens=1, completion_tokens=1, total_tokens=2)
+
+        # GPT-5.x / reasoning models: max_completion_tokens + reasoning_effort
+        settings_gpt5 = MagicMock()
+        settings_gpt5.evolution_api_provider = "openai"
+        settings_gpt5.openai_api_key = "test-key"
+        settings_gpt5.evolution_reflector_model = "gpt-5.2"
+        settings_gpt5.evolution_max_tokens = 123
+        settings_gpt5.evolution_reasoning_effort = "medium"
+
+        service_gpt5 = EvolutionService(settings=settings_gpt5)
+        service_gpt5._api_client = MagicMock()
+        service_gpt5._api_client.chat.completions.create.return_value = mock_response
+
+        outcomes = [OutcomeData(task_description="Test task", outcome_status="success")]
+        service_gpt5._run_batch_reflection("## TEST\n", outcomes)
+
+        call_kwargs = service_gpt5._api_client.chat.completions.create.call_args.kwargs
+        assert "max_completion_tokens" in call_kwargs
+        assert call_kwargs["max_completion_tokens"] == 123
+        assert "max_tokens" not in call_kwargs
+        assert call_kwargs["reasoning_effort"] == "medium"
+
+        # Legacy chat models: max_tokens only
+        settings_legacy = MagicMock()
+        settings_legacy.evolution_api_provider = "openai"
+        settings_legacy.openai_api_key = "test-key"
+        settings_legacy.evolution_reflector_model = "gpt-4"
+        settings_legacy.evolution_max_tokens = 456
+        settings_legacy.evolution_reasoning_effort = "medium"
+
+        service_legacy = EvolutionService(settings=settings_legacy)
+        service_legacy._api_client = MagicMock()
+        service_legacy._api_client.chat.completions.create.return_value = mock_response
+
+        service_legacy._run_batch_reflection("## TEST\n", outcomes)
+
+        call_kwargs = service_legacy._api_client.chat.completions.create.call_args.kwargs
+        assert "max_tokens" in call_kwargs
+        assert call_kwargs["max_tokens"] == 456
+        assert "max_completion_tokens" not in call_kwargs
+        assert "reasoning_effort" not in call_kwargs
+
     def test_run_batch_reflection_includes_reasoning_trace(self, service):
         """Test _run_batch_reflection includes reasoning_trace in prompt."""
         mock_response = MagicMock()

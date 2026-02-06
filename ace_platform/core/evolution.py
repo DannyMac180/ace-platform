@@ -303,12 +303,26 @@ class EvolutionService:
 
         # Use the reflector model for this call
         try:
-            response = self.api_client.chat.completions.create(
-                model=self.settings.evolution_reflector_model,
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=self.settings.evolution_max_tokens,
-                response_format={"type": "json_object"},
-            )
+            model = self.settings.evolution_reflector_model
+
+            # OpenAI uses different token-limit parameter names depending on model family.
+            # (e.g., gpt-4o/o1/gpt-5 use max_completion_tokens; older chat models use max_tokens)
+            api_params: dict[str, Any] = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "response_format": {"type": "json_object"},
+            }
+
+            if model.startswith(("gpt-4o", "gpt-5", "o1", "o3")):
+                api_params["max_completion_tokens"] = self.settings.evolution_max_tokens
+            else:
+                api_params["max_tokens"] = self.settings.evolution_max_tokens
+
+            # Pass reasoning effort when using GPT-5.x / o-series reasoning models
+            if model.startswith(("gpt-5", "o1", "o3")) and self.settings.evolution_reasoning_effort:
+                api_params["reasoning_effort"] = self.settings.evolution_reasoning_effort
+
+            response = self.api_client.chat.completions.create(**api_params)
 
             content = response.choices[0].message.content
             token_usage = {
