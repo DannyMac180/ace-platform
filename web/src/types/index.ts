@@ -106,7 +106,7 @@ export interface OutcomeCreate {
 
 export interface EvolutionJob {
   id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'queued' | 'running' | 'completed' | 'failed';
   from_version_id: string | null;
   to_version_id: string | null;
   outcomes_processed: number;

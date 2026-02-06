@@ -395,7 +395,7 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
   }
 
   const statusStyles = {
-    pending: styles.evolutionPending,
+    queued: styles.evolutionPending,
     running: styles.evolutionRunning,
     completed: styles.evolutionCompleted,
     failed: styles.evolutionFailed,
