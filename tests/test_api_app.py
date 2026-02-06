@@ -165,6 +165,57 @@ class TestExceptionHandlers:
         # Should not leak exception details in non-debug mode
         assert data["error"]["message"] == "An unexpected error occurred"
 
+    def test_generic_exception_redacts_sensitive_headers_in_sentry_context(self):
+        """Test that sensitive request headers are redacted before Sentry capture."""
+        test_app = create_app()
+
+        @test_app.get("/raise-generic-redaction")
+        async def raise_generic_redaction():
+            raise ValueError("redaction test")
+
+        captured_context: dict[str, dict] = {}
+
+        class DummyScope:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc_val, exc_tb):
+                return False
+
+            def set_tag(self, key, value):
+                return None
+
+            def set_context(self, key, value):
+                captured_context[key] = value
+
+        with (
+            patch("ace_platform.api.main.sentry_sdk.push_scope", return_value=DummyScope()),
+            patch("ace_platform.api.main.sentry_sdk.capture_exception"),
+        ):
+            client = TestClient(test_app, raise_server_exceptions=False)
+            response = client.get(
+                "/raise-generic-redaction",
+                headers={
+                    "Authorization": "Bearer top-secret-token",
+                    "Cookie": "sessionid=abc123",
+                    "X-Api-Key": "super-secret-key",
+                    "X-Correlation-ID": "test-correlation-id",
+                    "User-Agent": "pytest-agent",
+                },
+            )
+
+        assert response.status_code == 500
+        assert "request" in captured_context
+
+        request_headers = {
+            key.lower(): value for key, value in captured_context["request"]["headers"].items()
+        }
+        assert request_headers["authorization"] == "[REDACTED]"
+        assert request_headers["cookie"] == "[REDACTED]"
+        assert request_headers["x-api-key"] == "[REDACTED]"
+        assert request_headers["x-correlation-id"] == "test-correlation-id"
+        assert request_headers["user-agent"] == "pytest-agent"
+
     def test_generic_exception_shows_details_in_debug_mode(self):
         """Test that debug mode shows exception details in error response."""
         with patch("ace_platform.api.main.settings") as mock_settings:

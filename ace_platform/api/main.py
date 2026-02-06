@@ -22,6 +22,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
+from ace_platform.core.sentry_context import sanitize_request_headers
 from ace_platform.db.session import close_async_db
 
 from .middleware import (
@@ -331,7 +332,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
                 {
                     "url": str(request.url),
                     "method": request.method,
-                    "headers": dict(request.headers),
+                    "headers": sanitize_request_headers(dict(request.headers)),
                 },
             )
             sentry_sdk.capture_exception(exc)

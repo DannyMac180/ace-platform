@@ -20,7 +20,30 @@ Usage:
     set_job_context(job_id=job.id, status=job.status)
 """
 
+from collections.abc import Mapping
+
 import sentry_sdk
+
+REDACTED_HEADER_VALUE = "[REDACTED]"
+
+# Explicitly sensitive header names that should never be sent to Sentry
+SENSITIVE_REQUEST_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-auth-token",
+    "x-access-token",
+}
+
+# Additional marker substrings for secret-bearing header names
+SENSITIVE_HEADER_MARKERS = (
+    "token",
+    "secret",
+    "api-key",
+    "session",
+)
 
 
 def set_user_context(
@@ -139,3 +162,27 @@ def add_breadcrumb(
         level=level,
         data=data or {},
     )
+
+
+def sanitize_request_headers(headers: Mapping[str, str]) -> dict[str, str]:
+    """Return headers safe for telemetry by redacting sensitive values.
+
+    Args:
+        headers: Request header mapping.
+
+    Returns:
+        Dict with sensitive header values replaced by ``[REDACTED]``.
+    """
+    sanitized: dict[str, str] = {}
+
+    for name, value in headers.items():
+        normalized_name = name.lower()
+
+        is_sensitive = (
+            normalized_name in SENSITIVE_REQUEST_HEADERS
+            or any(marker in normalized_name for marker in SENSITIVE_HEADER_MARKERS)
+        )
+
+        sanitized[name] = REDACTED_HEADER_VALUE if is_sensitive else value
+
+    return sanitized

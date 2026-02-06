@@ -441,6 +441,16 @@ Sample rate for Sentry profiling.
 | Default | `0.1` (10%) |
 | Range | `0.0` to `1.0` |
 
+### Telemetry Redaction Policy
+
+For API exception reporting, request header values are sanitized before being
+attached to Sentry context.
+
+- Always redacted: `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`,
+  `X-Api-Key`, and other token/secret/session-style headers
+- Preserved: non-sensitive operational headers (for example correlation IDs and
+  user agent) for debugging and traceability
+
 ---
 
 ## Deployment Scenarios
