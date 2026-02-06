@@ -212,7 +212,7 @@ function ApiKeyCard({ apiKey, onDelete, onShowSetupDocs, isDeleting }: ApiKeyCar
         </div>
         <div className={styles.keyInfo}>
           <h3>{apiKey.name}</h3>
-          <code className={styles.keyPreview}>{apiKey.key_preview}</code>
+          <code className={styles.keyPreview}>{apiKey.key_prefix}</code>
         </div>
         <div className={styles.keyActions}>
           <button
@@ -245,12 +245,6 @@ function ApiKeyCard({ apiKey, onDelete, onShowSetupDocs, isDeleting }: ApiKeyCar
           <Clock size={14} />
           <span>Created {new Date(apiKey.created_at).toLocaleDateString()}</span>
         </div>
-        {apiKey.expires_at && (
-          <div className={styles.metaItem}>
-            <AlertCircle size={14} />
-            <span>Expires {new Date(apiKey.expires_at).toLocaleDateString()}</span>
-          </div>
-        )}
         {apiKey.last_used_at && (
           <div className={styles.metaItem}>
             <span>Last used {new Date(apiKey.last_used_at).toLocaleDateString()}</span>
@@ -310,7 +304,6 @@ interface CreateModalProps {
 function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
   const [name, setName] = useState('');
   const [selectedScopes, setSelectedScopes] = useState<Set<string>>(new Set());
-  const [expiresInDays, setExpiresInDays] = useState<string>('');
 
   const toggleScope = (scopeId: string) => {
     setSelectedScopes((prev) => {
@@ -339,7 +332,6 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
     onCreate({
       name,
       scopes: Array.from(selectedScopes),
-      expires_in_days: expiresInDays ? parseInt(expiresInDays) : undefined,
     });
   };
 
@@ -383,21 +375,6 @@ function CreateKeyModal({ onClose, onCreate, isLoading }: CreateModalProps) {
                 </label>
               ))}
             </div>
-          </div>
-
-          <div className={styles.expirySection}>
-            <label className={styles.expiryLabel}>Expiration (optional)</label>
-            <select
-              value={expiresInDays}
-              onChange={(e) => setExpiresInDays(e.target.value)}
-              className={styles.expirySelect}
-            >
-              <option value="">Never expires</option>
-              <option value="30">30 days</option>
-              <option value="90">90 days</option>
-              <option value="180">180 days</option>
-              <option value="365">1 year</option>
-            </select>
           </div>
 
           <div className={styles.modalActions}>
@@ -498,10 +475,8 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
 
         <div className={styles.keyDetails}>
           <p><strong>Name:</strong> {apiKey.name}</p>
+          <p><strong>Key Prefix:</strong> {apiKey.key_prefix}</p>
           <p><strong>Scopes:</strong> {apiKey.scopes.join(', ')}</p>
-          {apiKey.expires_at && (
-            <p><strong>Expires:</strong> {new Date(apiKey.expires_at).toLocaleDateString()}</p>
-          )}
         </div>
 
         {/* Setup Instructions */}

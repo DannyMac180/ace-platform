@@ -22,25 +22,24 @@ export interface TokenResponse {
 export interface ApiKey {
   id: string;
   name: string;
-  key_preview: string;
+  key_prefix: string;
   scopes: string[];
   created_at: string;
-  expires_at: string | null;
   last_used_at: string | null;
+  is_active: boolean;
 }
 
 export interface ApiKeyCreate {
   name: string;
   scopes: string[];
-  expires_in_days?: number;
 }
 
 export interface ApiKeyCreateResponse {
   id: string;
   name: string;
   key: string; // Full key, only shown once
+  key_prefix: string;
   scopes: string[];
-  expires_at: string | null;
 }
 
 export interface Playbook {

@@ -20,11 +20,11 @@ vi.mock('../../utils/api', () => ({
       {
         id: 'key-1',
         name: 'Test API Key',
-        key_preview: 'ace_•••abc',
+        key_prefix: 'ace_1234',
         scopes: ['playbooks:read', 'playbooks:write'],
         created_at: '2024-01-15T10:00:00Z',
-        expires_at: null,
         last_used_at: null,
+        is_active: true,
       },
     ]),
     create: vi.fn(),
@@ -54,6 +54,16 @@ describe('ApiKeys', () => {
   });
 
   describe('Setup Guide Button', () => {
+    it('renders API key prefix from backend payload shape', async () => {
+      renderWithProviders(<ApiKeys />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Test API Key')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText('ace_1234')).toBeInTheDocument();
+    });
+
     it('renders setup guide button on each API key card', async () => {
       renderWithProviders(<ApiKeys />);
 

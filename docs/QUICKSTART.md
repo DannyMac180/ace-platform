@@ -51,6 +51,29 @@ curl -X POST https://your-ace-platform.fly.dev/auth/api-keys \
 
 Save the returned API key securely.
 
+To list existing keys later (without exposing full secrets), use:
+
+```bash
+curl -X GET https://your-ace-platform.fly.dev/auth/api-keys \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+Example response shape:
+
+```json
+[
+  {
+    "id": "0d75fef2-5e8f-4886-bbf8-3f02e0ca6ce4",
+    "name": "My Agent",
+    "key_prefix": "ace_ab12",
+    "scopes": ["playbooks:read", "outcomes:write"],
+    "created_at": "2026-02-06T20:30:10.123Z",
+    "last_used_at": null,
+    "is_active": true
+  }
+]
+```
+
 ### 4. Connect Your LLM Agent
 
 Configure your LLM agent (Claude Desktop, Claude Code, etc.) to use the MCP server. See [MCP Integration Guide](MCP_INTEGRATION.md) for detailed setup.
