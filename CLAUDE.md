@@ -277,6 +277,8 @@ Common bd commands:
 - `bd close <issue-id>` - Close an issue
 - `bd search <query>` - Search issues
 
+**Issue ID naming convention:** All beads issues must use the `ace-platform-` prefix (for example: `ace-platform-123`). When creating or migrating issues, keep IDs in this format.
+
 1. File/update issues for remaining work
 
 Agents should proactively create issues for discovered bugs, TODOs, and follow-up tasks
