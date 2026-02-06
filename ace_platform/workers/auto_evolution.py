@@ -3,15 +3,14 @@
 This module provides a periodic Celery task that checks for playbooks
 that should have evolution triggered based on configurable thresholds:
 
-1. Outcome count threshold: Trigger after N unprocessed outcomes (default: 5)
-2. Time threshold: Trigger after T hours since last evolution with at least 1 outcome
+1. Outcome count threshold: Trigger only when there are at least N unprocessed outcomes
+   (default: 5; configured via EVOLUTION_OUTCOME_THRESHOLD, clamped to a minimum of 5)
 
 The task runs periodically via Celery beat and queues evolution jobs
 for any playbooks meeting the criteria.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
@@ -32,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 # Default thresholds (can be overridden in settings)
 DEFAULT_OUTCOME_THRESHOLD = 5
-DEFAULT_TIME_THRESHOLD_HOURS = 24
 
 
 @celery_app.task(
@@ -45,7 +43,7 @@ def check_auto_evolution(self) -> dict:
 
     This task runs periodically and:
     1. Finds active playbooks with unprocessed outcomes
-    2. Checks if they meet trigger criteria (count or time threshold)
+    2. Checks if they meet the outcome count threshold
     3. Queues evolution jobs for matching playbooks
 
     Returns:
@@ -53,17 +51,16 @@ def check_auto_evolution(self) -> dict:
     """
     settings = get_settings()
 
-    # Get thresholds from settings or use defaults
-    outcome_threshold = getattr(settings, "evolution_outcome_threshold", DEFAULT_OUTCOME_THRESHOLD)
-    time_threshold_hours = getattr(
-        settings, "evolution_time_threshold_hours", DEFAULT_TIME_THRESHOLD_HOURS
+    # Get thresholds from settings or use defaults (clamp to a minimum of 5)
+    outcome_threshold = max(
+        DEFAULT_OUTCOME_THRESHOLD,
+        getattr(settings, "evolution_outcome_threshold", DEFAULT_OUTCOME_THRESHOLD),
     )
 
     with SyncSessionLocal() as db:
         result = _check_and_trigger_evolutions(
             db,
             outcome_threshold=outcome_threshold,
-            time_threshold_hours=time_threshold_hours,
         )
 
     return result
@@ -72,14 +69,12 @@ def check_auto_evolution(self) -> dict:
 def _check_and_trigger_evolutions(
     db,
     outcome_threshold: int = DEFAULT_OUTCOME_THRESHOLD,
-    time_threshold_hours: int = DEFAULT_TIME_THRESHOLD_HOURS,
 ) -> dict:
     """Check playbooks and trigger evolutions as needed.
 
     Args:
         db: Database session.
         outcome_threshold: Number of unprocessed outcomes to trigger evolution.
-        time_threshold_hours: Hours since last evolution to trigger with any outcomes.
 
     Returns:
         Dict with results.
@@ -94,8 +89,6 @@ def _check_and_trigger_evolutions(
     # Get all active playbooks
     result = db.execute(select(Playbook).where(Playbook.status == PlaybookStatus.ACTIVE))
     playbooks = result.scalars().all()
-
-    time_threshold = datetime.now(UTC) - timedelta(hours=time_threshold_hours)
 
     for playbook in playbooks:
         playbooks_checked += 1
@@ -172,30 +165,6 @@ def _check_and_trigger_evolutions(
             should_trigger = True
             trigger_reason = f"outcome_count ({unprocessed_count} >= {outcome_threshold})"
 
-        # Condition 2: Time threshold with at least 1 outcome
-        if not should_trigger and unprocessed_count >= 1:
-            # Get last completed evolution job
-            last_evolution = db.execute(
-                select(EvolutionJob)
-                .where(
-                    EvolutionJob.playbook_id == playbook.id,
-                    EvolutionJob.status == EvolutionJobStatus.COMPLETED,
-                )
-                .order_by(EvolutionJob.completed_at.desc())
-                .limit(1)
-            ).scalar_one_or_none()
-
-            if last_evolution is None:
-                # Never evolved - check if playbook is old enough
-                if playbook.created_at < time_threshold:
-                    should_trigger = True
-                    trigger_reason = (
-                        f"time_threshold (no prior evolution, {unprocessed_count} outcomes)"
-                    )
-            elif last_evolution.completed_at < time_threshold:
-                should_trigger = True
-                trigger_reason = f"time_threshold ({time_threshold_hours}h since last evolution, {unprocessed_count} outcomes)"
-
         if should_trigger:
             logger.info(
                 "Auto-triggering evolution for playbook %s: %s",
@@ -231,6 +200,5 @@ def _check_and_trigger_evolutions(
         "skipped_spending_limit": skipped_spending_limit,
         "thresholds": {
             "outcome_count": outcome_threshold,
-            "time_hours": time_threshold_hours,
         },
     }

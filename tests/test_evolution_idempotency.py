@@ -26,6 +26,8 @@ from ace_platform.core.evolution_jobs import (
 from ace_platform.db.models import (
     Base,
     EvolutionJobStatus,
+    Outcome,
+    OutcomeStatus,
     Playbook,
     PlaybookSource,
     PlaybookStatus,
@@ -130,6 +132,18 @@ async def test_playbook(async_session: AsyncSession, test_user: User):
     async_session.add(playbook)
     await async_session.commit()
     await async_session.refresh(playbook)
+
+    # Seed enough unprocessed outcomes to satisfy evolution trigger threshold.
+    outcomes = [
+        Outcome(
+            playbook_id=playbook.id,
+            task_description=f"Seed outcome {i}",
+            outcome_status=OutcomeStatus.SUCCESS,
+        )
+        for i in range(1, 6)
+    ]
+    async_session.add_all(outcomes)
+    await async_session.commit()
     return playbook
 
 
@@ -159,6 +173,18 @@ def test_playbook_sync(sync_session: Session, test_user_sync: User):
     sync_session.add(playbook)
     sync_session.commit()
     sync_session.refresh(playbook)
+
+    # Seed enough unprocessed outcomes to satisfy evolution trigger threshold.
+    outcomes = [
+        Outcome(
+            playbook_id=playbook.id,
+            task_description=f"Seed outcome {i}",
+            outcome_status=OutcomeStatus.SUCCESS,
+        )
+        for i in range(1, 6)
+    ]
+    sync_session.add_all(outcomes)
+    sync_session.commit()
     return playbook
 
 
@@ -175,6 +201,26 @@ class TestTriggerEvolutionAsync:
         assert result.is_new is True
         assert result.status == EvolutionJobStatus.QUEUED
         assert result.job_id is not None
+
+    async def test_trigger_rejects_when_insufficient_outcomes(
+        self, async_session: AsyncSession, test_user: User
+    ):
+        """Test that triggering evolution requires enough unprocessed outcomes."""
+        playbook = Playbook(
+            user_id=test_user.id,
+            name="No Outcomes Playbook",
+            description="Should not queue evolution without outcomes",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        async_session.add(playbook)
+        await async_session.commit()
+        await async_session.refresh(playbook)
+
+        with pytest.raises(ValueError) as exc_info:
+            await trigger_evolution_async(async_session, playbook.id)
+
+        assert "Not enough unprocessed outcomes" in str(exc_info.value)
 
     async def test_trigger_returns_existing_queued_job(
         self, async_session: AsyncSession, test_playbook: Playbook
@@ -291,6 +337,25 @@ class TestTriggerEvolutionSync:
         assert result.status == EvolutionJobStatus.QUEUED
         assert result.job_id is not None
 
+    def test_trigger_rejects_when_insufficient_outcomes_sync(
+        self, sync_session: Session, test_user_sync: User
+    ):
+        """Test that triggering evolution requires enough unprocessed outcomes (sync)."""
+        playbook = Playbook(
+            user_id=test_user_sync.id,
+            name="No Outcomes Playbook",
+            description="Should not queue evolution without outcomes",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        sync_session.add(playbook)
+        sync_session.commit()
+
+        with pytest.raises(ValueError) as exc_info:
+            trigger_evolution_sync(sync_session, playbook.id)
+
+        assert "Not enough unprocessed outcomes" in str(exc_info.value)
+
     def test_trigger_returns_existing_job_sync(
         self, sync_session: Session, test_playbook_sync: Playbook
     ):
@@ -376,6 +441,18 @@ class TestEvolutionIdempotencyE2E:
             source=PlaybookSource.USER_CREATED,
         )
         async_session.add_all([playbook1, playbook2])
+        await async_session.commit()
+
+        outcomes = [
+            Outcome(
+                playbook_id=playbook.id,
+                task_description=f"Seed outcome {i}",
+                outcome_status=OutcomeStatus.SUCCESS,
+            )
+            for playbook in (playbook1, playbook2)
+            for i in range(1, 6)
+        ]
+        async_session.add_all(outcomes)
         await async_session.commit()
 
         # Trigger evolution for both

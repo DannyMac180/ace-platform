@@ -239,17 +239,7 @@ Number of unprocessed outcomes required to trigger automatic evolution.
 |----------|-------|
 | Required | No |
 | Default | `5` |
-| Range | 1-100 |
-
-### EVOLUTION_TIME_THRESHOLD_HOURS
-
-Hours since last evolution to trigger automatic evolution (requires at least 1 unprocessed outcome).
-
-| Property | Value |
-|----------|-------|
-| Required | No |
-| Default | `24` |
-| Range | 1-168 (1 hour to 1 week) |
+| Range | 5-100 |
 
 ### EVOLUTION_API_PROVIDER
 

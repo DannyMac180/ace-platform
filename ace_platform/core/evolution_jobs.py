@@ -8,14 +8,16 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from ace_platform.config import get_settings
 from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
+    Outcome,
     Playbook,
 )
 
@@ -32,6 +34,32 @@ class TriggerEvolutionResult:
     def job_id_str(self) -> str:
         """Return job ID as string."""
         return str(self.job_id)
+
+
+def _get_outcome_threshold() -> int:
+    """Return the minimum unprocessed outcome count required to trigger evolution."""
+    settings = get_settings()
+    return max(5, settings.evolution_outcome_threshold)
+
+
+async def _count_unprocessed_outcomes_async(db: AsyncSession, playbook_id: UUID) -> int:
+    count = await db.scalar(
+        select(func.count(Outcome.id)).where(
+            Outcome.playbook_id == playbook_id,
+            Outcome.processed_at.is_(None),
+        )
+    )
+    return int(count or 0)
+
+
+def _count_unprocessed_outcomes_sync(db: Session, playbook_id: UUID) -> int:
+    count = db.scalar(
+        select(func.count(Outcome.id)).where(
+            Outcome.playbook_id == playbook_id,
+            Outcome.processed_at.is_(None),
+        )
+    )
+    return int(count or 0)
 
 
 async def trigger_evolution_async(
@@ -65,6 +93,14 @@ async def trigger_evolution_async(
             job_id=existing_job.id,
             is_new=False,
             status=existing_job.status,
+        )
+
+    outcome_threshold = _get_outcome_threshold()
+    unprocessed_outcomes = await _count_unprocessed_outcomes_async(db, playbook_id)
+    if unprocessed_outcomes < outcome_threshold:
+        raise ValueError(
+            f"Not enough unprocessed outcomes to run evolution "
+            f"(need {outcome_threshold}, have {unprocessed_outcomes})."
         )
 
     # Get current version for from_version_id
@@ -170,6 +206,14 @@ def trigger_evolution_sync(
             job_id=existing_job.id,
             is_new=False,
             status=existing_job.status,
+        )
+
+    outcome_threshold = _get_outcome_threshold()
+    unprocessed_outcomes = _count_unprocessed_outcomes_sync(db, playbook_id)
+    if unprocessed_outcomes < outcome_threshold:
+        raise ValueError(
+            f"Not enough unprocessed outcomes to run evolution "
+            f"(need {outcome_threshold}, have {unprocessed_outcomes})."
         )
 
     # Get current version for from_version_id

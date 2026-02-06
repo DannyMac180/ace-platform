@@ -87,11 +87,8 @@ class Settings(BaseSettings):
     # Evolution thresholds
     evolution_outcome_threshold: int = Field(
         default=5,
-        description="Number of unprocessed outcomes to trigger evolution",
-    )
-    evolution_time_threshold_hours: int = Field(
-        default=24,
-        description="Hours since last evolution to trigger (with at least 1 outcome)",
+        ge=5,
+        description="Minimum unprocessed outcomes required to trigger evolution",
     )
 
     # Evolution LLM settings

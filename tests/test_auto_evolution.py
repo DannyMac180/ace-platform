@@ -3,10 +3,9 @@
 These tests verify:
 1. Task registration and configuration
 2. Beat schedule configuration
-3. Trigger logic (outcome count and time thresholds)
+3. Trigger logic (outcome count threshold)
 """
 
-from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -65,12 +64,6 @@ class TestAutoEvolutionThresholds:
 
         assert DEFAULT_OUTCOME_THRESHOLD == 5
 
-    def test_default_time_threshold(self):
-        """Test default time threshold is 24 hours."""
-        from ace_platform.workers.auto_evolution import DEFAULT_TIME_THRESHOLD_HOURS
-
-        assert DEFAULT_TIME_THRESHOLD_HOURS == 24
-
 
 class TestCheckAndTriggerEvolutions:
     """Tests for _check_and_trigger_evolutions function."""
@@ -115,12 +108,13 @@ class TestCheckAndTriggerEvolutions:
         mock_playbook.status = PlaybookStatus.ACTIVE
         mock_playbook.current_version_id = uuid4()
 
-        mock_result = MagicMock()
-        mock_result.scalars.return_value.all.return_value = [mock_playbook]
-        mock_db.execute.return_value = mock_result
+        mock_playbooks_result = MagicMock()
+        mock_playbooks_result.scalars.return_value.all.return_value = [mock_playbook]
 
-        # No existing job
-        mock_db.execute.return_value.scalar_one_or_none.return_value = None
+        mock_job_result = MagicMock()
+        mock_job_result.scalar_one_or_none.return_value = None
+
+        mock_db.execute.side_effect = [mock_playbooks_result, mock_job_result]
 
         # No unprocessed outcomes
         mock_db.scalar.return_value = 0
@@ -204,69 +198,11 @@ class TestCheckAndTriggerEvolutions:
         mock_process_job.delay.assert_called_once()
 
     @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
-    @patch("ace_platform.workers.evolution_task.process_evolution_job")
-    def test_triggers_on_time_threshold(self, mock_process_job, mock_spending_check):
-        """Test evolution triggers when time threshold is met."""
-        from decimal import Decimal
-
-        from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
-        from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
-
-        mock_db = MagicMock()
-
-        # Mock user
-        mock_user = MagicMock()
-        mock_user.id = uuid4()
-        mock_user.subscription_tier = None  # FREE tier
-        mock_db.get.return_value = mock_user
-
-        # Mock spending limit check to pass
-        mock_spending_check.return_value = (True, None, Decimal("0.50"))
-
-        # Mock playbook created 48 hours ago
-        mock_playbook = MagicMock()
-        mock_playbook.id = uuid4()
-        mock_playbook.user_id = mock_user.id
-        mock_playbook.status = PlaybookStatus.ACTIVE
-        mock_playbook.current_version_id = uuid4()
-        mock_playbook.created_at = datetime.now(UTC) - timedelta(hours=48)
-
-        mock_playbooks_result = MagicMock()
-        mock_playbooks_result.scalars.return_value.all.return_value = [mock_playbook]
-
-        # No existing running job
-        mock_job_result = MagicMock()
-        mock_job_result.scalar_one_or_none.return_value = None
-
-        # Last completed job was 25 hours ago
-        mock_last_evolution_result = MagicMock()
-        mock_last_evolution = MagicMock()
-        mock_last_evolution.status = EvolutionJobStatus.COMPLETED
-        mock_last_evolution.completed_at = datetime.now(UTC) - timedelta(hours=25)
-        mock_last_evolution_result.scalar_one_or_none.return_value = mock_last_evolution
-
-        mock_db.execute.side_effect = [
-            mock_playbooks_result,
-            mock_job_result,
-            mock_last_evolution_result,
-        ]
-
-        # 2 unprocessed outcomes (below threshold but time threshold met)
-        mock_db.scalar.return_value = 2
-
-        result = _check_and_trigger_evolutions(
-            mock_db, outcome_threshold=5, time_threshold_hours=24
-        )
-
-        assert result["jobs_queued"] == 1
-        mock_process_job.delay.assert_called_once()
-
-    @patch("ace_platform.workers.auto_evolution.check_spending_limit_sync")
     def test_does_not_trigger_below_thresholds(self, mock_spending_check):
-        """Test no trigger when both thresholds are not met."""
+        """Test no trigger when outcome threshold is not met."""
         from decimal import Decimal
 
-        from ace_platform.db.models import EvolutionJobStatus, PlaybookStatus
+        from ace_platform.db.models import PlaybookStatus
         from ace_platform.workers.auto_evolution import _check_and_trigger_evolutions
 
         mock_db = MagicMock()
@@ -294,25 +230,12 @@ class TestCheckAndTriggerEvolutions:
         mock_job_result = MagicMock()
         mock_job_result.scalar_one_or_none.return_value = None
 
-        # Last completed job was 12 hours ago (within time threshold)
-        mock_last_evolution_result = MagicMock()
-        mock_last_evolution = MagicMock()
-        mock_last_evolution.status = EvolutionJobStatus.COMPLETED
-        mock_last_evolution.completed_at = datetime.now(UTC) - timedelta(hours=12)
-        mock_last_evolution_result.scalar_one_or_none.return_value = mock_last_evolution
-
-        mock_db.execute.side_effect = [
-            mock_playbooks_result,
-            mock_job_result,
-            mock_last_evolution_result,
-        ]
+        mock_db.execute.side_effect = [mock_playbooks_result, mock_job_result]
 
         # 3 unprocessed outcomes (below threshold of 5)
         mock_db.scalar.return_value = 3
 
-        result = _check_and_trigger_evolutions(
-            mock_db, outcome_threshold=5, time_threshold_hours=24
-        )
+        result = _check_and_trigger_evolutions(mock_db, outcome_threshold=5)
 
         assert result["jobs_queued"] == 0
 

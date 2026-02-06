@@ -456,7 +456,6 @@ class TestAutoEvolutionThreshold:
         result = _check_and_trigger_evolutions(
             sync_session,
             outcome_threshold=5,
-            time_threshold_hours=24,
         )
 
         # Should check playbooks but not queue any jobs (no outcomes)
@@ -483,12 +482,11 @@ class TestAutoEvolutionThreshold:
         result = _check_and_trigger_evolutions(
             sync_session,
             outcome_threshold=5,
-            time_threshold_hours=24,
         )
 
         # Should check but not trigger (below outcome threshold)
-        # Note: Time threshold might trigger if playbook is old enough with 1+ outcomes
         assert result["status"] == "completed"
+        assert result["jobs_queued"] == 0
 
     @patch("ace_platform.workers.auto_evolution.process_evolution_job")
     def test_check_auto_evolution_at_threshold(
@@ -514,7 +512,6 @@ class TestAutoEvolutionThreshold:
         result = _check_and_trigger_evolutions(
             sync_session,
             outcome_threshold=5,
-            time_threshold_hours=24,
         )
 
         # Should trigger evolution
@@ -553,7 +550,6 @@ class TestAutoEvolutionThreshold:
         result = _check_and_trigger_evolutions(
             sync_session,
             outcome_threshold=5,
-            time_threshold_hours=24,
         )
 
         # Should skip because job is already running

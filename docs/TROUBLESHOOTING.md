@@ -470,14 +470,12 @@ curl http://localhost:8000/playbooks/{playbook_id}/outcomes \
 
 # Check evolution thresholds
 echo "Outcome threshold: $EVOLUTION_OUTCOME_THRESHOLD"
-echo "Time threshold: $EVOLUTION_TIME_THRESHOLD_HOURS hours"
 ```
 
 **Solutions:**
 
 1. **Not enough outcomes**
    - Default requires 5 unprocessed outcomes
-   - Or 24 hours since last evolution with at least 1 outcome
 
 2. **Worker not running**
    - See [Worker Issues](#worker-issues)

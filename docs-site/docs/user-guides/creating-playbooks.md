@@ -73,6 +73,7 @@ Each instruction follows this format:
 | Section | Purpose |
 |---------|---------|
 | `STRATEGIES & INSIGHTS` | High-level approaches and wisdom |
+| `FORMULAS & CALCULATIONS` | Mathematical formulas and calculation methods |
 | `CODE SNIPPETS & TEMPLATES` | Reusable patterns and examples |
 | `COMMON MISTAKES TO AVOID` | Anti-patterns and pitfalls |
 | `PROBLEM-SOLVING HEURISTICS` | Debugging and troubleshooting tips |
@@ -81,54 +82,29 @@ Each instruction follows this format:
 
 ### Example Playbook
 
-```markdown
-# Code Review Assistant
+<div style={{background: 'var(--ifm-color-emphasis-100)', padding: '1.5rem', borderRadius: '8px', marginBottom: '1rem'}}>
+
+#### Code Review Assistant
 
 Reviews pull requests for code quality and security issues.
 
-## STRATEGIES & INSIGHTS
+**STRATEGIES & INSIGHTS**
 
-[read-before-changing] helpful=5 harmful=0 :: Read and understand existing code before suggesting changes. Look for patterns and conventions to preserve.
-[simple-first] helpful=4 harmful=0 :: Start with the simplest solution that works. Avoid premature optimization.
+`[read-before-changing] helpful=5 harmful=0 ::` Read and understand existing code before suggesting changes. Look for patterns and conventions to preserve.
 
-## COMMON MISTAKES TO AVOID
+`[simple-first] helpful=4 harmful=0 ::` Start with the simplest solution that works. Avoid premature optimization.
 
-[silent-catch] helpful=5 harmful=0 :: Don't catch and silently ignore exceptions. Either handle them meaningfully or let them propagate.
-[hardcoded-values] helpful=4 harmful=0 :: Avoid hardcoding values that might change (URLs, API keys, timeouts). Use configuration.
+**COMMON MISTAKES TO AVOID**
 
-## OTHERS
+`[silent-catch] helpful=5 harmful=0 ::` Don't catch and silently ignore exceptions. Either handle them meaningfully or let them propagate.
 
-[document-why] helpful=2 harmful=0 :: Document the "why" not the "what". Code shows what it does; comments should explain why.
-```
+`[hardcoded-values] helpful=4 harmful=0 ::` Avoid hardcoding values that might change (URLs, API keys, timeouts). Use configuration.
 
-### Auto-Convert
+**OTHERS**
 
-When creating a playbook, you can use the **auto_convert** option to automatically convert free-form markdown into ACE bullet format using AI.
+`[document-why] helpful=2 harmful=0 ::` Document the "why" not the "what". Code shows what it does; comments should explain why.
 
-## Best Practices
-
-### Be Specific
-
-❌ **Too vague:**
-```
-[review-code] helpful=0 harmful=0 :: Review the code carefully.
-```
-
-✅ **Specific:**
-```
-[check-null-handling] helpful=0 harmful=0 :: Check for null/undefined handling in all function parameters and return values.
-[verify-error-boundaries] helpful=0 harmful=0 :: Verify React error boundaries wrap components that might throw.
-```
-
-### Use Meaningful Slugs
-
-Slugs should describe the instruction:
-- `[validate-inputs]` ✅
-- `[instruction-1]` ❌
-
-### One Instruction Per Bullet
-
-Each bullet should contain a single, actionable instruction rather than a list of items.
+</div>
 
 ## Editing Playbooks
 
@@ -150,10 +126,6 @@ Use clear, descriptive names:
 - `code-review-typescript` - Language-specific
 - `incident-response-p0` - Priority-based
 - `onboarding-backend` - Team/area based
-
-## Starter Playbook
-
-A starter playbook for coding tasks is available in the repository at `playbooks/coding_agent.md`. You can use it as a reference or starting point for your own playbooks.
 
 ## Troubleshooting
 

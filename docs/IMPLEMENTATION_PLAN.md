@@ -183,7 +183,6 @@ ApiKey:
 
 # Evolution
 - EVOLUTION_OUTCOME_THRESHOLD (default: 5)
-- EVOLUTION_TIME_THRESHOLD_HOURS (default: 24)
 ```
 
 **Tasks:**
