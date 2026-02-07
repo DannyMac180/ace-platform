@@ -189,7 +189,7 @@ class TestExceptionHandlers:
                 captured_context[key] = value
 
         with (
-            patch("ace_platform.api.main.sentry_sdk.push_scope", return_value=DummyScope()),
+            patch("ace_platform.api.main.sentry_sdk.new_scope", return_value=DummyScope()),
             patch("ace_platform.api.main.sentry_sdk.capture_exception"),
         ):
             client = TestClient(test_app, raise_server_exceptions=False)

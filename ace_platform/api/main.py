@@ -336,7 +336,7 @@ def _register_exception_handlers(app: FastAPI) -> None:
         )
 
         # Capture to Sentry with context
-        with sentry_sdk.push_scope() as scope:
+        with sentry_sdk.new_scope() as scope:
             scope.set_tag("correlation_id", correlation_id)
             scope.set_context(
                 "request",
