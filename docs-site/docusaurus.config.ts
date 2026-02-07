@@ -37,6 +37,16 @@ const config: Config = {
     apiUrl: API_URL,
   },
 
+  themes: [
+    [
+      require.resolve('@easyops-cn/docusaurus-search-local'),
+      {
+        hashed: true,
+        indexBlog: false,
+      },
+    ],
+  ],
+
   presets: [
     [
       'classic',
