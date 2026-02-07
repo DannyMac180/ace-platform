@@ -205,6 +205,12 @@ export function AuthPage() {
                 Forgot your password?
               </Link>
             )}
+
+            <div className={styles.legalLinks}>
+              <Link to="/terms">Terms of Service</Link>
+              <span className={styles.legalSeparator}>|</span>
+              <Link to="/privacy">Privacy Policy</Link>
+            </div>
           </div>
         </div>
       </div>

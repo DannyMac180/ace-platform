@@ -141,7 +141,7 @@ export function Settings() {
       await api.delete(`/auth/oauth/accounts/${provider}`);
       setLinkedAccounts(prev => prev ? { ...prev, [provider]: false } : null);
       setSuccess(`${provider.charAt(0).toUpperCase() + provider.slice(1)} account unlinked`);
-    } catch (err) {
+    } catch {
       setError('Failed to unlink account. Please try again.');
     } finally {
       setUnlinking(null);

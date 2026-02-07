@@ -9,16 +9,13 @@ type VerificationState = 'loading' | 'success' | 'error';
 
 export function VerifyEmail() {
   const [searchParams] = useSearchParams();
-  const [state, setState] = useState<VerificationState>('loading');
-  const [errorMessage, setErrorMessage] = useState('');
+  const token = searchParams.get('token');
+  const [state, setState] = useState<VerificationState>(token ? 'loading' : 'error');
+  const [errorMessage, setErrorMessage] = useState(token ? '' : 'No verification token provided');
   const { refreshUser } = useAuth();
 
   useEffect(() => {
-    const token = searchParams.get('token');
-
     if (!token) {
-      setState('error');
-      setErrorMessage('No verification token provided');
       return;
     }
 
@@ -45,7 +42,7 @@ export function VerifyEmail() {
     };
 
     verifyEmail();
-  }, [searchParams, refreshUser]);
+  }, [token, refreshUser]);
 
   return (
     <div className={styles.container}>

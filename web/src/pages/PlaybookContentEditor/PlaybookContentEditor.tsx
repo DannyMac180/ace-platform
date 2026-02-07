@@ -15,7 +15,6 @@ export function PlaybookContentEditor() {
 
   const [content, setContent] = useState('');
   const [diffSummary, setDiffSummary] = useState('');
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const { data: playbook, isLoading, error } = useQuery({
     queryKey: ['playbook', id],
@@ -23,21 +22,21 @@ export function PlaybookContentEditor() {
     enabled: !!id,
   });
 
-  // Initialize content from playbook when loaded
-  useEffect(() => {
-    if (playbook?.current_version?.content) {
-      setContent(playbook.current_version.content);
-    }
-  }, [playbook]);
+  const savedContent = playbook?.current_version?.content ?? '';
 
-  // Track unsaved changes
+  // Initialize content from playbook when loaded - this syncs external
+  // (server) data into local state, which is a valid effect use case.
   useEffect(() => {
-    if (playbook?.current_version?.content) {
-      setHasUnsavedChanges(content !== playbook.current_version.content);
-    } else {
-      setHasUnsavedChanges(content.length > 0);
+    if (savedContent) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setContent(savedContent);
     }
-  }, [content, playbook]);
+  }, [savedContent]);
+
+  // Derive unsaved changes from current state (no effect needed)
+  const hasUnsavedChanges = savedContent
+    ? content !== savedContent
+    : content.length > 0;
 
   // Warn user about unsaved changes
   useEffect(() => {

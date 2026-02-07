@@ -377,6 +377,29 @@
   color: var(--gold-primary);
 }
 
+.legalLinks {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-lg);
+  font-size: 0.8125rem;
+}
+
+.legalLinks a {
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+
+.legalLinks a:hover {
+  color: var(--gold-primary);
+}
+
+.legalSeparator {
+  color: var(--text-muted);
+}
+
 /* Decorative divider */
 .divider {
   display: flex;
