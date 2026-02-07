@@ -558,6 +558,13 @@
 }
 
 /* Evolutions Tab */
+.evolutionsActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-sm);
+}
+
 .evolutionsList {
   display: flex;
   flex-direction: column;

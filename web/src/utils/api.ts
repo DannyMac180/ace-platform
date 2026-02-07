@@ -317,6 +317,13 @@ export const playbooksApi = {
     );
     return response.data;
   },
+
+  triggerEvolution: async (id: string): Promise<{ job_id: string; is_new: boolean; status: string }> => {
+    const response = await api.post<{ job_id: string; is_new: boolean; status: string }>(
+      `/playbooks/${id}/evolve`
+    );
+    return response.data;
+  },
 };
 
 // Usage API
