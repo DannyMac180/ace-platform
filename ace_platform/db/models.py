@@ -615,3 +615,22 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog {self.event_type.value} user={self.user_id}>"
+
+
+class ProcessedWebhookEvent(Base):
+    """Tracks processed Stripe webhook event IDs for idempotency.
+
+    Stripe may deliver the same webhook event more than once.
+    This table records each processed event ID so duplicates can be skipped.
+    """
+
+    __tablename__ = "processed_webhook_events"
+
+    stripe_event_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    def __repr__(self) -> str:
+        return f"<ProcessedWebhookEvent {self.stripe_event_id}>"

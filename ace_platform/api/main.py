@@ -109,6 +109,17 @@ async def lifespan(app: FastAPI):
     setup_logging(level=log_level, json_format=json_format)
     logger.info("ACE Platform API starting up", extra={"environment": settings.environment})
 
+    # Warn if JWT secret key is still the default value
+    if (
+        settings.jwt_secret_key == "change-me-in-production"
+        and settings.environment != "development"
+    ):
+        logger.critical(
+            "JWT_SECRET_KEY is using the default value in '%s' environment. "
+            "Set a secure JWT_SECRET_KEY environment variable before serving traffic.",
+            settings.environment,
+        )
+
     # Seed starter playbooks
     await _seed_starter_playbooks()
 
@@ -418,6 +429,7 @@ def _register_routes(app: FastAPI) -> None:
         """Check if the API is ready to serve requests.
 
         This endpoint verifies database connectivity.
+        Returns 200 if ready, 503 Service Unavailable if not.
 
         Returns:
             Status message with database connection status.
@@ -432,10 +444,16 @@ def _register_routes(app: FastAPI) -> None:
             db_status = "connected"
         except Exception as e:
             logger.error(f"Database health check failed: {e}")
-            db_status = "disconnected"
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "database": "disconnected",
+                },
+            )
 
         return {
-            "status": "ready" if db_status == "connected" else "not_ready",
+            "status": "ready",
             "database": db_status,
         }
 

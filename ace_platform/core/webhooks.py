@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
 from ace_platform.core.stripe_config import get_tier_from_price_id
-from ace_platform.db.models import SubscriptionStatus, User
+from ace_platform.db.models import ProcessedWebhookEvent, SubscriptionStatus, User
 
 logger = logging.getLogger(__name__)
 
@@ -90,21 +90,32 @@ async def handle_webhook_event(
         WebhookResult indicating success or failure.
     """
     event_type = event.type
-    logger.info(f"Processing webhook event: {event_type}")
+    event_id = event.id
+    logger.info(f"Processing webhook event: {event_type} (id={event_id})")
+
+    # Idempotency check: skip if this event has already been processed
+    existing = await db.get(ProcessedWebhookEvent, event_id)
+    if existing:
+        logger.info(f"Skipping duplicate webhook event: {event_id}")
+        return WebhookResult(
+            success=True,
+            message=f"Duplicate event {event_id} skipped",
+            event_type=event_type,
+        )
 
     try:
         if event_type == WebhookEventType.CHECKOUT_SESSION_COMPLETED:
-            return await _handle_checkout_completed(db, event)
+            result = await _handle_checkout_completed(db, event)
         elif event_type == WebhookEventType.SUBSCRIPTION_CREATED:
-            return await _handle_subscription_created(db, event)
+            result = await _handle_subscription_created(db, event)
         elif event_type == WebhookEventType.SUBSCRIPTION_UPDATED:
-            return await _handle_subscription_updated(db, event)
+            result = await _handle_subscription_updated(db, event)
         elif event_type == WebhookEventType.SUBSCRIPTION_DELETED:
-            return await _handle_subscription_deleted(db, event)
+            result = await _handle_subscription_deleted(db, event)
         elif event_type == WebhookEventType.INVOICE_PAYMENT_FAILED:
-            return await _handle_payment_failed(db, event)
+            result = await _handle_payment_failed(db, event)
         elif event_type == WebhookEventType.INVOICE_PAYMENT_SUCCEEDED:
-            return await _handle_payment_succeeded(db, event)
+            result = await _handle_payment_succeeded(db, event)
         else:
             # Unhandled event type - acknowledge receipt
             logger.debug(f"Ignoring unhandled event type: {event_type}")
@@ -120,6 +131,16 @@ async def handle_webhook_event(
             message=f"Error processing event: {str(e)}",
             event_type=event_type,
         )
+
+    # Record the event as processed for idempotency
+    if result.success:
+        try:
+            db.add(ProcessedWebhookEvent(stripe_event_id=event_id, event_type=event_type))
+            await db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to record processed webhook event {event_id}: {e}")
+
+    return result
 
 
 async def _get_user_by_customer_id(

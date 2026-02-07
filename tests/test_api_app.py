@@ -48,13 +48,13 @@ class TestHealthEndpoints:
             assert data["database"] == "connected"
 
     def test_readiness_check_with_db_disconnected(self, client):
-        """Test /ready endpoint when database is not available."""
+        """Test /ready endpoint returns 503 when database is not available."""
         # Note: Patches at definition site; works because import is inside the route handler
         with patch("ace_platform.db.session.async_session_context") as mock_session:
             mock_session.return_value.__aenter__.side_effect = Exception("Connection failed")
 
             response = client.get("/ready")
-            assert response.status_code == 200
+            assert response.status_code == 503
             data = response.json()
             assert data["status"] == "not_ready"
             assert data["database"] == "disconnected"

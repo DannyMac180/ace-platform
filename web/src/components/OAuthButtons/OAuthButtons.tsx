@@ -42,7 +42,7 @@ export function OAuthButtons() {
       const csrfToken = await authApi.getOAuthCsrfToken();
 
       // Redirect with CSRF token
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
       window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
     } catch (err) {
       console.error('Failed to initiate OAuth login:', err);
@@ -66,6 +66,7 @@ export function OAuthButtons() {
             className={styles.oauthButton}
             onClick={() => handleOAuthLogin('google')}
             disabled={oauthLoading}
+            aria-label="Continue with Google"
           >
             <GoogleIcon />
             <span>{oauthLoading ? 'Connecting...' : 'Google'}</span>
@@ -78,6 +79,7 @@ export function OAuthButtons() {
             className={styles.oauthButton}
             onClick={() => handleOAuthLogin('github')}
             disabled={oauthLoading}
+            aria-label="Continue with GitHub"
           >
             <GitHubIcon />
             <span>{oauthLoading ? 'Connecting...' : 'GitHub'}</span>

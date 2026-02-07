@@ -448,8 +448,7 @@ curl -X POST http://localhost:8000/auth/login \
 - "Rate limit exceeded"
 
 **Solutions:**
-- Wait for rate limit window to reset (usually 1 minute)
-- Check `RATE_LIMIT_*` settings
+- Wait for rate limit window to reset (limits vary by action, e.g. login: 5/min, outcome recording: 100/hr)
 - Use exponential backoff in clients
 
 ---

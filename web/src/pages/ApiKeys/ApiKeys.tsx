@@ -219,6 +219,7 @@ function ApiKeyCard({ apiKey, onDelete, onShowSetupDocs, isDeleting }: ApiKeyCar
             className={styles.setupButton}
             onClick={onShowSetupDocs}
             title="View setup instructions"
+            aria-label="View setup instructions"
           >
             <BookOpen size={18} />
           </button>
@@ -226,6 +227,7 @@ function ApiKeyCard({ apiKey, onDelete, onShowSetupDocs, isDeleting }: ApiKeyCar
             className={styles.deleteButton}
             onClick={() => setShowDeleteConfirm(true)}
             disabled={isDeleting}
+            aria-label={`Delete API key ${apiKey.name}`}
           >
             <Trash2 size={18} />
           </button>

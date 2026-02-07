@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary';
 import { Layout } from './components/Layout/Layout';
 import { AuthPage } from './pages/Auth/AuthPage';
 import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
@@ -19,6 +20,7 @@ import { BillingCancel } from './pages/BillingCancel/BillingCancel';
 import { CardSetupSuccess } from './pages/CardSetupSuccess/CardSetupSuccess';
 import { TermsOfService } from './pages/Legal/TermsOfService';
 import { PrivacyPolicy } from './pages/Legal/PrivacyPolicy';
+import { NotFound } from './pages/NotFound/NotFound';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -220,20 +222,27 @@ function AppRoutes() {
 
       {/* Redirects */}
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <AuthProvider>
-          <AppRoutes />
-        </AuthProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <BrowserRouter
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
+          <AuthProvider>
+            <AppRoutes />
+          </AuthProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

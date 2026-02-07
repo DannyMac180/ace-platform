@@ -114,7 +114,7 @@ export function Settings() {
       const csrfToken = await authApi.getOAuthCsrfToken();
 
       // Redirect with CSRF token
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiBaseUrl = import.meta.env.VITE_API_URL || '';
       window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
     } catch {
       setError('Failed to initiate connection. Please try again.');
@@ -447,7 +447,7 @@ function Modal({
   children: ReactNode;
 }) {
   return (
-    <div className={styles.modalOverlay} onClick={onClose}>
+    <div className={styles.modalOverlay} onClick={onClose} role="dialog" aria-label={title}>
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <h2>{title}</h2>
         {children}

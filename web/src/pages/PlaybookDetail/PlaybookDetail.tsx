@@ -142,16 +142,22 @@ export function PlaybookDetail() {
       </div>
 
       {/* Tabs */}
-      <div className={styles.tabs}>
+      <div className={styles.tabs} role="tablist">
         <button
           className={`${styles.tab} ${activeTab === 'content' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('content')}
+          role="tab"
+          aria-selected={activeTab === 'content'}
+          aria-label="Content tab"
         >
           Content
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'versions' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('versions')}
+          role="tab"
+          aria-selected={activeTab === 'versions'}
+          aria-label="Versions tab"
         >
           <GitBranch size={16} />
           Versions
@@ -159,6 +165,9 @@ export function PlaybookDetail() {
         <button
           className={`${styles.tab} ${activeTab === 'outcomes' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('outcomes')}
+          role="tab"
+          aria-selected={activeTab === 'outcomes'}
+          aria-label="Outcomes tab"
         >
           <CheckCircle2 size={16} />
           Outcomes
@@ -166,6 +175,9 @@ export function PlaybookDetail() {
         <button
           className={`${styles.tab} ${activeTab === 'evolutions' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('evolutions')}
+          role="tab"
+          aria-selected={activeTab === 'evolutions'}
+          aria-label="Evolutions tab"
         >
           <Sparkles size={16} />
           Evolutions
@@ -182,7 +194,7 @@ export function PlaybookDetail() {
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className={styles.modalOverlay} onClick={() => setShowDeleteConfirm(false)}>
+        <div className={styles.modalOverlay} onClick={() => setShowDeleteConfirm(false)} role="dialog" aria-label="Delete playbook confirmation">
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <h2>Delete Playbook</h2>
             <p>

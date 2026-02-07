@@ -617,6 +617,197 @@ Authorization: Bearer <access_token>
 
 ---
 
+## Account Endpoints
+
+### Delete Account
+
+Permanently delete the authenticated user's account and associated data.
+
+```http
+DELETE /account
+Authorization: Bearer <access_token>
+```
+
+**Request Body:**
+```json
+{
+  "confirm": "DELETE",
+  "password": "your-password"
+}
+```
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Account deleted"
+}
+```
+
+**Errors:**
+- `400 Bad Request` - Missing confirmation or incorrect password
+
+---
+
+### Export Account Data
+
+Download all user data as a JSON file.
+
+```http
+GET /account/export
+Authorization: Bearer <access_token>
+```
+
+**Response:** `200 OK` - JSON file download
+
+---
+
+### Get Audit Logs
+
+Get paginated audit log history for the account.
+
+```http
+GET /account/audit-logs
+Authorization: Bearer <access_token>
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | int | 1 | Page number |
+| `page_size` | int | 20 | Items per page (1-100) |
+
+---
+
+## OAuth Endpoints
+
+### Get CSRF Token
+
+Get a CSRF token for OAuth flow protection.
+
+```http
+GET /auth/oauth/csrf-token
+```
+
+---
+
+### Get Available Providers
+
+List available OAuth providers.
+
+```http
+GET /auth/oauth/providers
+```
+
+---
+
+### Google OAuth Login
+
+Initiate Google OAuth login flow.
+
+```http
+GET /auth/oauth/google/login
+```
+
+---
+
+### Google OAuth Callback
+
+Handle Google OAuth callback.
+
+```http
+GET /auth/oauth/google/callback
+```
+
+---
+
+### GitHub OAuth Login
+
+Initiate GitHub OAuth login flow.
+
+```http
+GET /auth/oauth/github/login
+```
+
+---
+
+### GitHub OAuth Callback
+
+Handle GitHub OAuth callback.
+
+```http
+GET /auth/oauth/github/callback
+```
+
+---
+
+### List Linked OAuth Accounts
+
+Get OAuth accounts linked to the authenticated user.
+
+```http
+GET /auth/oauth/accounts
+Authorization: Bearer <access_token>
+```
+
+---
+
+### Unlink OAuth Account
+
+Remove a linked OAuth provider from the account.
+
+```http
+DELETE /auth/oauth/accounts/{provider}
+Authorization: Bearer <access_token>
+```
+
+---
+
+## Evolution Stats Endpoints
+
+### Get Evolution Summary
+
+Get aggregated evolution statistics.
+
+```http
+GET /evolutions/summary
+Authorization: Bearer <access_token>
+```
+
+---
+
+### Get Daily Evolution Stats
+
+Get evolution activity broken down by day.
+
+```http
+GET /evolutions/daily
+Authorization: Bearer <access_token>
+```
+
+---
+
+### Get Evolution Stats by Playbook
+
+Get evolution statistics grouped by playbook.
+
+```http
+GET /evolutions/by-playbook
+Authorization: Bearer <access_token>
+```
+
+---
+
+### Get Recent Evolutions
+
+Get recent evolution jobs.
+
+```http
+GET /evolutions/recent
+Authorization: Bearer <access_token>
+```
+
+---
+
 ## Health Endpoints
 
 ### Health Check
@@ -681,16 +872,16 @@ All errors follow this format:
 
 ## Rate Limiting
 
-Rate limits are based on your subscription tier:
+Rate limits are applied per action to prevent abuse:
 
-| Tier | Requests/Minute |
-|------|-----------------|
-| Free | 60 |
-| Starter | 120 |
-| Professional | 300 |
-| Enterprise | Custom |
+| Action | Limit | Window |
+|--------|-------|--------|
+| Login | 5 requests | per minute per IP |
+| Registration | 3 requests | per hour per IP |
+| OAuth | 10 requests | per minute per IP |
+| Outcome recording | 100 requests | per hour per user |
+| Evolution trigger | 10 requests | per hour per playbook |
+| Verification email | 3 requests | per hour per user |
+| Password reset | 3 requests | per hour per email |
 
-Rate limit headers are included in responses:
-- `X-RateLimit-Limit`: Maximum requests per minute
-- `X-RateLimit-Remaining`: Remaining requests
-- `X-RateLimit-Reset`: Unix timestamp when limit resets
+When a rate limit is exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header indicating when the limit resets.

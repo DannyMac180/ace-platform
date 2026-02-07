@@ -106,8 +106,8 @@ Track evolution progress:
 
 | Status | Description |
 |--------|-------------|
-| `pending` | Queued, waiting for worker |
-| `in_progress` | Currently processing outcomes |
+| `queued` | Waiting to start |
+| `running` | Currently processing outcomes |
 | `completed` | New version created successfully |
 | `failed` | Error occurred (check logs) |
 

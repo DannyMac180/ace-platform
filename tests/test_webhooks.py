@@ -199,12 +199,19 @@ class TestGetSubscriptionTier:
 class TestHandleWebhookEvent:
     """Tests for handle_webhook_event function."""
 
+    def _make_mock_db(self):
+        """Create a mock DB session with idempotency check returning None (not yet processed)."""
+        mock_db = AsyncMock()
+        mock_db.get.return_value = None
+        return mock_db
+
     @pytest.mark.asyncio
     async def test_unhandled_event_type(self):
         """Test unhandled event types are acknowledged."""
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = "unhandled.event.type"
+        mock_event.id = "evt_unhandled_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -212,13 +219,28 @@ class TestHandleWebhookEvent:
         assert "acknowledged" in result.message.lower()
 
     @pytest.mark.asyncio
+    async def test_duplicate_event_skipped(self):
+        """Test that duplicate webhook events are skipped."""
+        mock_db = AsyncMock()
+        mock_db.get.return_value = MagicMock()  # Already processed
+        mock_event = MagicMock()
+        mock_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
+        mock_event.id = "evt_duplicate_123"
+
+        result = await handle_webhook_event(mock_db, mock_event)
+
+        assert result.success is True
+        assert "duplicate" in result.message.lower()
+
+    @pytest.mark.asyncio
     @patch("ace_platform.core.webhooks._handle_checkout_completed")
     async def test_checkout_completed_event(self, mock_handler):
         """Test checkout.session.completed event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
+        mock_event.id = "evt_checkout_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -230,9 +252,10 @@ class TestHandleWebhookEvent:
     async def test_subscription_created_event(self, mock_handler):
         """Test customer.subscription.created event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.SUBSCRIPTION_CREATED
+        mock_event.id = "evt_sub_created_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -244,9 +267,10 @@ class TestHandleWebhookEvent:
     async def test_subscription_updated_event(self, mock_handler):
         """Test customer.subscription.updated event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+        mock_event.id = "evt_sub_updated_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -258,9 +282,10 @@ class TestHandleWebhookEvent:
     async def test_subscription_deleted_event(self, mock_handler):
         """Test customer.subscription.deleted event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.SUBSCRIPTION_DELETED
+        mock_event.id = "evt_sub_deleted_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -272,9 +297,10 @@ class TestHandleWebhookEvent:
     async def test_payment_failed_event(self, mock_handler):
         """Test invoice.payment_failed event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.INVOICE_PAYMENT_FAILED
+        mock_event.id = "evt_payment_failed_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -286,9 +312,10 @@ class TestHandleWebhookEvent:
     async def test_payment_succeeded_event(self, mock_handler):
         """Test invoice.payment_succeeded event routing."""
         mock_handler.return_value = WebhookResult(success=True, message="OK")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.INVOICE_PAYMENT_SUCCEEDED
+        mock_event.id = "evt_payment_succeeded_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 
@@ -300,9 +327,10 @@ class TestHandleWebhookEvent:
     async def test_handler_exception(self, mock_handler):
         """Test exception handling in event processing."""
         mock_handler.side_effect = Exception("Database error")
-        mock_db = AsyncMock()
+        mock_db = self._make_mock_db()
         mock_event = MagicMock()
         mock_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
+        mock_event.id = "evt_error_123"
 
         result = await handle_webhook_event(mock_db, mock_event)
 

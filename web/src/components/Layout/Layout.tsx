@@ -60,6 +60,7 @@ export function Layout({ children }: LayoutProps) {
         <button
           className={styles.menuButton}
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          aria-label={isSidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
         >
           {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -128,7 +129,7 @@ export function Layout({ children }: LayoutProps) {
                 </span>
               </div>
             </div>
-            <button className={styles.logoutButton} onClick={handleLogout}>
+            <button className={styles.logoutButton} onClick={handleLogout} aria-label="Log out">
               <LogOut size={18} />
             </button>
           </div>

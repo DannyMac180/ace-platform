@@ -85,6 +85,7 @@ export function Dashboard() {
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className={styles.filterSelect}
+            aria-label="Filter by status"
           >
             <option value="">All Status</option>
             <option value="active">Active</option>
