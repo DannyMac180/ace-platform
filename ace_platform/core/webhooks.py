@@ -138,6 +138,7 @@ async def handle_webhook_event(
             db.add(ProcessedWebhookEvent(stripe_event_id=event_id, event_type=event_type))
             await db.commit()
         except Exception as e:
+            await db.rollback()
             logger.warning(f"Failed to record processed webhook event {event_id}: {e}")
 
     return result
