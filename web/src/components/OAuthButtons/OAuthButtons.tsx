@@ -45,7 +45,9 @@ export function OAuthButtons() {
       const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
     } catch (err) {
-      console.error('Failed to initiate OAuth login:', err);
+      if (import.meta.env.DEV) {
+        console.error('Failed to initiate OAuth login:', err);
+      }
       setError('Failed to connect. Please try again.');
       setOauthLoading(false);
     }
