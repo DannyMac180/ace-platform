@@ -44,15 +44,7 @@ Each instruction follows this structure:
 [semantic-slug] helpful=N harmful=N :: Actionable instruction
 ```
 
-| Component | Description |
-|-----------|-------------|
-| `[semantic-slug]` | 2-4 word kebab-case identifier for tracking |
-| `helpful=N` | Count of positive outcomes from this instruction |
-| `harmful=N` | Count of negative outcomes from this instruction |
-| `::` | Separator between metadata and content |
-| Instruction | Actionable, imperative guidance (1-2 sentences) |
-
-The `helpful` and `harmful` counters start at 0 and are updated during evolution based on recorded outcomes. Instructions with high harmful scores may be removed or revised.
+See [Creating Playbooks](/docs/user-guides/creating-playbooks#ace-bullet-format) for the full format reference and examples.
 
 ### Playbook Properties
 
@@ -215,23 +207,7 @@ https://aceagent.io/mcp/sse
 
 ## Subscriptions & Usage
 
-ACE offers tiered subscriptions:
-
-### Plans
-
-| Plan | Playbooks | Evolutions/mo | Price |
-|------|-----------|---------------|-------|
-| Starter | 5 | 100 | $9/mo |
-| Pro | 20 | 500 | $29/mo |
-| Ultra | 100 | 2,000 | $79/mo |
-
-### Usage Tracking
-
-Monitor your usage in the dashboard:
-
-- Playbook count
-- Evolution count this month
-- Monthly spending
+See [Billing & Subscriptions](/docs/user-guides/billing-subscriptions) for plan details and pricing.
 
 ## Next Steps
 

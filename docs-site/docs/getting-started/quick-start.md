@@ -50,71 +50,19 @@ Your agent will use the `create_playbook` tool to generate well-structured instr
 
 The fastest way to use your playbook is through MCP (Model Context Protocol).
 
-### Claude Desktop
+Add the ACE MCP server to your client's config with the endpoint `https://aceagent.io/mcp/sse` and your API key:
 
-Add to your Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+- [Claude Desktop setup](/docs/developer-guides/mcp-integration/claude-desktop)
+- [Claude Code setup](/docs/developer-guides/mcp-integration/claude-code)
+- [Custom agents / any MCP client](/docs/developer-guides/mcp-integration/custom-agents)
 
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Claude Code
-
-Add to your Claude Code settings (`.claude/settings.json`):
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
-
-### Any MCP Client
-
-Any MCP client that supports SSE transport can connect using the same configuration format above.
+See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview) for full configuration details.
 
 ## Step 4: Configure Your Agent
 
-Add these instructions to your agent's configuration file (`CLAUDE.md`, `AGENTS.md`, or Custom Instructions) to enable automatic playbook usage:
+Add instructions to your agent's configuration file (`CLAUDE.md`, `AGENTS.md`, or Custom Instructions) so it knows to use ACE playbooks and record outcomes after each task.
 
-```markdown
-## Using ACE Playbooks
-
-Before starting any task, check for relevant playbooks:
-
-1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
-2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
-3. **Follow the guidelines** - Apply the playbook instructions as you work
-
-After completing a task guided by a playbook:
-
-1. **Record the outcome** - Use the `record_outcome` tool with:
-   - `playbook_id`: The playbook you followed
-   - `task_description`: What you accomplished
-   - `outcome`: "success", "failure", or "partial"
-   - `notes`: What worked well, what didn't, and lessons learned
-
-2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
-```
-
-This ensures your agent automatically leverages playbooks and contributes to their improvement.
+See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview#configuring-agent-instructions) for recommended instruction templates.
 
 ## Step 5: Use Your Playbook
 

@@ -38,7 +38,7 @@ API keys authenticate your MCP tool requests to ACE. Each key has specific scope
 | `outcomes:write` | Record new outcomes | Active agents |
 | `evolution:read` | Check evolution status | Monitoring |
 | `evolution:write` | Trigger manual evolution | Admin tools |
-| `usage:read` | View usage statistics | Billing, monitoring |
+| `*` | Full access to all operations | Development, admin |
 
 ### Recommended Scope Combinations
 
@@ -52,34 +52,19 @@ API keys authenticate your MCP tool requests to ACE. Each key has specific scope
 **Monitoring Only:**
 - `playbooks:read`
 - `evolution:read`
-- `usage:read`
 
 ## Using API Keys
 
 ### MCP Configuration
 
-For MCP clients, configure the ACE server with your API key:
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "YOUR_API_KEY"
-      }
-    }
-  }
-}
-```
+Pass your API key via the `X-API-Key` header in your MCP client config. See the [MCP Integration Overview](/docs/developer-guides/mcp-integration/overview) for setup instructions.
 
 ### Environment Variables
 
 Store keys in environment variables for MCP clients and tooling:
 
 ```bash
-export ACE_API_KEY="ace_live_..."
+export ACE_API_KEY="ace_..."
 ```
 
 ## Key Security
@@ -129,7 +114,7 @@ The dashboard shows:
 | Column | Description |
 |--------|-------------|
 | Name | Key identifier |
-| Prefix | First 8 characters (`ace_live_...`) |
+| Prefix | First 8 characters (`ace_...`) |
 | Scopes | Assigned permissions |
 | Created | Creation date |
 | Last Used | Most recent tool call |
@@ -161,15 +146,9 @@ You cannot view the full key after creation. Only the prefix is shown.
 Revoking a key is immediate and irreversible. All requests using that key will fail.
 :::
 
-## Key Prefixes
+## Key Format
 
-ACE API keys have prefixes indicating their type:
-
-| Prefix | Environment |
-|--------|-------------|
-| `ace_live_` | Production |
-| `ace_test_` | Testing/staging |
-| `ace_dev_` | Development |
+ACE API keys follow the format `ace_<random_string>`. The first 8 characters are stored as the key prefix for identification.
 
 ## Rate Limits
 

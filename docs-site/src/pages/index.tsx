@@ -44,8 +44,9 @@ const FeatureList: FeatureItem[] = [
     icon: '♠',
     description: (
       <>
-        Your AI instructions get smarter over time. Record outcomes,
-        and ACE automatically evolves playbooks based on real-world results.
+        Record outcomes after each task, and ACE automatically evolves
+        your playbooks based on real-world results. The more you use them,
+        the better they get.
       </>
     ),
   },
@@ -69,21 +70,11 @@ const FeatureList: FeatureItem[] = [
       </>
     ),
   },
-  {
-    title: 'Outcome-Driven Evolution',
-    icon: '♣',
-    description: (
-      <>
-        Record outcomes after each task and let ACE evolve playbooks
-        based on real-world results.
-      </>
-    ),
-  },
 ];
 
 function Feature({title, icon, description}: FeatureItem) {
   return (
-    <div className={clsx('col col--3', styles.feature)}>
+    <div className={clsx('col col--4', styles.feature)}>
       <div className={styles.featureIcon}>{icon}</div>
       <h3 className={styles.featureTitle}>{title}</h3>
       <p className={styles.featureDescription}>{description}</p>

@@ -8,13 +8,16 @@ Manage your ACE subscription, usage, and billing.
 
 ## Plans Overview
 
-ACE offers three subscription tiers:
-
 | Plan | Playbooks | Evolutions/month | Price |
 |------|-----------|------------------|-------|
+| **Free** | 1 | 10 | Free |
 | **Starter** | 5 | 100 | $9/month |
 | **Pro** | 20 | 500 | $29/month |
 | **Ultra** | 100 | 2,000 | $79/month |
+
+:::note
+The Free tier requires a payment method on file to trigger evolutions.
+:::
 
 ## Choosing a Plan
 

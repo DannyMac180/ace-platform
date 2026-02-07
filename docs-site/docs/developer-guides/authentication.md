@@ -31,42 +31,15 @@ Pass the key in your MCP client headers or env config (see MCP Authentication be
 
 ### Key Format
 
-ACE API keys follow this format:
+ACE API keys follow the format `ace_<random_string>`. The first 8 characters are stored as the key prefix for identification.
 
-```
-ace_{environment}_{random_string}
-```
-
-| Prefix | Environment |
-|--------|-------------|
-| `ace_live_` | Production |
-| `ace_test_` | Testing |
-| `ace_dev_` | Development |
+For full details on creating and managing keys, see [Managing API Keys](/docs/user-guides/managing-api-keys).
 
 ## Scopes
 
-API keys have scopes that control access:
+API keys have scopes that control access. See [Managing API Keys](/docs/user-guides/managing-api-keys) for the full scopes reference.
 
-### Available Scopes
-
-| Scope | Description |
-|-------|-------------|
-| `playbooks:read` | Read playbook content and versions |
-| `playbooks:write` | Create, update, delete playbooks |
-| `outcomes:read` | View recorded outcomes |
-| `outcomes:write` | Record new outcomes |
-| `evolution:read` | View evolution status |
-| `evolution:write` | Trigger evolution |
-| `usage:read` | View usage statistics |
-
-### Checking Required Scopes
-
-Each MCP tool documents its required scope. For example, `get_playbook` requires
-`playbooks:read`, and `record_outcome` requires `outcomes:write`.
-
-### Scope Errors
-
-If a key lacks required scopes:
+Each MCP tool documents its required scope (see [MCP Integration](/docs/developer-guides/mcp-integration/overview)). If a key lacks required scopes, the server returns a `forbidden` error:
 
 ```json
 {
@@ -78,23 +51,7 @@ If a key lacks required scopes:
 
 ## MCP Authentication
 
-For MCP connections, pass the API key via the `X-API-Key` header:
-
-```json
-{
-  "mcpServers": {
-    "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
-      "headers": {
-        "X-API-Key": "ace_live_abc123..."
-      }
-    }
-  }
-}
-```
-
-The MCP server reads the `X-API-Key` header from the SSE connection.
+For MCP connections, pass the API key via the `X-API-Key` header. See [MCP Integration](/docs/developer-guides/mcp-integration/overview) for full connection setup details.
 
 ## JWT Authentication (Web App)
 
@@ -126,90 +83,17 @@ JWT tokens are for web app use only. Use API keys for MCP tool access.
 
 ## Security Best Practices
 
-### 1. Never Expose Keys in Code
+For detailed security practices (key rotation, `.gitignore` setup, scope recommendations), see the [Managing API Keys](/docs/user-guides/managing-api-keys#key-security) guide.
 
-```python
-# Bad - hardcoded key
-api_key = "ace_live_abc123..."
-
-# Good - environment variable
-import os
-api_key = os.environ["ACE_API_KEY"]
-```
-
-### 2. Use .gitignore
-
-```gitignore
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Secrets
-secrets/
-*.pem
-*.key
-```
-
-### 3. Minimum Required Scopes
-
-Create keys with only necessary scopes:
-
-| Use Case | Scopes |
-|----------|--------|
-| Read-only agent | `playbooks:read` |
-| Production agent | `playbooks:read`, `outcomes:write` |
-| Admin dashboard | All scopes |
-
-### 4. Rotate Keys Regularly
-
-1. Create new key
-2. Update all configurations
-3. Test new key works
-4. Revoke old key
-
-### 5. Monitor Key Usage
-
-Check the dashboard for:
-- Last used timestamp
-- Request patterns
-- Error rates
-
-### 6. Use Environment-Specific Keys
-
-Create separate keys for:
-- Development
-- Staging
-- Production
+Key principles:
+1. **Never hardcode keys** — use environment variables
+2. **Use minimum required scopes** — production agents typically only need `playbooks:read` and `outcomes:write`
+3. **Rotate keys regularly** and revoke compromised keys immediately
+4. **Use separate keys per environment** (development, staging, production)
 
 ## Rate Limiting
 
-API keys are subject to rate limiting. Usage limits are based on your subscription tier:
-
-| Plan | Evolutions/Month | Max Playbooks |
-|------|-------------------|--------------|
-| Starter ($9) | 100 | 5 |
-| Pro ($29) | 500 | 20 |
-| Ultra ($79) | 2,000 | 100 |
-| Enterprise | Unlimited | Unlimited |
-
-### Rate Limit Behavior
-
-If you hit limits, pause and retry with exponential backoff.
-
-### Handling Rate Limits
-
-When rate limited (HTTP 429):
-
-```json
-{
-  "error": "rate_limit_exceeded",
-  "message": "Too many requests",
-  "retry_after": 60
-}
-```
-
-Implement exponential backoff:
+API keys are subject to rate limiting based on your [subscription tier](/docs/user-guides/billing-subscriptions). When rate limited (HTTP 429), implement exponential backoff:
 
 ```python
 import time

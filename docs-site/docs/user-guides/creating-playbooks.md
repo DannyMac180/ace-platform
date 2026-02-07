@@ -23,7 +23,7 @@ Learn how to create effective playbooks that improve over time.
 ```
 Use the ace create_playbook tool with:
 - name: "Code Review Assistant"
-- content: "# Code Review Assistant..."
+- initial_content: "# Code Review Assistant..."
 ```
 
 ## Playbook Structure

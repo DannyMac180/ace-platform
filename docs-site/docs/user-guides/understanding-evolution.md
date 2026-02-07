@@ -80,11 +80,7 @@ A new playbook version is created with:
 
 ### Automatic Triggers
 
-Evolution triggers automatically when:
-
-- 5+ unprocessed outcomes exist
-- Outcomes span multiple task types
-- Sufficient time has passed since last evolution
+Evolution triggers automatically when 5+ unprocessed outcomes exist for a playbook.
 
 ### Manual Triggers
 
@@ -204,47 +200,9 @@ Not:
 }
 ```
 
-## Evolution Settings
-
-Configure evolution behavior:
-
-### Threshold
-
-Set minimum outcomes before auto-evolution:
-
-- **5** (default) - Evolves frequently
-- **10** - More data before changes
-- **20** - Significant data before evolution
-
-### Aggressiveness
-
-Control how much can change:
-
-- **Conservative** - Small, incremental changes
-- **Moderate** - Balanced updates
-- **Aggressive** - Larger structural changes
-
-## Reverting Evolution
-
-If an evolution introduces issues:
-
-1. Go to playbook **Versions** tab
-2. Find the previous version
-3. Click **Restore This Version**
-4. Optionally record outcome noting the issue
-
-This helps future evolutions avoid similar changes.
-
 ## Evolution Limits
 
-Based on your plan:
-
-| Plan | Evolutions/Month |
-|------|------------------|
-| Starter ($9) | 100 |
-| Pro ($29) | 500 |
-| Ultra ($79) | 2,000 |
-| Enterprise | Unlimited |
+Limits are based on your [subscription tier](/docs/user-guides/billing-subscriptions).
 
 ## Best Practices
 
