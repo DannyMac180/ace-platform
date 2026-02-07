@@ -39,7 +39,7 @@ export function CardSetupBanner({
       } else {
         setError('Failed to initiate card setup. Please try again.');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to initiate card setup. Please try again.');
     } finally {
       setIsLoading(false);

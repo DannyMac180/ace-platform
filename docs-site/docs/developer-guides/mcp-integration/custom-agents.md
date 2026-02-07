@@ -32,7 +32,7 @@ async def main():
     api_key = "your_api_key"
     url = "https://aceagent.io/mcp/sse"
 
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {"X-API-Key": api_key}
 
     async with sse_client(url, headers=headers) as (read, write):
         async with ClientSession(read, write) as session:
@@ -84,7 +84,7 @@ async function main() {
 
   const transport = new SSEClientTransport(new URL(url), {
     headers: {
-      Authorization: `Bearer ${apiKey}`,
+      "X-API-Key": apiKey,
     },
   });
 

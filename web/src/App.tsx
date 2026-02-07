@@ -17,6 +17,8 @@ import { Pricing } from './pages/Pricing/Pricing';
 import { BillingSuccess } from './pages/BillingSuccess/BillingSuccess';
 import { BillingCancel } from './pages/BillingCancel/BillingCancel';
 import { CardSetupSuccess } from './pages/CardSetupSuccess/CardSetupSuccess';
+import { TermsOfService } from './pages/Legal/TermsOfService';
+import { PrivacyPolicy } from './pages/Legal/PrivacyPolicy';
 import './styles/globals.css';
 
 const queryClient = new QueryClient({
@@ -127,6 +129,8 @@ function AppRoutes() {
         }
       />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/terms" element={<TermsOfService />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
 
       {/* Billing callback routes */}
       <Route
