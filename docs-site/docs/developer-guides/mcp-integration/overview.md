@@ -351,7 +351,7 @@ Common error codes:
 
 ### Authentication Failed
 
-- Verify `AUTHORIZATION` env var format
+- Verify `ACE_API_KEY` env var or `X-API-Key` header is set correctly
 - Check API key has required scopes
 - Ensure key isn't revoked
 

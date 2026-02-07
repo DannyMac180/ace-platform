@@ -241,9 +241,10 @@ Based on your plan:
 
 | Plan | Evolutions/Month |
 |------|------------------|
-| Free | 10 |
-| Pro | 100 |
-| Team | Unlimited |
+| Starter ($9) | 100 |
+| Pro ($29) | 500 |
+| Ultra ($79) | 2,000 |
+| Enterprise | Unlimited |
 
 ## Best Practices
 

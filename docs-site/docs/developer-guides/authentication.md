@@ -184,18 +184,18 @@ Create separate keys for:
 
 ## Rate Limiting
 
-API keys are rate limited based on MCP tool call usage:
+API keys are subject to rate limiting. Usage limits are based on your subscription tier:
 
-| Plan | Tool Calls/Minute | Tool Calls/Day |
-|------|-------------------|---------------|
-| Free | 60 | 1,000 |
-| Pro | 300 | 10,000 |
-| Team | 1,000 | Unlimited |
+| Plan | Evolutions/Month | Max Playbooks |
+|------|-------------------|--------------|
+| Starter ($9) | 100 | 5 |
+| Pro ($29) | 500 | 20 |
+| Ultra ($79) | 2,000 | 100 |
+| Enterprise | Unlimited | Unlimited |
 
-### Rate Limit Headers
+### Rate Limit Behavior
 
-Rate limit behavior varies by MCP client. If you hit limits, pause and retry
-with exponential backoff.
+If you hit limits, pause and retry with exponential backoff.
 
 ### Handling Rate Limits
 
