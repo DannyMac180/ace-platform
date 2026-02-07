@@ -1038,10 +1038,8 @@ async def trigger_evolution(
     if not current_user.email_verified:
         raise AuthorizationError("Email verification required to trigger evolutions")
 
-    # Rate limit
-    await rate_limit_evolution(request, str(playbook_id))
-
-    # Verify playbook exists and belongs to user
+    # Verify playbook exists and belongs to user before rate limiting
+    # to prevent cross-tenant quota exhaustion
     playbook = await db.get(Playbook, playbook_id)
     if not playbook:
         raise HTTPException(
@@ -1053,6 +1051,9 @@ async def trigger_evolution(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Playbook not found",
         )
+
+    # Rate limit (after ownership check)
+    await rate_limit_evolution(request, str(playbook_id))
 
     # Check spending/evolution limits
     user_tier = get_user_tier(current_user)
