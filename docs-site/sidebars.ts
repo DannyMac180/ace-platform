@@ -38,6 +38,7 @@ const sidebars: SidebarsConfig = {
         },
         'developer-guides/authentication',
         'developer-guides/recording-outcomes',
+        'developer-guides/deployment',
       ],
     },
   ],
