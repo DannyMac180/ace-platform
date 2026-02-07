@@ -178,9 +178,8 @@ def sanitize_request_headers(headers: Mapping[str, str]) -> dict[str, str]:
     for name, value in headers.items():
         normalized_name = name.lower()
 
-        is_sensitive = (
-            normalized_name in SENSITIVE_REQUEST_HEADERS
-            or any(marker in normalized_name for marker in SENSITIVE_HEADER_MARKERS)
+        is_sensitive = normalized_name in SENSITIVE_REQUEST_HEADERS or any(
+            marker in normalized_name for marker in SENSITIVE_HEADER_MARKERS
         )
 
         sanitized[name] = REDACTED_HEADER_VALUE if is_sensitive else value
