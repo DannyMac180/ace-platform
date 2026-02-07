@@ -392,18 +392,56 @@ function OutcomesTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookI
 }
 
 function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
-  const { data, isLoading } = useQuery({
+  const queryClient = useQueryClient();
+  const [triggerError, setTriggerError] = useState<string | null>(null);
+
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['playbook-evolutions', playbookId],
     queryFn: () => playbooksApi.getEvolutions(playbookId),
     enabled: !isAuthLoading && isAuthenticated,
+  });
+
+  const triggerMutation = useMutation({
+    mutationFn: () => playbooksApi.triggerEvolution(playbookId),
+    onSuccess: () => {
+      setTriggerError(null);
+      queryClient.invalidateQueries({ queryKey: ['playbook-evolutions', playbookId] });
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
+      setTriggerError(err.response?.data?.detail || 'Failed to trigger evolution');
+    },
   });
 
   if (isLoading) {
     return <div className={styles.loading}><div className={styles.spinner} /></div>;
   }
 
+  if (isError) {
+    return (
+      <div className={styles.emptyContent}>
+        <AlertCircle size={24} />
+        <p>Failed to load evolutions</p>
+        <Button variant="secondary" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   if (!data?.items.length) {
-    return <div className={styles.emptyContent}>No evolutions yet.</div>;
+    return (
+      <div className={styles.emptyContent}>
+        <p>No evolutions yet.</p>
+        {triggerError && <p className={styles.evolutionError}>{triggerError}</p>}
+        <Button
+          icon={<Sparkles size={16} />}
+          onClick={() => triggerMutation.mutate()}
+          isLoading={triggerMutation.isPending}
+        >
+          Trigger Evolution
+        </Button>
+      </div>
+    );
   }
 
   const statusStyles = {
@@ -415,6 +453,16 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
 
   return (
     <div className={styles.evolutionsList}>
+      <div className={styles.evolutionsActions}>
+        <Button
+          icon={<Sparkles size={16} />}
+          onClick={() => triggerMutation.mutate()}
+          isLoading={triggerMutation.isPending}
+        >
+          Trigger Evolution
+        </Button>
+        {triggerError && <span className={styles.evolutionError}>{triggerError}</span>}
+      </div>
       {data.items.map((job: EvolutionJob) => (
         <Card key={job.id} variant="default" className={styles.evolutionCard}>
           <div className={styles.evolutionHeader}>
