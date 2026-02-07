@@ -164,10 +164,13 @@ async def mcp_lifespan(server: FastMCP) -> AsyncIterator[MCPContext]:
 # Create the MCP server instance
 # Configure transport security to allow connections from Docker/Kubernetes
 # Configurable via MCP_ALLOWED_HOSTS and MCP_ALLOWED_ORIGINS env vars (comma-separated)
+# Protection is enabled automatically when custom allowlists are set;
+# left disabled when both default to "*" (local dev / containerized deployment).
 _allowed_hosts = os.environ.get("MCP_ALLOWED_HOSTS", "*").split(",")
 _allowed_origins = os.environ.get("MCP_ALLOWED_ORIGINS", "*").split(",")
+_enable_protection = _allowed_hosts != ["*"] or _allowed_origins != ["*"]
 _transport_security = TransportSecuritySettings(
-    enable_dns_rebinding_protection=False,  # Disable for containerized deployment
+    enable_dns_rebinding_protection=_enable_protection,
     allowed_hosts=_allowed_hosts,
     allowed_origins=_allowed_origins,
 )
