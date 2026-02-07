@@ -373,8 +373,8 @@ function EmptyState() {
       </div>
       <h2>No Evolution Runs Yet</h2>
       <p>
-        Your playbooks haven't been evolved yet. Add outcomes to your playbooks and click "Evolve"
-        to see activity here.
+        Your playbooks haven't evolved yet. Record at least 5 outcomes to a playbook and
+        trigger evolution via the API or MCP tools to see activity here.
       </p>
       <button className={styles.emptyButton} onClick={() => navigate('/dashboard')}>
         Go to Playbooks

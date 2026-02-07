@@ -6,7 +6,7 @@ by actual environment variables.
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -314,6 +314,27 @@ class Settings(BaseSettings):
             field_name = info.field_name
             raise ValueError(f"{field_name} is required when billing_enabled=True")
         return v
+
+    @model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        """Reject insecure secret defaults in production and staging."""
+        if self.environment not in ("production", "staging"):
+            return self
+
+        insecure_defaults = {"change-me-in-production", ""}
+        if self.jwt_secret_key in insecure_defaults:
+            raise ValueError(
+                "JWT_SECRET_KEY must be explicitly set to a secure value "
+                f"in {self.environment} (current value is a default/empty)"
+            )
+
+        if not self.session_secret_key:
+            raise ValueError(
+                "SESSION_SECRET_KEY must be explicitly set in "
+                f"{self.environment} (do not fall back to JWT_SECRET_KEY)"
+            )
+
+        return self
 
     @property
     def is_production(self) -> bool:

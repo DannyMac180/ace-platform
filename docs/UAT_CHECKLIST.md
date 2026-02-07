@@ -176,13 +176,13 @@ Pre-launch testing checklist for ACE Platform. Complete all sections before clos
     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
   ```
 - [ ] Shows pending outcomes count
-- [ ] Shows last evolution time
+- [ ] Shows outcome threshold and ready_to_evolve flag
 - [ ] Shows active job if running
 
 ### 4.3 Evolution Jobs
 - [ ] List evolution jobs
   ```bash
-  curl http://localhost:8000/playbooks/{playbook_id}/jobs \
+  curl http://localhost:8000/playbooks/{playbook_id}/evolutions \
     -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
   ```
 - [ ] Get job details (token usage, outcomes processed)

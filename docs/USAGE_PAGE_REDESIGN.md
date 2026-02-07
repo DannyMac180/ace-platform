@@ -136,8 +136,8 @@ Four key metrics displayed as cards:
 │                                                                 │
 │              No Evolution Runs Yet                              │
 │                                                                 │
-│     Your playbooks haven't been evolved yet. Add outcomes       │
-│     to your playbooks and click "Evolve" to see activity.       │
+│     Your playbooks haven't evolved yet. Record outcomes and     │
+│     trigger evolution via the API or MCP tools.                 │
 │                                                                 │
 │               [Go to Playbooks →]                               │
 │                                                                 │

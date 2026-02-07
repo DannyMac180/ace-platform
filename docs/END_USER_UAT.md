@@ -274,8 +274,8 @@ curl -X POST "http://localhost:8000/playbooks/$PLAYBOOK_ID/evolve" \
 sleep 60  # Wait for evolution to complete
 
 # Check job status
-curl -s "http://localhost:8000/playbooks/$PLAYBOOK_ID/jobs" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[-1]'
+curl -s "http://localhost:8000/playbooks/$PLAYBOOK_ID/evolutions" \
+  -H "Authorization: Bearer $TOKEN" | jq '.items[0]'
 
 # See new version
 curl -s "http://localhost:8000/playbooks/$PLAYBOOK_ID/versions" \

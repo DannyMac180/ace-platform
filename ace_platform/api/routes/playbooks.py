@@ -260,6 +260,24 @@ class PaginatedEvolutionJobResponse(BaseModel):
     total_pages: int
 
 
+class TriggerEvolutionResponse(BaseModel):
+    """Response schema for triggering evolution."""
+
+    job_id: UUID
+    is_new: bool
+    status: EvolutionJobStatus
+
+
+class EvolutionStatusResponse(BaseModel):
+    """Response schema for evolution status of a playbook."""
+
+    playbook_id: UUID
+    pending_outcomes: int
+    outcome_threshold: int
+    ready_to_evolve: bool
+    active_job: EvolutionJobResponse | None = None
+
+
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 PaidUser = Annotated[User, Depends(require_paid_access)]
@@ -987,4 +1005,135 @@ async def list_playbook_evolutions(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+    )
+
+
+@router.post(
+    "/{playbook_id}/evolve",
+    response_model=TriggerEvolutionResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        403: {"description": "Email verification required"},
+        429: {"description": "Rate limit exceeded"},
+    },
+)
+async def trigger_evolution(
+    request: Request,
+    db: DbSession,
+    current_user: PaidUser,
+    playbook_id: UUID,
+) -> TriggerEvolutionResponse:
+    """Manually trigger evolution for a playbook.
+
+    Queues an evolution job that processes unprocessed outcomes and
+    generates an improved playbook version. Requires email verification.
+    Rate limited to 10 triggers per hour per playbook.
+    """
+    from ace_platform.api.auth import AuthorizationError, get_user_tier
+    from ace_platform.core.evolution_jobs import trigger_evolution_async
+    from ace_platform.core.limits import check_can_evolve
+    from ace_platform.core.rate_limit import rate_limit_evolution
+
+    # Require email verification
+    if not current_user.email_verified:
+        raise AuthorizationError("Email verification required to trigger evolutions")
+
+    # Rate limit
+    await rate_limit_evolution(request, str(playbook_id))
+
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    # Check spending/evolution limits
+    user_tier = get_user_tier(current_user)
+    can_proceed, error_message = await check_can_evolve(
+        db, current_user.id, user_tier, has_payment_method=current_user.has_payment_method
+    )
+    if not can_proceed:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=error_message,
+        )
+
+    # Trigger evolution
+    try:
+        result = await trigger_evolution_async(db, playbook_id)
+        await db.commit()
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+
+    return TriggerEvolutionResponse(
+        job_id=result.job_id,
+        is_new=result.is_new,
+        status=result.status,
+    )
+
+
+@router.get("/{playbook_id}/evolution-status", response_model=EvolutionStatusResponse)
+async def get_evolution_status(
+    db: DbSession,
+    current_user: PaidUser,
+    playbook_id: UUID,
+) -> EvolutionStatusResponse:
+    """Get evolution readiness status for a playbook.
+
+    Returns the number of pending outcomes, the threshold required to
+    trigger evolution, and any currently active evolution job.
+    """
+    from ace_platform.core.evolution_jobs import (
+        _count_unprocessed_outcomes_async,
+        _get_active_job_async,
+        _get_outcome_threshold,
+    )
+
+    # Verify playbook exists and belongs to user
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+    if playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    pending = await _count_unprocessed_outcomes_async(db, playbook_id)
+    threshold = _get_outcome_threshold()
+    active_job = await _get_active_job_async(db, playbook_id)
+
+    active_job_response = None
+    if active_job:
+        active_job_response = EvolutionJobResponse(
+            id=active_job.id,
+            status=active_job.status,
+            from_version_id=active_job.from_version_id,
+            to_version_id=active_job.to_version_id,
+            outcomes_processed=active_job.outcomes_processed,
+            error_message=active_job.error_message,
+            created_at=active_job.created_at,
+            started_at=active_job.started_at,
+            completed_at=active_job.completed_at,
+        )
+
+    return EvolutionStatusResponse(
+        playbook_id=playbook_id,
+        pending_outcomes=pending,
+        outcome_threshold=threshold,
+        ready_to_evolve=pending >= threshold,
+        active_job=active_job_response,
     )
