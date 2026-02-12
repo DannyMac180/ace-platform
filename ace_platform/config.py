@@ -224,6 +224,18 @@ class Settings(BaseSettings):
         default="",
         description="Sentry DSN for error tracking. Leave empty to disable Sentry.",
     )
+    sentry_release: str = Field(
+        default="",
+        description=(
+            "Release identifier for Sentry events (overrides derived defaults when set). "
+            "Use a stable artifact identifier such as the Git commit SHA."
+        ),
+    )
+    sentry_transport_queue_size: int = Field(
+        default=100,
+        ge=1,
+        description="Sentry transport queue size before events are dropped.",
+    )
     sentry_traces_sample_rate: float = Field(
         default=0.1,
         description="Sentry performance monitoring sample rate (0.0 to 1.0)",

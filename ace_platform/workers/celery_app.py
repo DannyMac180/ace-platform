@@ -12,39 +12,27 @@ Usage:
     celery -A ace_platform.workers.celery_app beat -l info
 """
 
-import sentry_sdk
 from celery import Celery
 from celery.schedules import crontab
 from sentry_sdk.integrations.celery import CeleryIntegration
 
 from ace_platform.config import get_settings
+from ace_platform.core.sentry_bootstrap import init_sentry_for_process
 
 settings = get_settings()
 
 
 def _init_sentry_for_celery() -> None:
-    """Initialize Sentry error tracking for Celery workers.
-
-    This is separate from the FastAPI initialization because workers
-    run in a different process and need their own Sentry setup.
-    """
-    if not settings.sentry_dsn:
-        return
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        release="ace-platform@0.1.0",
-        # Enable Celery integration for task error tracking
+    """Initialize Sentry error tracking for Celery workers."""
+    init_sentry_for_process(
+        process_name="worker",
+        settings=settings,
         integrations=[
             CeleryIntegration(
                 monitor_beat_tasks=True,
                 propagate_traces=True,
             ),
         ],
-        # Performance monitoring (lower rate for background tasks)
-        traces_sample_rate=settings.sentry_traces_sample_rate * 0.5,
-        # Don't send PII by default
         send_default_pii=False,
     )
 

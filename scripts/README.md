@@ -103,3 +103,36 @@ Before deploying to production, run load tests to ensure:
    ```bash
    python scripts/load_test_mcp.py --test ramp_up --ramp-max-users 100
    ```
+
+## Sentry Project Audit
+
+### sentry_project_audit.py
+
+Generate an authenticated audit snapshot of Sentry project controls used by the ACE
+platform observability runbook.
+
+The script checks:
+
+- Project lookup by org/project slug
+- DSN key availability
+- Inbound filter data is visible
+- Alert rules
+- Ownership rules
+
+Required environment variables:
+
+- `SENTRY_AUTH_TOKEN` (Sentry API token with project read access)
+- `SENTRY_ORG` (organization slug)
+- `SENTRY_PROJECT` (project slug)
+
+Example:
+
+```bash
+export SENTRY_AUTH_TOKEN="sntrys_xxx"
+export SENTRY_ORG="aceplatform"
+export SENTRY_PROJECT="ace-platform"
+
+python scripts/sentry_project_audit.py --require-alert-rules --strict
+```
+
+Non-zero exit codes indicate required controls are missing.

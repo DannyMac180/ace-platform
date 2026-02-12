@@ -344,8 +344,10 @@ Enable Sentry for error tracking:
 ```bash
 # .env
 SENTRY_DSN=https://...@sentry.io/...
+SENTRY_RELEASE=ace-platform@<commit-or-tag>
 SENTRY_TRACES_SAMPLE_RATE=0.1
-SENTRY_PROFILES_SAMPLE_RATE=0.1
+SENTRY_PROFILES_SAMPLE_RATE=0.05
+SENTRY_TRANSPORT_QUEUE_SIZE=100
 ```
 
 Sentry will automatically capture:

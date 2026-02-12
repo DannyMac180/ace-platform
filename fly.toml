@@ -33,7 +33,8 @@ kill_timeout = 30
 # Define separate process groups for different components
 [processes]
   api = "uvicorn ace_platform.api.main:app --host 0.0.0.0 --port 8000 --workers 2"
-  worker = "celery -A ace_platform.workers.celery_app worker --loglevel=info --concurrency=2"
+  mcp = "python -m ace_platform.mcp.server"
+  worker = "SENTRY_TRACES_SAMPLE_RATE=0.05 SENTRY_PROFILES_SAMPLE_RATE=0.0 SENTRY_TRANSPORT_QUEUE_SIZE=100 celery -A ace_platform.workers.celery_app worker --loglevel=info --concurrency=2"
   beat = "celery -A ace_platform.workers.celery_app beat --loglevel=info"
 
 # =============================================================================
@@ -46,6 +47,21 @@ kill_timeout = 30
   DEBUG = "false"
   API_HOST = "0.0.0.0"
   API_PORT = "8000"
+  SENTRY_TRACES_SAMPLE_RATE = "0.1"
+  SENTRY_PROFILES_SAMPLE_RATE = "0.05"
+  SENTRY_TRANSPORT_QUEUE_SIZE = "100"
+  SENTRY_TRACES_SAMPLE_RATE_API = "0.1"
+  SENTRY_PROFILES_SAMPLE_RATE_API = "0.05"
+  SENTRY_TRANSPORT_QUEUE_SIZE_API = "100"
+  SENTRY_TRACES_SAMPLE_RATE_MCP = "0.05"
+  SENTRY_PROFILES_SAMPLE_RATE_MCP = "0.0"
+  SENTRY_TRANSPORT_QUEUE_SIZE_MCP = "100"
+  SENTRY_TRACES_SAMPLE_RATE_WORKER = "0.05"
+  SENTRY_PROFILES_SAMPLE_RATE_WORKER = "0.0"
+  SENTRY_TRANSPORT_QUEUE_SIZE_WORKER = "100"
+  SENTRY_TRACES_SAMPLE_RATE_BEAT = "0.0"
+  SENTRY_PROFILES_SAMPLE_RATE_BEAT = "0.0"
+  SENTRY_TRANSPORT_QUEUE_SIZE_BEAT = "50"
   # DATABASE_URL is automatically set by `fly postgres attach`
   # REDIS_URL is automatically set by `fly redis create`
 

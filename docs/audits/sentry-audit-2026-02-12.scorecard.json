@@ -1,0 +1,59 @@
+{
+  "audit_date_utc": "2026-02-12",
+  "audit_id": "sentry-audit-20260212T194104Z",
+  "scope": ["production", "staging"],
+  "weights": {
+    "instrumentation_coverage": 25,
+    "context_privacy_safety": 20,
+    "signal_quality_grouping": 20,
+    "alerting_oncall_readiness": 20,
+    "deployment_release_hygiene": 15
+  },
+  "scores": {
+    "instrumentation_coverage": 17,
+    "context_privacy_safety": 18,
+    "signal_quality_grouping": 10,
+    "alerting_oncall_readiness": 4,
+    "deployment_release_hygiene": 9,
+    "total": 58
+  },
+  "verdict": "Not Ready",
+  "findings": [
+    {
+      "severity": "P1",
+      "title": "Staging API reliability degradation during Sentry transport retries",
+      "issue_id": "ace-platform-46q"
+    },
+    {
+      "severity": "P1",
+      "title": "Standalone MCP process not instrumented with Sentry",
+      "issue_id": "ace-platform-bav"
+    },
+    {
+      "severity": "P2",
+      "title": "Hardcoded release value",
+      "issue_id": "ace-platform-rxw"
+    },
+    {
+      "severity": "P2",
+      "title": "Implicit sample-rate configuration and worker profiling asymmetry",
+      "issue_id": "ace-platform-ii2"
+    },
+    {
+      "severity": "P2",
+      "title": "No authenticated project-settings audit path",
+      "issue_id": "ace-platform-ec9"
+    },
+    {
+      "severity": "P3",
+      "title": "No frontend Sentry SDK integration",
+      "issue_id": "ace-platform-0r2"
+    }
+  ],
+  "critical_probe_results": {
+    "production_api_probe": "pass",
+    "production_worker_probe": "pass",
+    "staging_worker_probe": "pass",
+    "staging_api_probe": "fail"
+  }
+}

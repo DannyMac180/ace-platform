@@ -48,6 +48,7 @@ from ace_platform.core.playbook_matching import (
     score_playbook_match,
 )
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
+from ace_platform.core.sentry_bootstrap import init_sentry_for_process
 from ace_platform.core.validation import (
     MAX_PLAYBOOK_DESCRIPTION_SIZE,
     MAX_PLAYBOOK_NAME_SIZE,
@@ -69,6 +70,7 @@ from ace_platform.db.models import (
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
 settings = get_settings()
+init_sentry_for_process(process_name="mcp", settings=settings)
 
 # Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
 ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"

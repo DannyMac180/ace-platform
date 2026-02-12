@@ -6,6 +6,9 @@ primary_region = 'iad'
   [build.args]
     VITE_API_URL = "https://aceagent.io"
     VITE_DOCS_URL = "https://docs.aceagent.io/docs"
+    VITE_SENTRY_DSN = ""
+    VITE_SENTRY_RELEASE = ""
+    VITE_SENTRY_ENVIRONMENT = "production"
 
 [http_service]
   internal_port = 80

@@ -425,6 +425,25 @@ Sentry Data Source Name for error tracking.
 SENTRY_DSN=https://abc123@o123456.ingest.sentry.io/7891011
 ```
 
+### SENTRY_RELEASE
+
+Optional release identifier for Sentry event grouping.
+
+| Property | Value |
+|----------|-------|
+| Required | No |
+| Default | Derived from `CI_COMMIT_SHA`, `GITHUB_SHA`, `GIT_COMMIT`, `FLY_COMMIT_SHA`, then package version |
+| Example | `SENTRY_RELEASE=ace-platform@<commit-sha>` |
+
+You can also set explicit process overrides:
+
+- `SENTRY_RELEASE_API`
+- `SENTRY_RELEASE_MCP`
+- `SENTRY_RELEASE_WORKER`
+- `SENTRY_RELEASE_BEAT`
+
+If a process-specific value is set, that value takes precedence over the global `SENTRY_RELEASE`.
+
 ### SENTRY_TRACES_SAMPLE_RATE
 
 Sample rate for Sentry performance monitoring.
@@ -435,6 +454,13 @@ Sample rate for Sentry performance monitoring.
 | Default | `0.1` (10%) |
 | Range | `0.0` to `1.0` |
 
+You can set per-process overrides:
+
+- `SENTRY_TRACES_SAMPLE_RATE_API`
+- `SENTRY_TRACES_SAMPLE_RATE_MCP`
+- `SENTRY_TRACES_SAMPLE_RATE_WORKER`
+- `SENTRY_TRACES_SAMPLE_RATE_BEAT`
+
 ### SENTRY_PROFILES_SAMPLE_RATE
 
 Sample rate for Sentry profiling.
@@ -444,6 +470,39 @@ Sample rate for Sentry profiling.
 | Required | No |
 | Default | `0.1` (10%) |
 | Range | `0.0` to `1.0` |
+
+You can set per-process overrides:
+
+- `SENTRY_PROFILES_SAMPLE_RATE_API`
+- `SENTRY_PROFILES_SAMPLE_RATE_MCP`
+- `SENTRY_PROFILES_SAMPLE_RATE_WORKER`
+- `SENTRY_PROFILES_SAMPLE_RATE_BEAT`
+
+### Frontend Sentry env vars (Vite)
+
+Frontend values are build-time only and used by `web`:
+
+- `VITE_SENTRY_DSN`
+- `VITE_SENTRY_RELEASE`
+- `VITE_SENTRY_ENVIRONMENT`
+- `VITE_SENTRY_TRACES_SAMPLE_RATE`
+
+### SENTRY_TRANSPORT_QUEUE_SIZE
+
+Queue size used by the Sentry transport while sending events in the background.
+
+| Property | Value |
+|----------|-------|
+| Required | No |
+| Default | `100` |
+| Range | `1` or greater |
+
+Process-specific overrides:
+
+- `SENTRY_TRANSPORT_QUEUE_SIZE_API`
+- `SENTRY_TRANSPORT_QUEUE_SIZE_MCP`
+- `SENTRY_TRANSPORT_QUEUE_SIZE_WORKER`
+- `SENTRY_TRANSPORT_QUEUE_SIZE_BEAT`
 
 ### Telemetry Redaction Policy
 
@@ -505,6 +564,17 @@ DEBUG=false
 # Optional: Error tracking
 SENTRY_DSN=https://...@sentry.io/...
 SENTRY_TRACES_SAMPLE_RATE=0.1
+SENTRY_RELEASE=ace-platform@main
+SENTRY_RELEASE_API=ace-platform-api@main
+SENTRY_RELEASE_WORKER=ace-platform-worker@main
+SENTRY_TRACES_SAMPLE_RATE_API=0.1
+SENTRY_TRACES_SAMPLE_RATE_MCP=0.05
+SENTRY_TRACES_SAMPLE_RATE_WORKER=0.05
+SENTRY_PROFILES_SAMPLE_RATE=0.05
+SENTRY_PROFILES_SAMPLE_RATE_API=0.05
+SENTRY_PROFILES_SAMPLE_RATE_MCP=0.0
+SENTRY_PROFILES_SAMPLE_RATE_WORKER=0.0
+SENTRY_TRANSPORT_QUEUE_SIZE=100
 
 # Optional: Billing
 BILLING_ENABLED=true

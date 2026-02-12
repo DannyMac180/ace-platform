@@ -22,6 +22,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
+from ace_platform.core.sentry_bootstrap import init_sentry_for_process
 from ace_platform.core.sentry_context import sanitize_request_headers
 from ace_platform.db.session import close_async_db
 
@@ -37,33 +38,13 @@ logger = get_logger(__name__)
 
 
 def _init_sentry() -> None:
-    """Initialize Sentry error tracking if configured.
-
-    Sentry is only initialized if SENTRY_DSN is set. This allows
-    running without Sentry in development while enabling it in
-    staging/production environments.
-    """
-    if not settings.sentry_dsn:
-        logger.debug("Sentry DSN not configured, error tracking disabled")
-        return
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        release="ace-platform@0.1.0",
-        # Performance monitoring
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        profiles_sample_rate=settings.sentry_profiles_sample_rate,
-        # Automatically capture breadcrumbs for logging, HTTP requests, etc.
-        enable_tracing=True,
-        # Don't send PII by default
-        send_default_pii=False,
-        # Filter out health check transactions
+    """Initialize Sentry error tracking for the API process."""
+    init_sentry_for_process(
+        process_name="api",
+        settings=settings,
         traces_sampler=_traces_sampler,
-    )
-    logger.info(
-        "Sentry error tracking initialized",
-        extra={"environment": settings.environment},
+        enable_tracing=True,
+        send_default_pii=False,
     )
 
 

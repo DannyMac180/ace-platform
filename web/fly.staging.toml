@@ -6,6 +6,9 @@ primary_region = 'iad'
   [build.args]
     VITE_API_URL = "https://ace-platform-staging.fly.dev"
     VITE_DOCS_URL = "https://ace-platform-docs-staging.fly.dev/docs"
+    VITE_SENTRY_DSN = ""
+    VITE_SENTRY_RELEASE = ""
+    VITE_SENTRY_ENVIRONMENT = "staging"
 
 [http_service]
   internal_port = 80

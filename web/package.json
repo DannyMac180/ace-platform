@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/react": "^8.55.0",
     "@tanstack/react-query": "^5.90.14",
     "axios": "^1.13.2",
     "lucide-react": "^0.562.0",
