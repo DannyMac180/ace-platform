@@ -16,6 +16,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from fastapi import HTTPException, Request
+from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 # CSRF token configuration
@@ -199,11 +200,11 @@ class CorrelationIdMiddleware:
             await self.app(scope, receive, send)
             return
 
-        # Extract correlation ID from request headers (bytes tuples)
-        headers = dict(scope.get("headers", []))
+        # Use Starlette's header parser to safely decode raw ASGI bytes.
+        headers = Headers(raw=scope.get("headers", []))
         correlation_id = (
-            headers.get(b"x-correlation-id", b"").decode("utf-8")
-            or headers.get(b"x-request-id", b"").decode("utf-8")
+            headers.get(CORRELATION_ID_HEADER)
+            or headers.get(REQUEST_ID_HEADER)
             or generate_correlation_id()
         )
 

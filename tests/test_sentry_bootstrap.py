@@ -3,6 +3,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from ace_platform.config import Settings
 from ace_platform.core import sentry_bootstrap
 
@@ -150,3 +152,26 @@ def test_fast_fail_transport_uses_short_timeouts():
         timeout = options["timeout"]
         assert timeout.connect_timeout == 2.0
         assert timeout.read_timeout == 3.0
+
+
+def test_before_send_filter_drops_anyio_disconnect_errors():
+    event = {"message": "test event"}
+    if not sentry_bootstrap._SSE_DISCONNECT_EXCEPTION_TYPES:
+        pytest.skip("anyio disconnect exception types unavailable")
+
+    exc_type = sentry_bootstrap._SSE_DISCONNECT_EXCEPTION_TYPES[0]
+    exc = exc_type()
+    hint = {"exc_info": (exc_type, exc, None)}
+
+    assert sentry_bootstrap._before_send_filter(event, hint) is None
+
+
+def test_before_send_filter_keeps_same_named_non_anyio_exception():
+    class ClosedResourceError(Exception):
+        pass
+
+    event = {"message": "test event"}
+    exc = ClosedResourceError()
+    hint = {"exc_info": (ClosedResourceError, exc, None)}
+
+    assert sentry_bootstrap._before_send_filter(event, hint) == event

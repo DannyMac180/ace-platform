@@ -225,7 +225,12 @@ def get_effective_profiles_sample_rate(
     )
 
 
-_SSE_DISCONNECT_ERRORS = frozenset({"ClosedResourceError", "BrokenResourceError"})
+try:
+    from anyio import BrokenResourceError, ClosedResourceError
+except ImportError:  # pragma: no cover - anyio is an app dependency
+    _SSE_DISCONNECT_EXCEPTION_TYPES: tuple[type[BaseException], ...] = ()
+else:
+    _SSE_DISCONNECT_EXCEPTION_TYPES = (ClosedResourceError, BrokenResourceError)
 
 
 def _before_send_filter(event: dict[str, Any], hint: dict[str, Any]) -> dict[str, Any] | None:
@@ -235,9 +240,9 @@ def _before_send_filter(event: dict[str, Any], hint: dict[str, Any]) -> dict[str
     BrokenResourceError. These are normal lifecycle events, not bugs.
     """
     exc_info = hint.get("exc_info")
-    if exc_info is not None:
-        exc_type = exc_info[0]
-        if exc_type is not None and exc_type.__name__ in _SSE_DISCONNECT_ERRORS:
+    if exc_info is not None and _SSE_DISCONNECT_EXCEPTION_TYPES:
+        exc_value = exc_info[1]
+        if isinstance(exc_value, _SSE_DISCONNECT_EXCEPTION_TYPES):
             return None
     return event
 

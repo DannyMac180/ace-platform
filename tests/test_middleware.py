@@ -124,6 +124,35 @@ class TestCorrelationIdMiddleware:
         assert response.headers[CORRELATION_ID_HEADER] == correlation_id
         assert response.json()["correlation_id"] == correlation_id
 
+    @pytest.mark.asyncio
+    async def test_handles_non_utf8_header_bytes(self):
+        """Test raw non-UTF-8 bytes do not crash correlation ID parsing."""
+
+        async def app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = CorrelationIdMiddleware(app)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/test",
+            "headers": [(b"x-correlation-id", b"\xff\xfe")],
+        }
+        response_parts: list[dict] = []
+
+        async def send(message):
+            response_parts.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await middleware(scope, receive, send)
+
+        start = next(part for part in response_parts if part["type"] == "http.response.start")
+        response_headers = dict(start["headers"])
+        assert b"x-correlation-id" in response_headers
+
 
 class TestRequestTimingMiddleware:
     """Tests for RequestTimingMiddleware."""
