@@ -12,12 +12,11 @@ import logging
 import secrets
 import time
 import uuid
-from collections.abc import Callable
 from contextvars import ContextVar
+from typing import Any
 
-from fastapi import HTTPException, Request, Response
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.types import ASGIApp
+from fastapi import HTTPException, Request
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 # CSRF token configuration
 CSRF_TOKEN_LENGTH = 32
@@ -179,8 +178,8 @@ async def validate_csrf_token(request: Request) -> None:
     )
 
 
-class CorrelationIdMiddleware(BaseHTTPMiddleware):
-    """Middleware that adds correlation IDs to requests.
+class CorrelationIdMiddleware:
+    """Pure ASGI middleware that adds correlation IDs to requests.
 
     This middleware:
     1. Checks for an existing correlation ID in request headers (X-Correlation-ID or X-Request-ID)
@@ -188,31 +187,23 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
     3. Stores the correlation ID in a context variable for logging
     4. Adds the correlation ID to response headers
 
-    The correlation ID can be used to trace requests across services and in logs.
+    Uses pure ASGI (not BaseHTTPMiddleware) to avoid buffering streaming responses
+    like SSE, which would break keepalive pings.
     """
 
     def __init__(self, app: ASGIApp):
-        """Initialize the middleware.
+        self.app = app
 
-        Args:
-            app: The ASGI application to wrap.
-        """
-        super().__init__(app)
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process the request and add correlation ID.
-
-        Args:
-            request: The incoming request.
-            call_next: The next middleware or route handler.
-
-        Returns:
-            The response with correlation ID header added.
-        """
-        # Try to get correlation ID from headers (check both common header names)
+        # Extract correlation ID from request headers (bytes tuples)
+        headers = dict(scope.get("headers", []))
         correlation_id = (
-            request.headers.get(CORRELATION_ID_HEADER)
-            or request.headers.get(REQUEST_ID_HEADER)
+            headers.get(b"x-correlation-id", b"").decode("utf-8")
+            or headers.get(b"x-request-id", b"").decode("utf-8")
             or generate_correlation_id()
         )
 
@@ -220,61 +211,75 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
         token = correlation_id_ctx.set(correlation_id)
 
         try:
-            # Log the request with correlation ID
+            path = scope.get("path", "")
+            method = scope.get("method", "")
             logger.debug(
-                f"[{correlation_id}] {request.method} {request.url.path}",
+                f"[{correlation_id}] {method} {path}",
                 extra={"correlation_id": correlation_id},
             )
 
-            # Process the request
-            response = await call_next(request)
+            async def send_wrapper(message: Any) -> None:
+                if message.get("type") == "http.response.start":
+                    # Inject correlation ID header into the response
+                    response_headers = list(message.get("headers", []))
+                    response_headers.append((b"x-correlation-id", correlation_id.encode("utf-8")))
+                    message = {**message, "headers": response_headers}
+                await send(message)
 
-            # Add correlation ID to response headers
-            response.headers[CORRELATION_ID_HEADER] = correlation_id
-
-            return response
+            await self.app(scope, receive, send_wrapper)
         finally:
-            # Reset the context variable
             correlation_id_ctx.reset(token)
 
 
-class RequestTimingMiddleware(BaseHTTPMiddleware):
-    """Middleware that adds request timing information.
+class RequestTimingMiddleware:
+    """Pure ASGI middleware that adds request timing information.
 
     Adds X-Process-Time header with the request processing duration in seconds.
+
+    Uses pure ASGI (not BaseHTTPMiddleware) to avoid buffering streaming responses
+    like SSE, which would break keepalive pings.
     """
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process the request and add timing header.
+    def __init__(self, app: ASGIApp):
+        self.app = app
 
-        Args:
-            request: The incoming request.
-            call_next: The next middleware or route handler.
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Returns:
-            The response with X-Process-Time header added.
-        """
         start_time = time.perf_counter()
-        response = await call_next(request)
-        process_time = time.perf_counter() - start_time
+        logged_slow = False
 
-        # Add timing header (in seconds, with microsecond precision)
-        response.headers["X-Process-Time"] = f"{process_time:.6f}"
+        async def send_wrapper(message: Any) -> None:
+            nonlocal logged_slow
+            if message.get("type") == "http.response.start":
+                process_time = time.perf_counter() - start_time
+                response_headers = list(message.get("headers", []))
+                response_headers.append((b"x-process-time", f"{process_time:.6f}".encode()))
+                message = {**message, "headers": response_headers}
+            elif message.get("type") == "http.response.body" and not logged_slow:
+                logged_slow = True
+                process_time = time.perf_counter() - start_time
+                if process_time > 1.0:
+                    correlation_id = get_correlation_id() or "unknown"
+                    path = scope.get("path", "")
+                    method = scope.get("method", "")
+                    logger.warning(
+                        f"[{correlation_id}] Slow request: {method} {path} "
+                        f"took {process_time:.3f}s",
+                        extra={
+                            "correlation_id": correlation_id,
+                            "process_time": process_time,
+                        },
+                    )
+            await send(message)
 
-        # Log slow requests
-        correlation_id = get_correlation_id() or "unknown"
-        if process_time > 1.0:
-            logger.warning(
-                f"[{correlation_id}] Slow request: {request.method} {request.url.path} "
-                f"took {process_time:.3f}s",
-                extra={"correlation_id": correlation_id, "process_time": process_time},
-            )
-
-        return response
+        await self.app(scope, receive, send_wrapper)
 
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Middleware that adds security headers to all responses.
+class SecurityHeadersMiddleware:
+    """Pure ASGI middleware that adds security headers to all responses.
 
     This middleware adds standard security headers to protect against common
     web vulnerabilities:
@@ -287,8 +292,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     - Content-Security-Policy: Restricts resource loading (configurable)
     - Permissions-Policy: Disables unnecessary browser features
 
-    Note: For API-only services, some headers like CSP are less critical
-    but still good practice for defense in depth.
+    Uses pure ASGI (not BaseHTTPMiddleware) to avoid buffering streaming responses
+    like SSE, which would break keepalive pings.
     """
 
     def __init__(
@@ -299,63 +304,46 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         hsts_include_subdomains: bool = True,
         content_security_policy: str | None = None,
     ):
-        """Initialize the security headers middleware.
-
-        Args:
-            app: The ASGI application to wrap.
-            enable_hsts: Whether to enable HSTS (disable for local development).
-            hsts_max_age: HSTS max-age in seconds (default: 1 year).
-            hsts_include_subdomains: Include subdomains in HSTS.
-            content_security_policy: Custom CSP header value, or None for default.
-        """
-        super().__init__(app)
+        self.app = app
         self.enable_hsts = enable_hsts
         self.hsts_max_age = hsts_max_age
         self.hsts_include_subdomains = hsts_include_subdomains
         self.content_security_policy = content_security_policy or "default-src 'self'"
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        """Process the request and add security headers to the response.
-
-        Args:
-            request: The incoming request.
-            call_next: The next middleware or route handler.
-
-        Returns:
-            The response with security headers added.
-        """
-        response = await call_next(request)
-
-        # Strict-Transport-Security (HSTS)
-        # Only enable in production to avoid issues with local development
+        # Pre-build the static security headers list
+        self._security_headers: list[tuple[bytes, bytes]] = [
+            (b"x-content-type-options", b"nosniff"),
+            (b"x-frame-options", b"DENY"),
+            (b"x-xss-protection", b"1; mode=block"),
+            (b"referrer-policy", b"strict-origin-when-cross-origin"),
+            (b"content-security-policy", self.content_security_policy.encode("utf-8")),
+            (
+                b"permissions-policy",
+                b"accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+                b"magnetometer=(), microphone=(), payment=(), usb=()",
+            ),
+        ]
         if self.enable_hsts:
             hsts_value = f"max-age={self.hsts_max_age}"
             if self.hsts_include_subdomains:
                 hsts_value += "; includeSubDomains"
-            response.headers["Strict-Transport-Security"] = hsts_value
+            self._security_headers.append(
+                (b"strict-transport-security", hsts_value.encode("utf-8"))
+            )
 
-        # Prevent MIME-type sniffing
-        response.headers["X-Content-Type-Options"] = "nosniff"
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        # Prevent clickjacking
-        response.headers["X-Frame-Options"] = "DENY"
+        async def send_wrapper(message: Any) -> None:
+            if message.get("type") == "http.response.start":
+                response_headers = list(message.get("headers", []))
+                response_headers.extend(self._security_headers)
+                message = {**message, "headers": response_headers}
+            await send(message)
 
-        # Legacy XSS protection for older browsers
-        response.headers["X-XSS-Protection"] = "1; mode=block"
-
-        # Control referrer information
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-
-        # Content Security Policy
-        response.headers["Content-Security-Policy"] = self.content_security_policy
-
-        # Permissions Policy - disable unnecessary browser features
-        response.headers["Permissions-Policy"] = (
-            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
-            "magnetometer=(), microphone=(), payment=(), usb=()"
-        )
-
-        return response
+        await self.app(scope, receive, send_wrapper)
 
 
 class CorrelationIdFilter(logging.Filter):

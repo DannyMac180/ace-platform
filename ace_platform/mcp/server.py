@@ -79,6 +79,46 @@ ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
 _request_api_key: ContextVar[str | None] = ContextVar("request_api_key", default=None)
 
 
+class SSEDisconnectMiddleware:
+    """ASGI middleware that suppresses expected SSE disconnect errors.
+
+    When an SSE client disconnects (browser tab closed, network drop, etc.),
+    anyio raises ClosedResourceError or BrokenResourceError as the server
+    tries to write to the now-closed stream. These are normal lifecycle
+    events, not real errors — this middleware catches them and logs at
+    DEBUG level instead of letting them propagate as unhandled exceptions
+    (which would create noise in Sentry).
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await self.app(scope, receive, send)
+        except Exception as exc:
+            if _is_disconnect_error(exc):
+                import logging
+
+                logging.getLogger(__name__).debug(
+                    "SSE client disconnected (suppressed %s)", type(exc).__name__
+                )
+                return
+            raise
+
+
+def _is_disconnect_error(exc: BaseException) -> bool:
+    """Check if an exception represents a normal SSE client disconnect."""
+    from anyio import BrokenResourceError, ClosedResourceError
+
+    if isinstance(exc, (ClosedResourceError, BrokenResourceError)):
+        return True
+    # ExceptionGroup may wrap disconnect errors (Python 3.11+)
+    if hasattr(exc, "exceptions"):
+        return all(_is_disconnect_error(e) for e in exc.exceptions)  # type: ignore[union-attr]
+    return False
+
+
 class FlyReplayMiddleware:
     """ASGI middleware for Fly.io session affinity with MCP SSE transport.
 

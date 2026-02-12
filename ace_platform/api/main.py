@@ -394,12 +394,17 @@ def _register_routes(app: FastAPI) -> None:
     #     }
     #   }
     # }
-    from ace_platform.mcp.server import FlyReplayMiddleware, HeaderAuthMiddleware
+    from ace_platform.mcp.server import (
+        FlyReplayMiddleware,
+        HeaderAuthMiddleware,
+        SSEDisconnectMiddleware,
+    )
     from ace_platform.mcp.server import mcp as mcp_server
 
     mcp_sse_app = mcp_server.sse_app()
     mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
-    mcp_sse_app_with_replay = FlyReplayMiddleware(mcp_sse_app_with_auth)
+    mcp_sse_app_with_disconnect = SSEDisconnectMiddleware(mcp_sse_app_with_auth)
+    mcp_sse_app_with_replay = FlyReplayMiddleware(mcp_sse_app_with_disconnect)
     app.mount("/mcp", app=mcp_sse_app_with_replay, name="mcp")
 
     # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.

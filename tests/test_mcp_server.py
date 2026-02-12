@@ -487,6 +487,109 @@ async def test_evolution_job_failed(async_session: AsyncSession, test_playbook: 
     return job
 
 
+class TestSSEDisconnectMiddleware:
+    """Tests for SSEDisconnectMiddleware."""
+
+    @pytest.fixture
+    def dummy_app(self):
+        """ASGI app that records calls."""
+
+        class DummyApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"OK"})
+
+        return DummyApp()
+
+    @pytest.fixture
+    def raising_app(self):
+        """Factory for an ASGI app that raises a given exception."""
+
+        def _make(exc):
+            async def app(scope, receive, send):
+                raise exc
+
+            return app
+
+        return _make
+
+    @staticmethod
+    async def _collect_response(app, scope):
+        parts = []
+
+        async def send(message):
+            parts.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await app(scope, receive, send)
+        return parts
+
+    @pytest.mark.asyncio
+    async def test_normal_passthrough(self, dummy_app):
+        """Normal requests pass through without modification."""
+        from ace_platform.mcp.server import SSEDisconnectMiddleware
+
+        mw = SSEDisconnectMiddleware(dummy_app)
+        scope = {"type": "http", "path": "/mcp/sse"}
+        parts = await self._collect_response(mw, scope)
+        assert dummy_app.called
+        assert parts[0]["status"] == 200
+
+    @pytest.mark.asyncio
+    async def test_suppresses_closed_resource_error(self, raising_app):
+        """ClosedResourceError is caught and suppressed."""
+        from anyio import ClosedResourceError
+
+        from ace_platform.mcp.server import SSEDisconnectMiddleware
+
+        app = raising_app(ClosedResourceError())
+        mw = SSEDisconnectMiddleware(app)
+        scope = {"type": "http", "path": "/mcp/sse"}
+        # Should not raise
+        parts = await self._collect_response(mw, scope)
+        assert parts == []
+
+    @pytest.mark.asyncio
+    async def test_suppresses_broken_resource_error(self, raising_app):
+        """BrokenResourceError is caught and suppressed."""
+        from anyio import BrokenResourceError
+
+        from ace_platform.mcp.server import SSEDisconnectMiddleware
+
+        app = raising_app(BrokenResourceError())
+        mw = SSEDisconnectMiddleware(app)
+        scope = {"type": "http", "path": "/mcp/sse"}
+        parts = await self._collect_response(mw, scope)
+        assert parts == []
+
+    @pytest.mark.asyncio
+    async def test_reraises_other_exceptions(self, raising_app):
+        """Non-disconnect exceptions are re-raised."""
+        from ace_platform.mcp.server import SSEDisconnectMiddleware
+
+        app = raising_app(ValueError("real error"))
+        mw = SSEDisconnectMiddleware(app)
+        scope = {"type": "http", "path": "/mcp/sse"}
+        with pytest.raises(ValueError, match="real error"):
+            await self._collect_response(mw, scope)
+
+    @pytest.mark.asyncio
+    async def test_non_http_passthrough(self, dummy_app):
+        """Non-HTTP scopes pass through."""
+        from ace_platform.mcp.server import SSEDisconnectMiddleware
+
+        mw = SSEDisconnectMiddleware(dummy_app)
+        scope = {"type": "lifespan"}
+        await self._collect_response(mw, scope)
+        assert dummy_app.called
+
+
 class TestGetApiKey:
     """Tests for get_api_key helper function."""
 
