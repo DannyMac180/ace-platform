@@ -116,3 +116,37 @@ def test_init_skips_when_dsn_missing():
     with patch("ace_platform.core.sentry_bootstrap.sentry_sdk.init") as sdk_init:
         sentry_bootstrap.init_sentry_for_process(process_name="api", settings=settings)
         sdk_init.assert_not_called()
+
+
+def test_init_uses_fast_fail_transport():
+    """Verify that init passes the custom fast-fail transport class."""
+    settings = make_settings(sentry_release="")
+    with patch("ace_platform.core.sentry_bootstrap.sentry_sdk.init") as sdk_init:
+        sentry_bootstrap.init_sentry_for_process(process_name="api", settings=settings)
+        kwargs = sdk_init.call_args.kwargs
+        assert kwargs["transport"] is sentry_bootstrap._FastFailTransport
+        assert kwargs["shutdown_timeout"] == 2
+
+
+def test_fast_fail_transport_uses_short_timeouts():
+    """Verify that _FastFailTransport configures aggressive timeouts."""
+    import urllib3
+
+    from ace_platform.core.sentry_bootstrap import _FastFailTransport
+
+    transport = _FastFailTransport.__new__(_FastFailTransport)
+    # Provide the minimal state that _get_pool_options needs from the parent.
+    # HttpTransport.__init__ is complex, so we monkey-patch the super call.
+    with patch.object(
+        _FastFailTransport.__bases__[0],
+        "_get_pool_options",
+        return_value={
+            "num_pools": 2,
+            "cert_reqs": "CERT_REQUIRED",
+            "timeout": urllib3.Timeout(total=30),
+        },
+    ):
+        options = transport._get_pool_options()
+        timeout = options["timeout"]
+        assert timeout.connect_timeout == 2.0
+        assert timeout.read_timeout == 3.0

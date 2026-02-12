@@ -11,11 +11,43 @@ from importlib.metadata import version as package_version
 from typing import Any
 
 import sentry_sdk
+from sentry_sdk.transport import HttpTransport
 
 from ace_platform.config import Settings, get_settings
 from ace_platform.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Custom transport with aggressive timeouts
+# ---------------------------------------------------------------------------
+# The default HttpTransport uses a 30-second total timeout.  On small Fly.io
+# staging machines (256 MB RAM, shared CPU), SSL handshake failures to the
+# Sentry ingestion endpoint block the urllib3 pool for the full 30 seconds
+# per event.  With several events queued the background worker thread holds
+# sockets and CPU time that starve the uvicorn event loop, causing health
+# check timeouts and 503s.
+#
+# This subclass lowers the ceiling to 5 seconds (2 s connect + 3 s read) so
+# transient network issues fail fast instead of degrading the application.
+# ---------------------------------------------------------------------------
+
+_TRANSPORT_CONNECT_TIMEOUT = 2.0  # seconds
+_TRANSPORT_READ_TIMEOUT = 3.0  # seconds
+
+
+class _FastFailTransport(HttpTransport):
+    """HttpTransport with shorter timeouts to prevent SSL retry storms."""
+
+    def _get_pool_options(self):  # type: ignore[override]
+        import urllib3
+
+        options = super()._get_pool_options()
+        options["timeout"] = urllib3.Timeout(
+            connect=_TRANSPORT_CONNECT_TIMEOUT,
+            read=_TRANSPORT_READ_TIMEOUT,
+        )
+        return options
 
 
 def _normalize_process_name(process_name: str) -> str:
@@ -251,6 +283,10 @@ def init_sentry_for_process(
         transport_queue_size=max(1, settings.sentry_transport_queue_size),
         # Keep startup/surges predictable if transport health degrades.
         send_client_reports=False,
+        # Fail fast on network issues instead of blocking for 30 s per event.
+        transport=_FastFailTransport,
+        # Don't stall process shutdown waiting for the transport queue to drain.
+        shutdown_timeout=2,
     )
 
     logger.info(
