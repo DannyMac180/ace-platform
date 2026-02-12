@@ -110,10 +110,10 @@ kill_timeout = 30
   memory = "2gb"
   processes = ["worker"]
 
-# Beat scheduler (minimal resources needed)
+# Beat scheduler
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"
   processes = ["beat"]
 
 # =============================================================================
