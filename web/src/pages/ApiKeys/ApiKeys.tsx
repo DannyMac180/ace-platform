@@ -21,6 +21,9 @@ import {
   Info,
   Mail,
   BookOpen,
+  FileText,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import type { ApiKey, ApiKeyCreate, ApiKeyCreateResponse } from '../../types';
 import styles from './ApiKeys.module.css';
@@ -32,6 +35,44 @@ const AVAILABLE_SCOPES = [
   { id: 'evolution:read', label: 'Read Evolution', description: 'View evolution status' },
   { id: 'evolution:write', label: 'Trigger Evolution', description: 'Manually trigger evolution' },
 ];
+
+const RECOMMENDED_INSTRUCTIONS_TEMPLATE = `## ACE Playbooks
+
+This project uses ACE for self-improving AI instructions.
+The ACE MCP server is configured and available.
+
+### Workflow
+
+For each new task (or when task intent changes materially):
+
+1. **Discover relevant playbooks first (semantic search)**
+   - Summarize the request as a concise task description
+   - Prefer \`find_playbook(task_description="<task description>")\` to get the best match
+   - If needed, use \`list_playbooks(task="<task description>")\` to review ranked alternatives
+   - If no relevant playbook is found, continue normally and do not force playbook usage
+
+2. **Load playbook instructions before doing the task (Generator step)**
+   - Use \`get_playbook(playbook_id="<selected id>")\` for the selected playbook
+   - Read the playbook content before starting execution
+   - Apply those instructions during planning and implementation
+
+3. **Execute the task using the playbook guidance**
+   - Use one **primary** playbook for execution and outcome attribution
+   - If multiple playbooks are relevant, keep additional playbooks as supporting context only
+
+4. **Record outcomes automatically after task completion**
+   - Call \`record_outcome\` exactly once per completed, playbook-guided task
+   - Include all relevant fields:
+     - \`playbook_id\`: ID of the primary playbook used
+     - \`task_description\`: What was attempted, including scope and deliverable summary
+     - \`outcome\`: \`success\`, \`partial\`, or \`failure\`
+     - \`notes\`: What worked, what failed, key decisions, and blockers
+     - \`reasoning_trace\`: Concise summary of reasoning and tradeoffs
+   - If recording fails (permissions, validation, rate limit), report the error and continue helping the user
+
+5. **Check for evolution when applicable**
+   - If you manually call \`trigger_evolution\` and receive a Job ID, call \`get_evolution_status(job_id=...)\`
+   - Do not call \`get_evolution_status\` without a known Job ID`;
 
 export function ApiKeys() {
   const { user, refreshUser } = useAuth();
@@ -441,6 +482,8 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
   const [copied, setCopied] = useState(false);
   const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'headers'>('prompt');
   const [setupCopied, setSetupCopied] = useState(false);
+  const [templateCopied, setTemplateCopied] = useState(false);
+  const [templateExpanded, setTemplateExpanded] = useState(false);
 
   const copyToClipboard = async () => {
     await navigator.clipboard.writeText(apiKey.key);
@@ -582,6 +625,55 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
           </div>
         </div>
 
+        {/* Recommended Instructions Template */}
+        <div className={styles.instructionsTemplateSection}>
+          <button
+            className={styles.instructionsTemplateToggle}
+            onClick={() => setTemplateExpanded(!templateExpanded)}
+          >
+            <FileText size={18} />
+            <div className={styles.instructionsTemplateToggleText}>
+              <strong>Recommended: Add agent instructions</strong>
+              <span>Copy the instructions template into your CLAUDE.md, AGENTS.md, or custom instructions</span>
+            </div>
+            {templateExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+
+          {templateExpanded && (
+            <div className={styles.instructionsTemplateContent}>
+              <p className={styles.instructionsTemplateDescription}>
+                This template tells your AI agent how to discover, use, and improve your playbooks automatically.
+                Paste it into your project's instructions file:
+              </p>
+              <div className={styles.instructionsTemplateTargets}>
+                <span className={styles.targetBadge}>CLAUDE.md</span>
+                <span className={styles.targetBadge}>AGENTS.md</span>
+                <span className={styles.targetBadge}>Custom Instructions</span>
+                <span className={styles.targetBadge}>System Prompt</span>
+              </div>
+              <div className={styles.setupCodeBlock}>
+                <pre>{RECOMMENDED_INSTRUCTIONS_TEMPLATE}</pre>
+                <button
+                  className={styles.copyButton}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(RECOMMENDED_INSTRUCTIONS_TEMPLATE);
+                    setTemplateCopied(true);
+                    setTimeout(() => setTemplateCopied(false), 2000);
+                  }}
+                >
+                  {templateCopied ? <Check size={18} /> : <Copy size={18} />}
+                </button>
+              </div>
+              <div className={styles.setupNote}>
+                <Info size={14} />
+                <span>
+                  Without these instructions, your agent won't know to look up playbooks or record outcomes. This is what closes the feedback loop for self-improving playbooks.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+
         <Button onClick={onClose} className={styles.doneButton}>
           Done
         </Button>
@@ -622,6 +714,8 @@ function VerificationRequiredModal({ onClose }: { onClose: () => void }) {
 function SetupDocsModal({ onClose }: { onClose: () => void }) {
   const [setupTab, setSetupTab] = useState<'prompt' | 'claude' | 'headers'>('prompt');
   const [setupCopied, setSetupCopied] = useState(false);
+  const [templateCopied, setTemplateCopied] = useState(false);
+  const [templateExpanded, setTemplateExpanded] = useState(false);
 
   const mcpServerUrl = 'https://aceagent.io/mcp/sse';
   const keyPlaceholder = '<YOUR_API_KEY>';
@@ -745,6 +839,55 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Recommended Instructions Template */}
+        <div className={styles.instructionsTemplateSection}>
+          <button
+            className={styles.instructionsTemplateToggle}
+            onClick={() => setTemplateExpanded(!templateExpanded)}
+          >
+            <FileText size={18} />
+            <div className={styles.instructionsTemplateToggleText}>
+              <strong>Recommended: Add agent instructions</strong>
+              <span>Copy the instructions template into your CLAUDE.md, AGENTS.md, or custom instructions</span>
+            </div>
+            {templateExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          </button>
+
+          {templateExpanded && (
+            <div className={styles.instructionsTemplateContent}>
+              <p className={styles.instructionsTemplateDescription}>
+                This template tells your AI agent how to discover, use, and improve your playbooks automatically.
+                Paste it into your project's instructions file:
+              </p>
+              <div className={styles.instructionsTemplateTargets}>
+                <span className={styles.targetBadge}>CLAUDE.md</span>
+                <span className={styles.targetBadge}>AGENTS.md</span>
+                <span className={styles.targetBadge}>Custom Instructions</span>
+                <span className={styles.targetBadge}>System Prompt</span>
+              </div>
+              <div className={styles.setupCodeBlock}>
+                <pre>{RECOMMENDED_INSTRUCTIONS_TEMPLATE}</pre>
+                <button
+                  className={styles.copyButton}
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(RECOMMENDED_INSTRUCTIONS_TEMPLATE);
+                    setTemplateCopied(true);
+                    setTimeout(() => setTemplateCopied(false), 2000);
+                  }}
+                >
+                  {templateCopied ? <Check size={18} /> : <Copy size={18} />}
+                </button>
+              </div>
+              <div className={styles.setupNote}>
+                <Info size={14} />
+                <span>
+                  Without these instructions, your agent won't know to look up playbooks or record outcomes. This is what closes the feedback loop for self-improving playbooks.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         <Button onClick={onClose} className={styles.doneButton}>

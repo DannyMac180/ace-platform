@@ -788,3 +788,95 @@
   border-radius: var(--radius-sm);
   color: var(--accent-primary);
 }
+
+/* Instructions Template Section */
+.instructionsTemplateSection {
+  margin-top: var(--space-lg);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.instructionsTemplateToggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  width: 100%;
+  padding: var(--space-md);
+  background: var(--bg-secondary);
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text-primary);
+  transition: background 0.15s ease;
+}
+
+.instructionsTemplateToggle:hover {
+  background: var(--bg-tertiary);
+}
+
+.instructionsTemplateToggle > svg:first-child {
+  flex-shrink: 0;
+  color: var(--accent-primary);
+}
+
+.instructionsTemplateToggle > svg:last-child {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  margin-left: auto;
+}
+
+.instructionsTemplateToggleText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.instructionsTemplateToggleText strong {
+  font-size: 0.8125rem;
+  color: var(--text-primary);
+}
+
+.instructionsTemplateToggleText span {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.instructionsTemplateContent {
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-primary);
+}
+
+.instructionsTemplateDescription {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  margin: 0 0 var(--space-md) 0;
+  line-height: 1.5;
+}
+
+.instructionsTemplateTargets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+.targetBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--accent-primary);
+  white-space: nowrap;
+}
+
+.instructionsTemplateContent .setupCodeBlock pre {
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.6875rem;
+}
