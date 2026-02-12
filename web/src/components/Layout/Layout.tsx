@@ -43,7 +43,7 @@ export function Layout({ children }: LayoutProps) {
 
   const trialDaysRemaining = getTrialDaysRemaining();
 
-  const docsUrl = import.meta.env.VITE_DOCS_URL || 'https://docs.aceagent.io';
+  const docsUrl = import.meta.env.VITE_DOCS_URL || 'https://docs.aceagent.io/docs';
 
   const navItems = [
     { to: '/dashboard', icon: BookOpen, label: 'Playbooks' },

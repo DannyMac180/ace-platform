@@ -1,6 +1,46 @@
+
+
 # ACE Platform
 
 A hosted "Playbooks as a Service" platform built on the ACE (Autonomous Capability Enhancement) three-agent architecture.
+
+## ACE Playbooks
+
+This project uses ACE for self-improving AI instructions.
+The ACE MCP server is configured and available.
+
+### Workflow
+
+For each new task (or when task intent changes materially):
+
+1. **Discover relevant playbooks first (semantic search)**
+   - Summarize the request as a concise task description
+   - Prefer `find_playbook(task_description="<task description>")` to get the best match
+   - If needed, use `list_playbooks(task="<task description>")` to review ranked alternatives
+   - If no relevant playbook is found, continue normally and do not force playbook usage
+
+2. **Load playbook instructions before doing the task (Generator step)**
+   - Use `get_playbook(playbook_id="<selected id>")` for the selected playbook
+   - Read the playbook content before starting execution
+   - Apply those instructions during planning and implementation
+
+3. **Execute the task using the playbook guidance**
+   - Use one **primary** playbook for execution and outcome attribution
+   - If multiple playbooks are relevant, keep additional playbooks as supporting context only
+
+4. **Record outcomes automatically after task completion**
+   - Call `record_outcome` exactly once per completed, playbook-guided task
+   - Include all relevant fields:
+     - `playbook_id`: ID of the primary playbook used
+     - `task_description`: What was attempted, including scope and deliverable summary
+     - `outcome`: `success`, `partial`, or `failure`
+     - `notes`: What worked, what failed, key decisions, and blockers
+     - `reasoning_trace`: Concise summary of reasoning and tradeoffs
+   - If recording fails (permissions, validation, rate limit), report the error and continue helping the user
+
+5. **Check for evolution when applicable**
+   - If you manually call `trigger_evolution` and receive a Job ID, call `get_evolution_status(job_id=...)`
+   - Do not call `get_evolution_status` without a known Job ID
 
 ## Claude Code Instructions
 
@@ -331,22 +371,3 @@ This matches what CI runs, so if it passes locally, CI should pass too.
 ## Context management
 
 You are a LLM and therefore don't always have up to date knowledge in your internal knowledge. Due to this, always gather context about specific libraries, frameworks, technologies or coding patterns before generating files or writing code. This allows your output to be much more accurate and higher quality. Use the context7 MCP to do this when possible and use web search when context7 doesn't have the info you need.
-
-## Using ACE Playbooks
-
-Before starting any task, check for relevant playbooks:
-
-1. **Discover playbooks** - Use the `list_playbooks` tool to see available playbooks
-2. **Load relevant playbooks** - Use the `get_playbook` tool to fetch instructions for playbooks that match your current task
-3. **Follow the guidelines** - Apply the playbook instructions as you work
-
-After completing a task guided by a playbook:
-
-1. **Record the outcome** - Use the `record_outcome` tool with:
-   - `playbook_id`: The playbook you followed
-   - `task_description`: What you accomplished
-   - `outcome`: "success", "failure", or "partial"
-   - `notes`: What worked well, what didn't, and lessons learned
-
-2. **Check for evolution** - If an evolution was triggered, use `get_evolution_status` to report the results to the user
-```
