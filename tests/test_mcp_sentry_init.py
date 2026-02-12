@@ -1,9 +1,8 @@
 """Tests for MCP server Sentry initialization."""
 
-import importlib
 from unittest.mock import patch
 
-from ace_platform.config import Settings, get_settings
+from ace_platform.config import Settings
 
 
 def _mcp_test_settings() -> Settings:
@@ -19,17 +18,23 @@ def _mcp_test_settings() -> Settings:
     )
 
 
-def test_mcp_server_initializes_sentry_with_process_context():
+def test_mcp_run_server_initializes_sentry_with_process_context():
+    """Verify that run_server() calls init_sentry_for_process before starting."""
     settings = _mcp_test_settings()
-    with patch("ace_platform.config.get_settings", return_value=settings):
-        with patch("ace_platform.core.sentry_bootstrap.init_sentry_for_process") as init_call:
-            get_settings.cache_clear()
-            module = importlib.reload(importlib.import_module("ace_platform.mcp.server"))
+    with (
+        patch("ace_platform.mcp.server.settings", settings),
+        patch("ace_platform.mcp.server.init_sentry_for_process") as init_call,
+        patch("ace_platform.mcp.server.mcp") as mock_mcp,
+    ):
+        from ace_platform.mcp.server import run_server
 
-            init_call.assert_called_once()
-            assert init_call.call_args.kwargs["process_name"] == "mcp"
+        run_server(transport="stdio")
 
-            called_settings = init_call.call_args.kwargs["settings"]
-            assert called_settings.sentry_dsn == "https://example@sentry.io/1"
-            assert called_settings.sentry_release == "test-release"
-            assert module is not None
+        init_call.assert_called_once()
+        assert init_call.call_args.kwargs["process_name"] == "mcp"
+
+        called_settings = init_call.call_args.kwargs["settings"]
+        assert called_settings.sentry_dsn == "https://example@sentry.io/1"
+        assert called_settings.sentry_release == "test-release"
+
+        mock_mcp.run.assert_called_once_with(transport="stdio")

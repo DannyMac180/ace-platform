@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from ace_platform.api.main import app, create_app, _traces_sampler
+from ace_platform.api.main import _traces_sampler, app, create_app
 from ace_platform.api.middleware import CORRELATION_ID_HEADER
 
 

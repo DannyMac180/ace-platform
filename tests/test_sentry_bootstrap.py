@@ -43,8 +43,7 @@ def test_process_release_override_beats_setting_value():
     settings = make_settings(sentry_release="setting-release")
     with patch.dict(os.environ, {"SENTRY_RELEASE_API": "api-release"}, clear=False):
         assert (
-            sentry_bootstrap.resolve_sentry_release(settings, process_name="api")
-            == "api-release"
+            sentry_bootstrap.resolve_sentry_release(settings, process_name="api") == "api-release"
         )
 
 
@@ -93,8 +92,7 @@ def test_effective_traces_sample_rate_uses_process_override():
         clear=False,
     ):
         assert (
-            sentry_bootstrap.get_effective_traces_sample_rate(settings, process_name="api")
-            == 0.25
+            sentry_bootstrap.get_effective_traces_sample_rate(settings, process_name="api") == 0.25
         )
 
 

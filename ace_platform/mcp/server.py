@@ -70,7 +70,6 @@ from ace_platform.db.models import (
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
 settings = get_settings()
-init_sentry_for_process(process_name="mcp", settings=settings)
 
 # Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
 ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
@@ -1432,6 +1431,11 @@ def run_server(transport: str = "stdio") -> None:
                    Use 'stdio' for local development with Claude Desktop.
                    Use 'sse' for web-based clients.
     """
+    # Initialize Sentry for standalone MCP process.
+    # When MCP is mounted inside the API (via _register_routes), the API
+    # handles its own Sentry init, so this only runs for standalone mode.
+    init_sentry_for_process(process_name="mcp", settings=settings)
+
     # Host and port are configured at FastMCP initialization
     mcp.run(transport=transport)
 

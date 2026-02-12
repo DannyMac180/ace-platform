@@ -181,7 +181,9 @@ def get_effective_traces_sample_rate(
 
 
 def get_effective_profiles_sample_rate(
-    settings: Settings, process_name: str, override: float | None = None,
+    settings: Settings,
+    process_name: str,
+    override: float | None = None,
 ) -> float:
     """Return effective profile sample rate for the given process."""
     return _resolve_effective_profile_rate(
