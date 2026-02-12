@@ -5,7 +5,7 @@ primary_region = 'iad'
   dockerfile = "Dockerfile"
   [build.args]
     VITE_API_URL = "https://ace-platform-staging.fly.dev"
-    VITE_DOCS_URL = "https://ace-platform-docs-staging.fly.dev"
+    VITE_DOCS_URL = "https://ace-platform-docs-staging.fly.dev/docs"
 
 [http_service]
   internal_port = 80

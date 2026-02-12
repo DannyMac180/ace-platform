@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Build args for environment configuration
 ARG VITE_API_URL=https://aceagent.io
-ARG VITE_DOCS_URL=https://docs.aceagent.io
+ARG VITE_DOCS_URL=https://docs.aceagent.io/docs
 
 # Copy package files
 COPY package*.json ./
