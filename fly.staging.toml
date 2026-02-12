@@ -93,7 +93,7 @@ kill_timeout = 30
 # Worker (still needs memory for LLM processing)
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  memory = "1gb"
   processes = ["worker"]
 
 # Beat scheduler
