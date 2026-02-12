@@ -50,6 +50,7 @@ RATE_LIMITS = {
     "version_create": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "evolution": {"limit": 10, "window_seconds": 3600},  # 10 per hour per playbook
     "verification_email": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
+    "contact_form": {"limit": 3, "window_seconds": 3600},  # 3 per hour per user
 }
 
 
@@ -476,6 +477,28 @@ async def rate_limit_password_reset(request: Request, email: str) -> None:
         request,
         action="password_reset",
         identifier=email.lower(),
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
+async def rate_limit_contact_form(request: Request, user_id: str) -> None:
+    """Rate limit dependency for support contact form submissions.
+
+    Limits to 3 requests per hour per user to prevent spam.
+
+    Args:
+        request: The incoming request.
+        user_id: The authenticated user's ID.
+
+    Raises:
+        RateLimitExceeded: If rate limit is exceeded.
+    """
+    config = RATE_LIMITS["contact_form"]
+    await _check_rate_limit(
+        request,
+        action="contact_form",
+        identifier=user_id,
         limit=config["limit"],
         window_seconds=config["window_seconds"],
     )

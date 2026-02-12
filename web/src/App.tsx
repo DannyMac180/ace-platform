@@ -14,6 +14,7 @@ import { PlaybookContentEditor } from './pages/PlaybookContentEditor/PlaybookCon
 import { ApiKeys } from './pages/ApiKeys/ApiKeys';
 import { Usage } from './pages/Usage/Usage';
 import { Settings } from './pages/Settings/Settings';
+import { Support } from './pages/Support/Support';
 import { Pricing } from './pages/Pricing/Pricing';
 import { BillingSuccess } from './pages/BillingSuccess/BillingSuccess';
 import { BillingCancel } from './pages/BillingCancel/BillingCancel';
@@ -176,6 +177,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/support"
+        element={
+          <ProtectedRoute>
+            <Support />
           </ProtectedRoute>
         }
       />
