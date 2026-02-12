@@ -39,6 +39,15 @@ def test_resolve_release_prefers_process_override():
         )
 
 
+def test_process_release_override_beats_setting_value():
+    settings = make_settings(sentry_release="setting-release")
+    with patch.dict(os.environ, {"SENTRY_RELEASE_API": "api-release"}, clear=False):
+        assert (
+            sentry_bootstrap.resolve_sentry_release(settings, process_name="api")
+            == "api-release"
+        )
+
+
 def test_resolve_release_prefers_settings_value():
     settings = make_settings(sentry_release="setting-release")
     assert (
@@ -71,6 +80,22 @@ def test_process_sample_rate_uses_specific_override():
             kwargs = sdk_init.call_args.kwargs
             assert kwargs["traces_sample_rate"] == 0.25
             assert kwargs["profiles_sample_rate"] == 0.2
+
+
+def test_effective_traces_sample_rate_uses_process_override():
+    settings = make_settings(sentry_release="")
+    with patch.dict(
+        os.environ,
+        {
+            "SENTRY_TRACES_SAMPLE_RATE_API": "0.25",
+            "SENTRY_TRACES_SAMPLE_RATE": "0.05",
+        },
+        clear=False,
+    ):
+        assert (
+            sentry_bootstrap.get_effective_traces_sample_rate(settings, process_name="api")
+            == 0.25
+        )
 
 
 def test_process_sample_rate_uses_explicit_argument():

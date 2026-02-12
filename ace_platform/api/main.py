@@ -22,7 +22,10 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
-from ace_platform.core.sentry_bootstrap import init_sentry_for_process
+from ace_platform.core.sentry_bootstrap import (
+    get_effective_traces_sample_rate,
+    init_sentry_for_process,
+)
 from ace_platform.core.sentry_context import sanitize_request_headers
 from ace_platform.db.session import close_async_db
 
@@ -64,8 +67,8 @@ def _traces_sampler(sampling_context: dict) -> float:
     if name in ("/health", "/ready", "/metrics"):
         return 0.0
 
-    # Use default sample rate for everything else
-    return settings.sentry_traces_sample_rate
+    # Use the resolved API sample rate for everything else
+    return get_effective_traces_sample_rate(settings, process_name="api")
 
 
 # Initialize Sentry at module load time

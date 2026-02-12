@@ -104,22 +104,22 @@ def resolve_sentry_release(settings: Settings, process_name: str | None = None) 
     """Resolve Sentry release metadata.
 
     Preference order:
-      1. explicit ``SENTRY_RELEASE`` setting
-      2. ``SENTRY_RELEASE_<PROCESS>`` environment variable
+      1. ``SENTRY_RELEASE_<PROCESS>`` environment variable
+      2. explicit ``SENTRY_RELEASE`` setting
       3. ``SENTRY_RELEASE`` global environment variable
       4. CI/runtime hints such as ``GITHUB_SHA``
       5. package version fallback
     """
-
-    configured = settings.sentry_release
-    if configured:
-        return configured
 
     if process_name:
         normalized = _normalize_process_name(process_name)
         process_specific_release = os.getenv(f"SENTRY_RELEASE_{normalized}")
         if process_specific_release:
             return process_specific_release
+
+    configured = settings.sentry_release
+    if configured:
+        return configured
 
     env_release = os.getenv("SENTRY_RELEASE")
     if env_release:
@@ -131,6 +131,64 @@ def resolve_sentry_release(settings: Settings, process_name: str | None = None) 
             return f"ace-platform@{value}"
 
     return f"ace-platform@{_default_app_version()}"
+
+
+def _resolve_effective_trace_rate(
+    *, settings: Settings, process_name: str, override: float | None = None
+) -> float:
+    """Resolve the effective traces sample rate for a process."""
+    base_rate = settings.sentry_traces_sample_rate
+    if override is None:
+        base_rate = _resolve_sample_rate_for_process(
+            process_name=process_name,
+            base_env_name="SENTRY_TRACES_SAMPLE_RATE",
+            default=settings.sentry_traces_sample_rate,
+        )
+    return _coerce_sample_rate(
+        override if override is not None else base_rate,
+        f"SENTRY_TRACES_SAMPLE_RATE_{_normalize_process_name(process_name)}",
+        default=settings.sentry_traces_sample_rate,
+    )
+
+
+def _resolve_effective_profile_rate(
+    *, settings: Settings, process_name: str, override: float | None = None
+) -> float:
+    """Resolve the effective profile sample rate for a process."""
+    base_rate = settings.sentry_profiles_sample_rate
+    if override is None:
+        base_rate = _resolve_sample_rate_for_process(
+            process_name=process_name,
+            base_env_name="SENTRY_PROFILES_SAMPLE_RATE",
+            default=settings.sentry_profiles_sample_rate,
+        )
+    return _coerce_sample_rate(
+        override if override is not None else base_rate,
+        f"SENTRY_PROFILES_SAMPLE_RATE_{_normalize_process_name(process_name)}",
+        default=settings.sentry_profiles_sample_rate,
+    )
+
+
+def get_effective_traces_sample_rate(
+    settings: Settings, process_name: str, override: float | None = None
+) -> float:
+    """Return effective traces sample rate for the given process."""
+    return _resolve_effective_trace_rate(
+        settings=settings,
+        process_name=process_name,
+        override=override,
+    )
+
+
+def get_effective_profiles_sample_rate(
+    settings: Settings, process_name: str, override: float | None = None,
+) -> float:
+    """Return effective profile sample rate for the given process."""
+    return _resolve_effective_profile_rate(
+        settings=settings,
+        process_name=process_name,
+        override=override,
+    )
 
 
 def init_sentry_for_process(
@@ -165,35 +223,15 @@ def init_sentry_for_process(
 
     release = resolve_sentry_release(settings, process_name=process_name)
 
-    effective_traces_rate = settings.sentry_traces_sample_rate
-    if traces_sample_rate is None:
-        effective_traces_rate = _resolve_sample_rate_for_process(
-            process_name,
-            base_env_name="SENTRY_TRACES_SAMPLE_RATE",
-            default=settings.sentry_traces_sample_rate,
-        )
-    else:
-        effective_traces_rate = traces_sample_rate
-
-    effective_profiles_rate = settings.sentry_profiles_sample_rate
-    if profiles_sample_rate is None:
-        effective_profiles_rate = _resolve_sample_rate_for_process(
-            process_name,
-            base_env_name="SENTRY_PROFILES_SAMPLE_RATE",
-            default=settings.sentry_profiles_sample_rate,
-        )
-    else:
-        effective_profiles_rate = profiles_sample_rate
-
-    effective_traces_rate = _coerce_sample_rate(
-        effective_traces_rate,
-        f"SENTRY_TRACES_SAMPLE_RATE_{_normalize_process_name(process_name)}",
-        default=settings.sentry_traces_sample_rate,
+    effective_traces_rate = _resolve_effective_trace_rate(
+        settings=settings,
+        process_name=process_name,
+        override=traces_sample_rate,
     )
-    effective_profiles_rate = _coerce_sample_rate(
-        effective_profiles_rate,
-        f"SENTRY_PROFILES_SAMPLE_RATE_{_normalize_process_name(process_name)}",
-        default=settings.sentry_profiles_sample_rate,
+    effective_profiles_rate = _resolve_effective_profile_rate(
+        settings=settings,
+        process_name=process_name,
+        override=profiles_sample_rate,
     )
 
     sentry_sdk.init(

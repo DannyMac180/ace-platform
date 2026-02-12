@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from ace_platform.api.main import app, create_app
+from ace_platform.api.main import app, create_app, _traces_sampler
 from ace_platform.api.middleware import CORRELATION_ID_HEADER
 
 
@@ -215,6 +215,11 @@ class TestExceptionHandlers:
         assert request_headers["x-api-key"] == "[REDACTED]"
         assert request_headers["x-correlation-id"] == "test-correlation-id"
         assert request_headers["user-agent"] == "pytest-agent"
+
+    def test_traces_sampler_uses_effective_api_sample_rate(self):
+        context = {"transaction_context": {"name": "/playbooks"}}
+        with patch("ace_platform.api.main.get_effective_traces_sample_rate", return_value=0.25):
+            assert _traces_sampler(context) == 0.25
 
     def test_generic_exception_shows_details_in_debug_mode(self):
         """Test that debug mode shows exception details in error response."""
