@@ -15,6 +15,7 @@ from .billing import router as billing_router
 from .evolutions import router as evolutions_router
 from .oauth import router as oauth_router
 from .playbooks import router as playbooks_router
+from .support import router as support_router
 from .usage import router as usage_router
 
 __all__ = [
@@ -24,5 +25,6 @@ __all__ = [
     "evolutions_router",
     "oauth_router",
     "playbooks_router",
+    "support_router",
     "usage_router",
 ]

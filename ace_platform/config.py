@@ -251,6 +251,12 @@ class Settings(BaseSettings):
         description="Email verification token expiration time in hours",
     )
 
+    # Support
+    support_email: str = Field(
+        default="",
+        description="Email address where support contact form messages are sent. Falls back to ADMIN_ALERT_EMAIL if empty.",
+    )
+
     # Admin Alerts
     admin_alert_email: str = Field(
         default="",

@@ -378,6 +378,7 @@ def _register_routes(app: FastAPI) -> None:
         evolutions_router,
         oauth_router,
         playbooks_router,
+        support_router,
         usage_router,
     )
 
@@ -389,6 +390,7 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(playbooks_router)
     app.include_router(usage_router)
     app.include_router(evolutions_router)
+    app.include_router(support_router)
 
     # Mount MCP server at /mcp for SSE transport
     # This allows clients to connect to the MCP server via the same domain as the API

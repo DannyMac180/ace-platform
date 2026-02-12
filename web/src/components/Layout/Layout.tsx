@@ -12,6 +12,7 @@ import {
   CreditCard,
   FileText,
   ExternalLink,
+  HelpCircle,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '../Logo';
@@ -51,6 +52,7 @@ export function Layout({ children }: LayoutProps) {
     { to: '/usage', icon: BarChart3, label: 'Usage' },
     { to: '/pricing', icon: CreditCard, label: 'Pricing' },
     { to: '/settings', icon: Settings, label: 'Settings' },
+    { to: '/support', icon: HelpCircle, label: 'Support' },
   ];
 
   return (
