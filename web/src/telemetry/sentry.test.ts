@@ -20,10 +20,11 @@ describe('web sentry telemetry', () => {
 
   it('initializes with provided metadata and redacts sensitive headers', () => {
     let beforeSend: ((event: unknown) => unknown) | undefined
-    vi.mocked(init).mockImplementation((options: Record<string, unknown>) => {
-      beforeSend = options.beforeSend as
+    vi.mocked(init).mockImplementation((options) => {
+      beforeSend = (options as Record<string, unknown>).beforeSend as
         | ((event: unknown) => unknown)
         | undefined
+      return undefined
     })
 
     initSentry({ dsn: 'https://example@sentry.io/1', sampleRate: 0.42 })
