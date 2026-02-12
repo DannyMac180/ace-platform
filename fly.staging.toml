@@ -96,7 +96,7 @@ kill_timeout = 30
 # API server
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"
   processes = ["api"]
 
 # MCP server
@@ -114,5 +114,5 @@ kill_timeout = 30
 # Beat scheduler
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"
   processes = ["beat"]
