@@ -110,11 +110,12 @@ export function Layout({ children }: LayoutProps) {
 
           {/* Trial banner */}
           {trialDaysRemaining !== null && (
-            <div className={styles.trialBanner}>
+            <NavLink to="/pricing" className={styles.trialBanner}>
               <span className={styles.trialText}>
                 {trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} left in trial
               </span>
-            </div>
+              <span className={styles.trialUpgrade}>Upgrade</span>
+            </NavLink>
           )}
 
           {/* User section */}

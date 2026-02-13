@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../utils/api';
 import { PricingCard, type PricingTier } from './PricingCard';
@@ -97,6 +97,17 @@ export function Pricing() {
   const canUseTrial = !user?.has_used_trial;
   const displayedTiers = getDisplayTiers(billingInterval);
 
+  // Check if user is currently on a free trial
+  const getTrialDaysRemaining = () => {
+    if (!user?.trial_ends_at) return null;
+    const trialEnd = new Date(user.trial_ends_at);
+    const now = new Date();
+    const diffTime = trialEnd.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : null;
+  };
+  const trialDaysRemaining = getTrialDaysRemaining();
+
   const handleSubscribe = async (tierId: string) => {
     setError(null);
     setLoadingTier(tierId);
@@ -157,6 +168,15 @@ export function Pricing() {
           <span className={styles.toggleDiscount}>Save 17%</span>
         </button>
       </div>
+
+      {trialDaysRemaining !== null && (
+        <div className={styles.trialLimitsBanner}>
+          <Clock size={18} />
+          <span>
+            You&apos;re on a free trial ({trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} remaining) with limited access: 1 playbook and 5 evolutions. Subscribe to unlock more.
+          </span>
+        </div>
+      )}
 
       {error && (
         <div className={styles.error}>

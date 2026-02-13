@@ -71,7 +71,7 @@ class TierLimits:
 # Spending limits match subscription price to prevent runaway costs
 TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     SubscriptionTier.FREE: TierLimits(
-        monthly_evolution_runs=10,  # Very limited for internal/testing use
+        monthly_evolution_runs=5,  # Very limited for free trial / internal use
         monthly_cost_limit_usd=Decimal("1.00"),  # Small allowance for testing
         max_playbooks=1,
         can_use_premium_models=False,

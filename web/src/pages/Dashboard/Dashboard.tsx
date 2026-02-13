@@ -27,6 +27,7 @@ export function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [isLimitError, setIsLimitError] = useState(false);
   const navigate = useNavigate();
 
   const queryClient = useQueryClient();
@@ -52,9 +53,17 @@ export function Dashboard() {
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
       setShowCreateModal(false);
       setMutationError(null);
+      setIsLimitError(false);
     },
-    onError: () => {
-      setMutationError('Failed to create playbook. Please try again.');
+    onError: (err: unknown) => {
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      if (axiosErr?.response?.status === 402 && axiosErr.response.data?.detail) {
+        setMutationError(axiosErr.response.data.detail);
+        setIsLimitError(true);
+      } else {
+        setMutationError('Failed to create playbook. Please try again.');
+        setIsLimitError(false);
+      }
     },
   });
 
@@ -109,9 +118,18 @@ export function Dashboard() {
         <div className={styles.mutationError}>
           <AlertCircle size={20} />
           <span>{mutationError}</span>
+          {isLimitError && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate('/pricing')}
+            >
+              View Plans
+            </Button>
+          )}
           <button
             className={styles.dismissError}
-            onClick={() => setMutationError(null)}
+            onClick={() => { setMutationError(null); setIsLimitError(false); }}
             aria-label="Dismiss error"
           >
             &times;

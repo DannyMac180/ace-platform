@@ -85,6 +85,23 @@
   text-align: center;
 }
 
+/* Trial limits banner above pricing grid */
+.trialLimitsBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg);
+  background: rgba(184, 134, 11, 0.1);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xl);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  color: var(--gold-primary);
+  text-align: center;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

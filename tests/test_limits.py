@@ -42,9 +42,9 @@ class TestTierLimits:
             assert isinstance(TIER_LIMITS[tier], TierLimits)
 
     def test_free_tier_has_limits(self):
-        """Test free tier has restrictive limits (internal use only)."""
+        """Test free tier has restrictive limits (free trial / internal use)."""
         limits = get_tier_limits(SubscriptionTier.FREE)
-        assert limits.monthly_evolution_runs == 10
+        assert limits.monthly_evolution_runs == 5
         assert limits.max_playbooks == 1
         assert limits.can_use_premium_models is False
 
@@ -114,7 +114,7 @@ class TestUsageStatus:
         """Test usage status when within limits."""
         user_id = uuid4()
         mock_db = AsyncMock()
-        mock_db.scalar = AsyncMock(return_value=5)
+        mock_db.scalar = AsyncMock(return_value=3)
 
         # Mock usage summary - low usage
         mock_summary = MagicMock()
@@ -129,8 +129,8 @@ class TestUsageStatus:
 
         assert status.is_within_limits is True
         assert status.limit_exceeded is None
-        assert status.current_evolution_runs == 5
-        assert status.remaining_evolution_runs == 5  # 10 - 5
+        assert status.current_evolution_runs == 3
+        assert status.remaining_evolution_runs == 2  # 5 - 3
         assert status.current_total_tokens == 1234
         assert status.current_cost_usd == Decimal("0.50")
         assert status.remaining_cost_usd == Decimal("0.50")  # $1 - $0.50
@@ -207,7 +207,7 @@ class TestCheckCanEvolve:
         """Test evolution allowed when within limits and has payment method."""
         user_id = uuid4()
         mock_db = AsyncMock()
-        mock_db.scalar = AsyncMock(return_value=5)
+        mock_db.scalar = AsyncMock(return_value=2)
 
         mock_summary = MagicMock()
         mock_summary.total_tokens = 1234

@@ -207,12 +207,20 @@
 .trialBanner {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   padding: var(--space-sm) var(--space-md);
   background: rgba(184, 134, 11, 0.1);
   border: 1px solid var(--border-gold);
   border-radius: var(--radius-md);
   margin-bottom: var(--space-md);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.trialBanner:hover {
+  background: rgba(184, 134, 11, 0.18);
+  border-color: var(--gold-primary);
 }
 
 .trialText {
@@ -220,6 +228,15 @@
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--gold-primary);
+}
+
+.trialUpgrade {
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gold-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 /* User section */
