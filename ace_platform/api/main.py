@@ -188,8 +188,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Correlation-ID"],
         expose_headers=["X-Correlation-ID", "X-Process-Time"],
     )
 
@@ -466,15 +466,24 @@ def _register_routes(app: FastAPI) -> None:
         }
 
     @app.get("/metrics", tags=["Monitoring"], include_in_schema=False)
-    async def metrics():
+    async def metrics(request: Request):
         """Expose Prometheus metrics for scraping.
 
         Returns metrics in Prometheus text format for monitoring systems.
         This endpoint is excluded from OpenAPI docs for security.
+        When METRICS_AUTH_TOKEN is set, requires Bearer token authentication.
 
         Returns:
             Prometheus-formatted metrics text.
         """
+        if settings.metrics_auth_token:
+            auth_header = request.headers.get("Authorization", "")
+            if auth_header != f"Bearer {settings.metrics_auth_token}":
+                return JSONResponse(
+                    status_code=401,
+                    content={"error": "Unauthorized"},
+                )
+
         from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
         from starlette.responses import Response
 

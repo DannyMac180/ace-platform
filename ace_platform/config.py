@@ -283,6 +283,12 @@ class Settings(BaseSettings):
         description="Percentage of tier limit to trigger spend alert (e.g., 50 = alert at 50% of limit)",
     )
 
+    # Monitoring
+    metrics_auth_token: str = Field(
+        default="",
+        description="Bearer token required to access /metrics endpoint. Leave empty to allow unauthenticated access.",
+    )
+
     # Security Headers
     security_headers_enabled: bool = Field(
         default=True,
