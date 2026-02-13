@@ -75,6 +75,23 @@ export function Dashboard() {
     pb.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // Check if trial user is at playbook limit
+  const isOnTrial = !!user?.trial_ends_at && new Date(user.trial_ends_at) > new Date();
+  const playbookCount = data?.items.length ?? 0;
+  const atPlaybookLimit = isOnTrial && playbookCount >= 1;
+
+  const handleNewPlaybookClick = () => {
+    if (atPlaybookLimit) {
+      setMutationError(
+        "You've reached the maximum of 1 playbook(s) included in your free trial. " +
+        "Subscribe to a paid plan to create more playbooks."
+      );
+      setIsLimitError(true);
+    } else {
+      setShowCreateModal(true);
+    }
+  };
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -83,7 +100,7 @@ export function Dashboard() {
           <p>Living documentation that evolves with your outcomes</p>
         </div>
         <SubscriptionGate featureName="Playbooks">
-          <Button icon={<Plus size={18} />} onClick={() => setShowCreateModal(true)}>
+          <Button icon={<Plus size={18} />} onClick={handleNewPlaybookClick}>
             New Playbook
           </Button>
         </SubscriptionGate>

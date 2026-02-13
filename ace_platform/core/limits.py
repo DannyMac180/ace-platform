@@ -275,6 +275,7 @@ async def check_can_evolve(
     user_id: UUID,
     tier: SubscriptionTier = SubscriptionTier.FREE,
     has_payment_method: bool = False,
+    is_trialing: bool = False,
 ) -> tuple[bool, str | None]:
     """Check if a user can trigger an evolution.
 
@@ -283,13 +284,14 @@ async def check_can_evolve(
         user_id: User ID to check.
         tier: User's subscription tier.
         has_payment_method: Whether the user has a valid payment method on file.
+        is_trialing: Whether the user is on a free trial (skips payment method check).
 
     Returns:
         Tuple of (can_proceed, error_message).
         If can_proceed is False, error_message contains the reason.
     """
-    # FREE tier users must have a payment method on file
-    if tier == SubscriptionTier.FREE and not has_payment_method:
+    # FREE tier users must have a payment method on file (but not trial users)
+    if tier == SubscriptionTier.FREE and not has_payment_method and not is_trialing:
         from ace_platform.core.metrics import increment_evolution_blocked_no_card
 
         increment_evolution_blocked_no_card(trigger_type="manual")

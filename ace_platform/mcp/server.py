@@ -1439,7 +1439,11 @@ async def trigger_evolution(
 
     effective_tier = get_effective_tier_for_limits(user)
     can_proceed, error_message = await check_can_evolve(
-        db, user.id, effective_tier, has_payment_method=user.has_payment_method
+        db,
+        user.id,
+        effective_tier,
+        has_payment_method=user.has_payment_method,
+        is_trialing=is_user_trialing(user),
     )
     if not can_proceed:
         if is_user_trialing(user):
