@@ -107,6 +107,7 @@ export function Pricing() {
     return diffDays > 0 ? diffDays : null;
   };
   const trialDaysRemaining = getTrialDaysRemaining();
+  const isOnTrial = trialDaysRemaining !== null;
 
   const handleSubscribe = async (tierId: string) => {
     setError(null);
@@ -190,7 +191,7 @@ export function Pricing() {
           <PricingCard
             key={tier.id}
             tier={tier}
-            isCurrentPlan={currentTier === tier.id}
+            isCurrentPlan={currentTier === tier.id && !isOnTrial}
             isLoading={loadingTier === tier.id}
             onSubscribe={handleSubscribe}
             showTrialCTA={canUseTrial}

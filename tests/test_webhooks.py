@@ -19,6 +19,7 @@ from ace_platform.core.webhooks import (
     _get_user_by_customer_id,
     _handle_checkout_completed,
     _handle_setup_mode_checkout,
+    _handle_subscription_created,
     _map_stripe_status,
     handle_webhook_event,
     verify_webhook_signature,
@@ -531,3 +532,152 @@ class TestSetupModeCheckout:
             mock_setup_handler.assert_not_called()
             # Result should still be success (handled as subscription)
             assert result.success is True
+
+
+class TestCheckoutTrialSetsTrialEndsAt:
+    """Tests for checkout.session.completed setting trial_ends_at."""
+
+    @pytest.mark.asyncio
+    async def test_checkout_trial_sets_trial_ends_at(self):
+        """Test checkout.session.completed with trial fetches and sets trial_ends_at."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        user_id_str = str(mock_user.id)
+
+        mock_event = MagicMock()
+        mock_event.type = "checkout.session.completed"
+
+        # Create session with is_trial=true
+        mock_session = MagicMock()
+        mock_session.mode = "subscription"
+        mock_session.customer = "cus_test123"
+        mock_session.subscription = "sub_test123"
+        mock_session.metadata = {
+            "user_id": user_id_str,
+            "tier": "starter",
+            "is_trial": "true",
+        }
+        mock_event.data.object = mock_session
+
+        # Mock user lookup
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = mock_result
+
+        # Mock Stripe subscription retrieve
+        mock_sub = MagicMock()
+        mock_sub.trial_end = 1739500800  # A future timestamp
+        mock_client = MagicMock()
+        mock_client.subscriptions.retrieve.return_value = mock_sub
+
+        with (
+            patch("ace_platform.core.webhooks.get_settings") as mock_settings,
+            patch("stripe.StripeClient", return_value=mock_client),
+        ):
+            mock_settings.return_value.stripe_secret_key = "sk_test_123"
+
+            result = await _handle_checkout_completed(mock_db, mock_event)
+
+            assert result.success is True
+            # Verify the update call includes trial_ends_at
+            mock_db.execute.assert_called()
+            update_call = mock_db.execute.call_args_list[-1]
+            # The update statement's values should include trial_ends_at
+            stmt = update_call[0][0]
+            compiled = stmt.compile()
+            param_keys = list(compiled.params.keys())
+            assert "trial_ends_at" in param_keys
+            assert "has_used_trial" in param_keys
+
+
+class TestSubscriptionCreatedMetadataFallback:
+    """Tests for subscription.created metadata fallback."""
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_metadata_when_customer_id_lookup_fails(self):
+        """Test subscription.created uses metadata user_id when customer lookup fails."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.has_used_trial = False
+
+        mock_event = MagicMock()
+        mock_event.type = "customer.subscription.created"
+
+        # Create subscription with metadata
+        mock_subscription = MagicMock()
+        mock_subscription.id = "sub_test123"
+        mock_subscription.customer = "cus_test123"
+        mock_subscription.status = "trialing"
+        mock_subscription.current_period_end = 1739500800
+        mock_subscription.trial_end = 1739500800
+        mock_subscription.metadata = {"user_id": str(mock_user.id), "tier": "starter"}
+        mock_subscription.items.data = []
+        mock_event.data.object = mock_subscription
+
+        # First call (customer_id lookup) returns None, second call (metadata lookup) returns user
+        mock_result_none = MagicMock()
+        mock_result_none.scalar_one_or_none.return_value = None
+        mock_result_user = MagicMock()
+        mock_result_user.scalar_one_or_none.return_value = mock_user
+
+        mock_db.execute.side_effect = [mock_result_none, mock_result_user, MagicMock()]
+
+        result = await _handle_subscription_created(mock_db, mock_event)
+
+        assert result.success is True
+        assert result.user_id == str(mock_user.id)
+        # Should have called execute 3 times: customer lookup, metadata lookup, update
+        assert mock_db.execute.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_ends_duplicate_trial_for_existing_trial_user(self):
+        """Test subscription.created ends trial for user with has_used_trial=True."""
+        from uuid import uuid4
+
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.has_used_trial = True  # Already used trial
+
+        mock_event = MagicMock()
+        mock_event.type = "customer.subscription.created"
+
+        # Create subscription with trial
+        mock_subscription = MagicMock()
+        mock_subscription.id = "sub_duplicate_trial"
+        mock_subscription.customer = "cus_test123"
+        mock_subscription.status = "trialing"
+        mock_subscription.current_period_end = 1739500800
+        mock_subscription.trial_end = 1739500800  # Has a trial
+        mock_subscription.metadata = {"user_id": str(mock_user.id)}
+        mock_subscription.items.data = []
+        mock_event.data.object = mock_subscription
+
+        # Customer lookup succeeds
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.side_effect = [mock_result, MagicMock()]
+
+        # Mock Stripe client to verify trial_end="now" is called
+        mock_client = MagicMock()
+
+        with (
+            patch("ace_platform.core.webhooks.get_settings") as mock_settings,
+            patch("stripe.StripeClient", return_value=mock_client),
+        ):
+            mock_settings.return_value.stripe_secret_key = "sk_test_123"
+
+            result = await _handle_subscription_created(mock_db, mock_event)
+
+            assert result.success is True
+            # Verify Stripe was called to end the duplicate trial
+            mock_client.subscriptions.modify.assert_called_once_with(
+                "sub_duplicate_trial",
+                params={"trial_end": "now"},
+            )

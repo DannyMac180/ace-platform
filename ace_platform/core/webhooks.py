@@ -245,10 +245,26 @@ async def _handle_checkout_completed(
         "subscription_status": SubscriptionStatus.ACTIVE,
     }
 
-    # If this is a trial, mark user as having used their trial
+    # If this is a trial, mark user as having used their trial and set trial_ends_at
     if is_trial:
         update_values["has_used_trial"] = True
         logger.info(f"User {user.id} started 7-day free trial")
+
+        # Belt-and-suspenders: fetch trial_end from Stripe subscription directly
+        # This guards against the race condition where subscription.created fires
+        # before the customer ID is committed to the DB
+        if subscription_id:
+            try:
+                settings = get_settings()
+                if settings.stripe_secret_key:
+                    client = stripe.StripeClient(settings.stripe_secret_key)
+                    sub = client.subscriptions.retrieve(subscription_id)
+                    if sub.trial_end:
+                        trial_ends_at = datetime.fromtimestamp(sub.trial_end, tz=UTC)
+                        update_values["trial_ends_at"] = trial_ends_at
+                        logger.info(f"Set trial_ends_at={trial_ends_at} from checkout")
+            except stripe.StripeError as e:
+                logger.warning(f"Failed to fetch subscription for trial_ends_at: {e}")
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
@@ -326,6 +342,18 @@ async def _handle_subscription_created(
     customer_id = subscription.customer
 
     user = await _get_user_by_customer_id(db, customer_id)
+
+    # Metadata fallback: when checkout.session.completed and subscription.created
+    # fire simultaneously, the customer ID may not be committed to the DB yet.
+    # Fall back to user_id in subscription metadata (set in billing.py).
+    if not user:
+        metadata = getattr(subscription, "metadata", None) or {}
+        user = await _get_user_by_metadata(db, metadata)
+        if user:
+            logger.info(
+                f"Found user {user.id} via subscription metadata (customer_id lookup failed)"
+            )
+
     if not user:
         logger.warning(f"No user found for customer: {customer_id}")
         return WebhookResult(
@@ -348,10 +376,28 @@ async def _handle_subscription_created(
 
     # Check if subscription has a trial period
     if subscription.trial_end:
-        trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
-        update_values["trial_ends_at"] = trial_ends_at
-        update_values["has_used_trial"] = True
-        logger.info(f"Subscription has trial ending at {trial_ends_at}")
+        # Duplicate trial enforcement: if user already used their trial,
+        # end the unauthorized trial immediately (e.g., started via billing portal)
+        if user.has_used_trial:
+            logger.warning(
+                f"User {user.id} attempted duplicate trial on subscription {subscription.id}"
+            )
+            try:
+                settings = get_settings()
+                if settings.stripe_secret_key:
+                    client = stripe.StripeClient(settings.stripe_secret_key)
+                    client.subscriptions.modify(
+                        subscription.id,
+                        params={"trial_end": "now"},
+                    )
+                    logger.info(f"Ended duplicate trial for user {user.id}")
+            except stripe.StripeError as e:
+                logger.error(f"Failed to end duplicate trial: {e}")
+        else:
+            trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
+            update_values["trial_ends_at"] = trial_ends_at
+            update_values["has_used_trial"] = True
+            logger.info(f"Subscription has trial ending at {trial_ends_at}")
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
@@ -377,6 +423,16 @@ async def _handle_subscription_updated(
     customer_id = subscription.customer
 
     user = await _get_user_by_customer_id(db, customer_id)
+
+    # Metadata fallback (same race condition guard as subscription.created)
+    if not user:
+        metadata = getattr(subscription, "metadata", None) or {}
+        user = await _get_user_by_metadata(db, metadata)
+        if user:
+            logger.info(
+                f"Found user {user.id} via subscription metadata (customer_id lookup failed)"
+            )
+
     if not user:
         logger.warning(f"No user found for customer: {customer_id}")
         return WebhookResult(
