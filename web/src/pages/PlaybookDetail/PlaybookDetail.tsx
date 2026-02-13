@@ -402,7 +402,9 @@ function OutcomesTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookI
 
 function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [triggerError, setTriggerError] = useState<string | null>(null);
+  const [isLimitError, setIsLimitError] = useState(false);
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['playbook-evolutions', playbookId],
@@ -414,10 +416,13 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
     mutationFn: () => playbooksApi.triggerEvolution(playbookId),
     onSuccess: () => {
       setTriggerError(null);
+      setIsLimitError(false);
       queryClient.invalidateQueries({ queryKey: ['playbook-evolutions', playbookId] });
     },
-    onError: (err: Error & { response?: { data?: { detail?: string } } }) => {
-      setTriggerError(err.response?.data?.detail || 'Failed to trigger evolution');
+    onError: (err: Error & { response?: { status?: number; data?: { detail?: string } } }) => {
+      const message = err.response?.data?.detail || 'Failed to trigger evolution';
+      setTriggerError(message);
+      setIsLimitError(err.response?.status === 402);
     },
   });
 
@@ -441,7 +446,24 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
     return (
       <div className={styles.emptyContent}>
         <p>No evolutions yet.</p>
-        {triggerError && <p className={styles.evolutionError}>{triggerError}</p>}
+        {triggerError && (
+          <div className={styles.limitError}>
+            <AlertCircle size={20} />
+            <span>{triggerError}</span>
+            {isLimitError && (
+              <Button variant="primary" size="sm" onClick={() => navigate('/pricing')}>
+                View Plans
+              </Button>
+            )}
+            <button
+              className={styles.dismissError}
+              onClick={() => { setTriggerError(null); setIsLimitError(false); }}
+              aria-label="Dismiss error"
+            >
+              &times;
+            </button>
+          </div>
+        )}
         <SubscriptionGate featureName="playbook evolution">
           <Button
             icon={<Sparkles size={16} />}
@@ -474,7 +496,24 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
             Trigger Evolution
           </Button>
         </SubscriptionGate>
-        {triggerError && <span className={styles.evolutionError}>{triggerError}</span>}
+        {triggerError && (
+          <div className={styles.limitError}>
+            <AlertCircle size={20} />
+            <span>{triggerError}</span>
+            {isLimitError && (
+              <Button variant="primary" size="sm" onClick={() => navigate('/pricing')}>
+                View Plans
+              </Button>
+            )}
+            <button
+              className={styles.dismissError}
+              onClick={() => { setTriggerError(null); setIsLimitError(false); }}
+              aria-label="Dismiss error"
+            >
+              &times;
+            </button>
+          </div>
+        )}
       </div>
       {data.items.map((job: EvolutionJob) => (
         <Card key={job.id} variant="default" className={styles.evolutionCard}>

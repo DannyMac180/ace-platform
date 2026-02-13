@@ -909,10 +909,14 @@ async def create_playbook(
 
         if current_count >= limits.max_playbooks:
             if is_user_trialing(user):
+                from ace_platform.config import get_settings
+
+                settings = get_settings()
+                frontend_url = settings.frontend_url or "https://app.aceagent.io"
                 return (
                     f"Error: You've reached the maximum of {limits.max_playbooks} playbook(s) "
                     f"included in your free trial. Subscribe to a paid plan to create more "
-                    f"playbooks. Visit your account settings to view plans and upgrade."
+                    f"playbooks: {frontend_url}/pricing"
                 )
             return (
                 f"Error: You have reached the maximum number of playbooks ({limits.max_playbooks}) "
@@ -1442,10 +1446,14 @@ async def trigger_evolution(
     )
     if not can_proceed:
         if is_user_trialing(user):
+            from ace_platform.config import get_settings
+
+            settings = get_settings()
+            frontend_url = settings.frontend_url or "https://app.aceagent.io"
             return (
                 "Error: You've reached the evolution limit for your free trial. "
-                "Subscribe to a paid plan to unlock more evolutions. "
-                "Visit your account settings to view plans and upgrade."
+                "Subscribe to a paid plan to unlock more evolutions: "
+                f"{frontend_url}/pricing"
             )
         # Provide a helpful message with link for payment method requirement
         if "payment method" in error_message.lower():
