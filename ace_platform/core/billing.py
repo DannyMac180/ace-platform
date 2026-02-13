@@ -194,27 +194,32 @@ async def create_checkout_session(
         if include_trial and tier == SubscriptionTier.STARTER:
             subscription_data["trial_period_days"] = 7
 
-        session = client.checkout.sessions.create(
-            params={
-                "customer": customer_id,
-                "mode": "subscription",
-                "line_items": [
-                    {
-                        "price": price_id,
-                        "quantity": 1,
-                    }
-                ],
-                "success_url": final_success_url,
-                "cancel_url": final_cancel_url,
-                "metadata": {
-                    "user_id": str(user.id),
-                    "tier": tier.value,
-                    "interval": interval.value,
-                    "is_trial": str(include_trial and tier == SubscriptionTier.STARTER).lower(),
-                },
-                "subscription_data": subscription_data,
-            }
-        )
+        # Build checkout session params
+        checkout_params: dict = {
+            "customer": customer_id,
+            "mode": "subscription",
+            "line_items": [
+                {
+                    "price": price_id,
+                    "quantity": 1,
+                }
+            ],
+            "success_url": final_success_url,
+            "cancel_url": final_cancel_url,
+            "metadata": {
+                "user_id": str(user.id),
+                "tier": tier.value,
+                "interval": interval.value,
+                "is_trial": str(include_trial and tier == SubscriptionTier.STARTER).lower(),
+            },
+            "subscription_data": subscription_data,
+        }
+
+        # Enable promo codes for Pro and Ultra tiers (e.g., founding member discount)
+        if tier in (SubscriptionTier.PRO, SubscriptionTier.ULTRA):
+            checkout_params["allow_promotion_codes"] = True
+
+        session = client.checkout.sessions.create(params=checkout_params)
 
         return CheckoutSessionResult(
             success=True,

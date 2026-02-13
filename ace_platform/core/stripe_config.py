@@ -140,10 +140,10 @@ class StripeProductSettings(BaseSettings):
         description="Stripe product ID for Enterprise tier",
     )
 
-    # Founding member coupon (50% off for life, first 100 customers)
+    # Founding member coupon (20% off for life, first 100 customers, Pro/Ultra only)
     stripe_founding_member_coupon_id: str = Field(
         default="",
-        description="Stripe coupon ID for founding member discount",
+        description="Stripe coupon ID for founding member discount (Pro/Ultra only)",
     )
 
 
