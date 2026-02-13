@@ -375,7 +375,7 @@ async def _handle_subscription_created(
 ) -> WebhookResult:
     """Handle customer.subscription.created event."""
     subscription = event.data.object
-    customer_id = subscription.customer
+    customer_id = _stripe_get(subscription, "customer")
 
     user = await _get_user_by_customer_id(db, customer_id)
 
@@ -383,7 +383,7 @@ async def _handle_subscription_created(
     # fire simultaneously, the customer ID may not be committed to the DB yet.
     # Fall back to user_id in subscription metadata (set in billing.py).
     if not user:
-        metadata = getattr(subscription, "metadata", None) or {}
+        metadata = _stripe_get(subscription, "metadata") or {}
         user = await _get_user_by_metadata(db, metadata)
         if user:
             logger.info(
@@ -398,39 +398,40 @@ async def _handle_subscription_created(
             event_type=event.type,
         )
 
+    sub_id = _stripe_get(subscription, "id")
     tier = _get_subscription_tier(subscription)
-    status = _map_stripe_status(subscription.status)
-    period_end = datetime.fromtimestamp(subscription.current_period_end, tz=UTC)
+    status = _map_stripe_status(_stripe_get(subscription, "status"))
+    period_end_ts = _stripe_get(subscription, "current_period_end")
+    period_end = datetime.fromtimestamp(period_end_ts, tz=UTC) if period_end_ts else None
 
     # Build update values
     update_values: dict = {
-        "stripe_subscription_id": subscription.id,
+        "stripe_subscription_id": sub_id,
         "subscription_tier": tier,
         "subscription_status": status,
         "subscription_current_period_end": period_end,
     }
 
     # Check if subscription has a trial period
-    if subscription.trial_end:
+    trial_end = _stripe_get(subscription, "trial_end")
+    if trial_end:
         # Duplicate trial enforcement: if user already used their trial,
         # end the unauthorized trial immediately (e.g., started via billing portal)
         if user.has_used_trial:
-            logger.warning(
-                f"User {user.id} attempted duplicate trial on subscription {subscription.id}"
-            )
+            logger.warning(f"User {user.id} attempted duplicate trial on subscription {sub_id}")
             try:
                 settings = get_settings()
                 if settings.stripe_secret_key:
                     client = stripe.StripeClient(settings.stripe_secret_key)
                     client.subscriptions.update(
-                        subscription.id,
+                        sub_id,
                         params={"trial_end": "now"},
                     )
                     logger.info(f"Ended duplicate trial for user {user.id}")
             except stripe.StripeError as e:
                 logger.error(f"Failed to end duplicate trial: {e}")
         else:
-            trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
+            trial_ends_at = datetime.fromtimestamp(trial_end, tz=UTC)
             update_values["trial_ends_at"] = trial_ends_at
             update_values["has_used_trial"] = True
             logger.info(f"Subscription has trial ending at {trial_ends_at}")
@@ -438,7 +439,7 @@ async def _handle_subscription_created(
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
     await db.commit()
 
-    logger.info(f"Subscription created for user {user.id}: {subscription.id}")
+    logger.info(f"Subscription created for user {user.id}: {sub_id}")
     return WebhookResult(
         success=True,
         message="Subscription created",
@@ -456,13 +457,13 @@ async def _handle_subscription_updated(
     This fires on renewals, plan changes, and status changes.
     """
     subscription = event.data.object
-    customer_id = subscription.customer
+    customer_id = _stripe_get(subscription, "customer")
 
     user = await _get_user_by_customer_id(db, customer_id)
 
     # Metadata fallback (same race condition guard as subscription.created)
     if not user:
-        metadata = getattr(subscription, "metadata", None) or {}
+        metadata = _stripe_get(subscription, "metadata") or {}
         user = await _get_user_by_metadata(db, metadata)
         if user:
             logger.info(
@@ -477,21 +478,24 @@ async def _handle_subscription_updated(
             event_type=event.type,
         )
 
+    sub_id = _stripe_get(subscription, "id")
     tier = _get_subscription_tier(subscription)
-    status = _map_stripe_status(subscription.status)
-    period_end = datetime.fromtimestamp(subscription.current_period_end, tz=UTC)
+    status = _map_stripe_status(_stripe_get(subscription, "status"))
+    period_end_ts = _stripe_get(subscription, "current_period_end")
+    period_end = datetime.fromtimestamp(period_end_ts, tz=UTC) if period_end_ts else None
 
     # Build update values
     update_values: dict = {
-        "stripe_subscription_id": subscription.id,
+        "stripe_subscription_id": sub_id,
         "subscription_tier": tier,
         "subscription_status": status,
         "subscription_current_period_end": period_end,
     }
 
     # Update trial_ends_at (may be None if trial ended or no trial)
-    if subscription.trial_end:
-        trial_ends_at = datetime.fromtimestamp(subscription.trial_end, tz=UTC)
+    trial_end = _stripe_get(subscription, "trial_end")
+    if trial_end:
+        trial_ends_at = datetime.fromtimestamp(trial_end, tz=UTC)
         update_values["trial_ends_at"] = trial_ends_at
     else:
         # Trial ended or no trial - clear the trial end date
@@ -518,7 +522,7 @@ async def _handle_subscription_deleted(
     This fires when a subscription is cancelled (at period end or immediately).
     """
     subscription = event.data.object
-    customer_id = subscription.customer
+    customer_id = _stripe_get(subscription, "customer")
 
     user = await _get_user_by_customer_id(db, customer_id)
     if not user:
