@@ -56,9 +56,13 @@ export function Dashboard() {
       setIsLimitError(false);
     },
     onError: (err: unknown) => {
-      const axiosErr = err as AxiosError<{ detail?: string }>;
-      if (axiosErr?.response?.status === 402 && axiosErr.response.data?.detail) {
-        setMutationError(axiosErr.response.data.detail);
+      const axiosErr = err as AxiosError<{ detail?: string; error?: { message?: string } }>;
+      const status = axiosErr?.response?.status;
+      const message =
+        axiosErr?.response?.data?.detail ||
+        axiosErr?.response?.data?.error?.message;
+      if (status === 402 && message) {
+        setMutationError(message);
         setIsLimitError(true);
       } else {
         setMutationError('Failed to create playbook. Please try again.');

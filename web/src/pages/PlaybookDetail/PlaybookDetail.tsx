@@ -419,8 +419,11 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
       setIsLimitError(false);
       queryClient.invalidateQueries({ queryKey: ['playbook-evolutions', playbookId] });
     },
-    onError: (err: Error & { response?: { status?: number; data?: { detail?: string } } }) => {
-      const message = err.response?.data?.detail || 'Failed to trigger evolution';
+    onError: (err: Error & { response?: { status?: number; data?: { detail?: string; error?: { message?: string } } } }) => {
+      const message =
+        err.response?.data?.detail ||
+        err.response?.data?.error?.message ||
+        'Failed to trigger evolution';
       setTriggerError(message);
       setIsLimitError(err.response?.status === 402);
     },
