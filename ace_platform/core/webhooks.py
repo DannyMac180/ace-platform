@@ -180,14 +180,50 @@ def _map_stripe_status(stripe_status: str) -> SubscriptionStatus:
     return status_map.get(stripe_status, SubscriptionStatus.NONE)
 
 
+_SENTINEL = object()
+
+
+def _stripe_get(obj, key, default=None):
+    """Safely get a field from a Stripe object.
+
+    StripeObject inherits from dict, so attribute access like ``obj.items``
+    can collide with ``dict.items()``.  Similarly, some fields (e.g.
+    ``invoice.subscription``) may be absent in newer API versions and raise
+    ``AttributeError``.
+
+    Strategy: try attribute access first (works for most fields), but if we
+    get a callable back (e.g. ``dict.items`` method), fall through to
+    dict-style access which bypasses method collisions.
+    """
+    # Try attribute access first (works on both StripeObject and test mocks)
+    val = getattr(obj, key, _SENTINEL)
+    if val is not _SENTINEL and not callable(val):
+        return val
+    # Dict-style access bypasses dict method name collisions (e.g. .items)
+    try:
+        return obj[key]
+    except (KeyError, TypeError, IndexError):
+        return default
+
+
 def _get_subscription_tier(subscription: stripe.Subscription) -> str | None:
-    """Extract tier from subscription items."""
-    if not subscription.items or not subscription.items.data:
+    """Extract tier from subscription items.
+
+    Uses _stripe_get because ``subscription.items`` collides with
+    the Python ``dict.items()`` method in StripeObject.
+    """
+    items_obj = _stripe_get(subscription, "items")
+    if not items_obj:
+        return None
+
+    items_data = _stripe_get(items_obj, "data")
+    if not items_data:
         return None
 
     # Get the first item's price ID
-    first_item = subscription.items.data[0]
-    price_id = first_item.price.id if first_item.price else None
+    first_item = items_data[0]
+    price = _stripe_get(first_item, "price")
+    price_id = _stripe_get(price, "id") if price else None
 
     if price_id:
         tier = get_tier_from_price_id(price_id)
@@ -206,10 +242,10 @@ async def _handle_checkout_completed(
     Handles both subscription checkouts and setup mode (card validation).
     """
     session = event.data.object
-    customer_id = session.customer
-    subscription_id = session.subscription
-    metadata = session.metadata or {}
-    mode = getattr(session, "mode", "subscription")
+    customer_id = _stripe_get(session, "customer")
+    subscription_id = _stripe_get(session, "subscription")
+    metadata = _stripe_get(session, "metadata") or {}
+    mode = _stripe_get(session, "mode", "subscription")
 
     logger.info(
         f"Checkout completed: customer={customer_id}, mode={mode}, subscription={subscription_id}"
@@ -524,8 +560,8 @@ async def _handle_payment_failed(
     This fires when a subscription payment fails.
     """
     invoice = event.data.object
-    customer_id = invoice.customer
-    subscription_id = invoice.subscription
+    customer_id = _stripe_get(invoice, "customer")
+    subscription_id = _stripe_get(invoice, "subscription")
 
     if not subscription_id:
         # One-time invoice, not subscription
@@ -570,8 +606,8 @@ async def _handle_payment_succeeded(
     This fires when a subscription payment succeeds (including renewals).
     """
     invoice = event.data.object
-    customer_id = invoice.customer
-    subscription_id = invoice.subscription
+    customer_id = _stripe_get(invoice, "customer")
+    subscription_id = _stripe_get(invoice, "subscription")
 
     if not subscription_id:
         # One-time invoice, not subscription
