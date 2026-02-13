@@ -677,7 +677,7 @@ class TestSubscriptionCreatedMetadataFallback:
 
             assert result.success is True
             # Verify Stripe was called to end the duplicate trial
-            mock_client.subscriptions.modify.assert_called_once_with(
+            mock_client.subscriptions.update.assert_called_once_with(
                 "sub_duplicate_trial",
                 params={"trial_end": "now"},
             )

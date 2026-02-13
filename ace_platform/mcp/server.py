@@ -909,9 +909,6 @@ async def create_playbook(
 
         if current_count >= limits.max_playbooks:
             if is_user_trialing(user):
-                from ace_platform.config import get_settings
-
-                settings = get_settings()
                 frontend_url = settings.frontend_url or "https://app.aceagent.io"
                 return (
                     f"Error: You've reached the maximum of {limits.max_playbooks} playbook(s) "

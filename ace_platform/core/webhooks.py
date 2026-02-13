@@ -386,7 +386,7 @@ async def _handle_subscription_created(
                 settings = get_settings()
                 if settings.stripe_secret_key:
                     client = stripe.StripeClient(settings.stripe_secret_key)
-                    client.subscriptions.modify(
+                    client.subscriptions.update(
                         subscription.id,
                         params={"trial_end": "now"},
                     )
