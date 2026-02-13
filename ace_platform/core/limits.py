@@ -13,10 +13,13 @@ Note: FREE tier kept for internal use (testing, grace periods) but not
 exposed as a subscription option.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import Enum
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -25,6 +28,9 @@ from sqlalchemy.orm import Session
 
 from ace_platform.core.metering import get_user_usage_summary
 from ace_platform.db.models import EvolutionJob, Playbook, UsageRecord
+
+if TYPE_CHECKING:
+    from ace_platform.db.models import User
 
 
 class SubscriptionTier(str, Enum):
@@ -105,6 +111,39 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
         priority_support=True,
     ),
 }
+
+
+def is_user_trialing(user: User) -> bool:
+    """Check if a user is currently on a free trial.
+
+    A user is trialing if they have a trial_ends_at date that is in the future.
+    This corresponds to Stripe's 'trialing' subscription status.
+    """
+    if not user.trial_ends_at:
+        return False
+    return user.trial_ends_at > datetime.now(UTC)
+
+
+def get_effective_tier_for_limits(user: User) -> SubscriptionTier:
+    """Get the effective tier used for enforcing usage limits.
+
+    During a free trial, users are treated as FREE tier for limit purposes
+    (1 playbook, 10 evolutions/month) even though their subscription_tier
+    is set to the plan they're trialing (e.g. 'starter').
+
+    This function should be used for limit checks only — NOT for access
+    control (require_paid_access), where the actual tier should be used
+    so trial users can still access the platform.
+    """
+    if is_user_trialing(user):
+        return SubscriptionTier.FREE
+
+    if not user.subscription_tier:
+        return SubscriptionTier.FREE
+    try:
+        return SubscriptionTier(user.subscription_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
 
 
 @dataclass

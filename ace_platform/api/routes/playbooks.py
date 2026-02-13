@@ -28,11 +28,14 @@ from sqlalchemy.orm import selectinload
 from ace_platform.api.auth import (
     AuthorizationError,
     SubscriptionError,
-    get_user_tier,
     require_paid_access,
 )
 from ace_platform.api.deps import get_db
-from ace_platform.core.limits import get_tier_limits
+from ace_platform.core.limits import (
+    get_effective_tier_for_limits,
+    get_tier_limits,
+    is_user_trialing,
+)
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.core.rate_limit import rate_limit_outcome
 from ace_platform.core.validation import (
@@ -359,9 +362,9 @@ async def create_playbook(
     Optionally include initial content to create the first version.
     Requires active subscription and enforces max_playbooks limit.
     """
-    # Check max_playbooks limit for user's tier
-    user_tier = get_user_tier(current_user)
-    limits = get_tier_limits(user_tier)
+    # Check max_playbooks limit using effective tier (trial users get FREE limits)
+    effective_tier = get_effective_tier_for_limits(current_user)
+    limits = get_tier_limits(effective_tier)
 
     if limits.max_playbooks is not None:
         # Count existing playbooks
@@ -371,9 +374,16 @@ async def create_playbook(
         current_count = await db.scalar(count_query) or 0
 
         if current_count >= limits.max_playbooks:
+            if is_user_trialing(current_user):
+                raise SubscriptionError(
+                    f"You've reached the maximum of {limits.max_playbooks} playbook(s) "
+                    f"included in your free trial. Subscribe to a paid plan to create more "
+                    f"playbooks. Visit your account settings to view plans and upgrade.",
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                )
             raise SubscriptionError(
                 f"You have reached the maximum number of playbooks ({limits.max_playbooks}) "
-                f"for your {user_tier.value} subscription. Please upgrade to create more playbooks.",
+                f"for your {effective_tier.value} subscription. Please upgrade to create more playbooks.",
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
             )
 
@@ -1045,7 +1055,7 @@ async def trigger_evolution(
     generates an improved playbook version. Requires email verification.
     Rate limited to 10 triggers per hour per playbook.
     """
-    from ace_platform.api.auth import AuthorizationError, get_user_tier
+    from ace_platform.api.auth import AuthorizationError
     from ace_platform.core.evolution_jobs import trigger_evolution_async
     from ace_platform.core.limits import check_can_evolve
     from ace_platform.core.rate_limit import rate_limit_evolution
@@ -1071,15 +1081,22 @@ async def trigger_evolution(
     # Rate limit (after ownership check)
     await rate_limit_evolution(request, str(playbook_id))
 
-    # Check spending/evolution limits
-    user_tier = get_user_tier(current_user)
+    # Check spending/evolution limits (trial users get FREE tier limits)
+    effective_tier = get_effective_tier_for_limits(current_user)
     can_proceed, error_message = await check_can_evolve(
-        db, current_user.id, user_tier, has_payment_method=current_user.has_payment_method
+        db, current_user.id, effective_tier, has_payment_method=current_user.has_payment_method
     )
     if not can_proceed:
+        detail = error_message
+        if is_user_trialing(current_user):
+            detail = (
+                "You've reached the evolution limit for your free trial. "
+                "Subscribe to a paid plan to unlock more evolutions. "
+                "Visit your account settings to view plans and upgrade."
+            )
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=error_message,
+            detail=detail,
         )
 
     # Trigger evolution

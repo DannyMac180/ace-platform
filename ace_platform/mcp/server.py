@@ -38,7 +38,11 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
-from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.limits import (
+    SubscriptionTier,
+    get_effective_tier_for_limits,
+    is_user_trialing,
+)
 from ace_platform.core.playbook_matching import (
     build_playbook_match_text,
     generate_embedding,
@@ -892,9 +896,9 @@ async def create_playbook(
         if error:
             return f"Error: {error}"
 
-    # Check max_playbooks limit for user's tier
-    user_tier = _get_user_tier(user)
-    limits = get_tier_limits(user_tier)
+    # Check max_playbooks limit using effective tier (trial users get FREE limits)
+    effective_tier = get_effective_tier_for_limits(user)
+    limits = get_tier_limits(effective_tier)
 
     if limits.max_playbooks is not None:
         # Count existing playbooks
@@ -904,9 +908,15 @@ async def create_playbook(
         current_count = await db.scalar(count_query) or 0
 
         if current_count >= limits.max_playbooks:
+            if is_user_trialing(user):
+                return (
+                    f"Error: You've reached the maximum of {limits.max_playbooks} playbook(s) "
+                    f"included in your free trial. Subscribe to a paid plan to create more "
+                    f"playbooks. Visit your account settings to view plans and upgrade."
+                )
             return (
                 f"Error: You have reached the maximum number of playbooks ({limits.max_playbooks}) "
-                f"for your {user_tier.value} subscription. Please upgrade to create more playbooks."
+                f"for your {effective_tier.value} subscription. Please upgrade to create more playbooks."
             )
 
     # Create playbook
@@ -1423,15 +1433,20 @@ async def trigger_evolution(
         # If Redis unavailable, allow the request
         pass
 
-    # Check spending/evolution limits
+    # Check spending/evolution limits (trial users get FREE tier limits)
     from ace_platform.core.limits import check_can_evolve
 
-    # Get user's subscription tier (defaults to FREE if not set)
-    user_tier = _get_user_tier(user)
+    effective_tier = get_effective_tier_for_limits(user)
     can_proceed, error_message = await check_can_evolve(
-        db, user.id, user_tier, has_payment_method=user.has_payment_method
+        db, user.id, effective_tier, has_payment_method=user.has_payment_method
     )
     if not can_proceed:
+        if is_user_trialing(user):
+            return (
+                "Error: You've reached the evolution limit for your free trial. "
+                "Subscribe to a paid plan to unlock more evolutions. "
+                "Visit your account settings to view plans and upgrade."
+            )
         # Provide a helpful message with link for payment method requirement
         if "payment method" in error_message.lower():
             from ace_platform.config import get_settings

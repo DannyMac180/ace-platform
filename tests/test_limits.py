@@ -24,9 +24,12 @@ from ace_platform.core.limits import (
     can_use_model,
     check_can_evolve,
     get_billing_period_start,
+    get_effective_tier_for_limits,
     get_tier_limits,
     get_user_usage_status,
+    is_user_trialing,
 )
+from ace_platform.db.models import SubscriptionStatus
 
 
 class TestTierLimits:
@@ -459,3 +462,89 @@ class TestSpendingCap:
         # Cost limit check takes precedence
         assert status.is_within_limits is False
         assert status.limit_exceeded == "monthly_cost_limit"
+
+
+def _make_mock_user(
+    subscription_tier: str | None = None,
+    subscription_status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
+    trial_ends_at: datetime | None = None,
+) -> MagicMock:
+    """Create a mock User object for trial tests."""
+    user = MagicMock()
+    user.subscription_tier = subscription_tier
+    user.subscription_status = subscription_status
+    user.trial_ends_at = trial_ends_at
+    return user
+
+
+class TestIsUserTrialing:
+    """Tests for is_user_trialing."""
+
+    def test_not_trialing_when_no_trial_end_date(self):
+        """Test user is not trialing when trial_ends_at is None."""
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=None)
+        assert is_user_trialing(user) is False
+
+    def test_trialing_when_trial_end_in_future(self):
+        """Test user is trialing when trial_ends_at is in the future."""
+        from datetime import timedelta
+
+        future = datetime.now(UTC) + timedelta(days=3)
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=future)
+        assert is_user_trialing(user) is True
+
+    def test_not_trialing_when_trial_expired(self):
+        """Test user is not trialing when trial_ends_at is in the past."""
+        from datetime import timedelta
+
+        past = datetime.now(UTC) - timedelta(days=1)
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=past)
+        assert is_user_trialing(user) is False
+
+
+class TestGetEffectiveTierForLimits:
+    """Tests for get_effective_tier_for_limits."""
+
+    def test_trialing_user_gets_free_tier(self):
+        """Test that trialing users get FREE tier limits."""
+        from datetime import timedelta
+
+        future = datetime.now(UTC) + timedelta(days=5)
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=future)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
+
+    def test_non_trialing_starter_gets_starter_tier(self):
+        """Test that non-trialing starter users get STARTER limits."""
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=None)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.STARTER
+
+    def test_expired_trial_gets_actual_tier(self):
+        """Test that expired trial users get their actual tier limits."""
+        from datetime import timedelta
+
+        past = datetime.now(UTC) - timedelta(days=1)
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=past)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.STARTER
+
+    def test_no_subscription_gets_free_tier(self):
+        """Test that users with no subscription get FREE tier."""
+        user = _make_mock_user(subscription_tier=None, trial_ends_at=None)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
+
+    def test_pro_user_gets_pro_tier(self):
+        """Test that non-trialing pro users get PRO limits."""
+        user = _make_mock_user(subscription_tier="pro", trial_ends_at=None)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.PRO
+
+    def test_trialing_pro_user_still_gets_free_tier(self):
+        """Test that even a user trialing PRO gets FREE tier limits."""
+        from datetime import timedelta
+
+        future = datetime.now(UTC) + timedelta(days=5)
+        user = _make_mock_user(subscription_tier="pro", trial_ends_at=future)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
+
+    def test_invalid_tier_defaults_to_free(self):
+        """Test that invalid tier string defaults to FREE."""
+        user = _make_mock_user(subscription_tier="invalid_tier", trial_ends_at=None)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
