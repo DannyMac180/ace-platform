@@ -13,6 +13,7 @@ import {
   FileText,
   ExternalLink,
   HelpCircle,
+  Shield,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Logo } from '../Logo';
@@ -106,6 +107,23 @@ export function Layout({ children }: LayoutProps) {
               <span>Docs</span>
               <ExternalLink size={14} className={styles.externalIcon} />
             </a>
+
+            {/* Admin nav - only visible to admins */}
+            {user?.is_admin && (
+              <>
+                <div className={styles.navDivider} />
+                <NavLink
+                  to="/admin"
+                  className={({ isActive }) =>
+                    `${styles.navLink} ${styles.adminLink} ${isActive ? styles.active : ''}`
+                  }
+                  onClick={() => setIsSidebarOpen(false)}
+                >
+                  <Shield size={20} />
+                  <span>Admin</span>
+                </NavLink>
+              </>
+            )}
           </nav>
 
           {/* Trial banner */}

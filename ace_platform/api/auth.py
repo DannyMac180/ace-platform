@@ -382,11 +382,31 @@ async def require_verified_user(
     return user
 
 
+async def require_admin(
+    user: Annotated[User, Depends(require_user)],
+) -> User:
+    """Require an admin user for a route.
+
+    Args:
+        user: The authenticated user.
+
+    Returns:
+        The authenticated admin User.
+
+    Raises:
+        AuthorizationError: If user is not an admin.
+    """
+    if not user.is_admin:
+        raise AuthorizationError("Admin access required")
+    return user
+
+
 # Type aliases for JWT-based auth
 OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 RequiredUser = Annotated[User, Depends(require_user)]
 ActiveUser = Annotated[User, Depends(require_active_user)]
 VerifiedUser = Annotated[User, Depends(require_verified_user)]
+AdminUser = Annotated[User, Depends(require_admin)]
 
 
 # =============================================================================

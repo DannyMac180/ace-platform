@@ -4,6 +4,7 @@ export interface User {
   id: string;
   email: string;
   is_active: boolean;
+  is_admin: boolean;
   email_verified: boolean;
   subscription_tier: string | null;  // 'starter', 'pro', 'ultra', or null for free
   subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
@@ -204,4 +205,72 @@ export interface PaginatedResponse<T> {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+// Admin types
+export interface PlatformStats {
+  total_users: number;
+  active_users_today: number;
+  signups_this_week: number;
+  total_cost_today: string;
+  tier_distribution: Record<string, number>;
+}
+
+export interface AdminUserItem {
+  id: string;
+  email: string;
+  is_active: boolean;
+  email_verified: boolean;
+  is_admin: boolean;
+  subscription_tier: string | null;
+  subscription_status: string;
+  playbook_count: number;
+  total_cost_usd: string;
+  created_at: string;
+}
+
+export interface AdminUserDetail {
+  id: string;
+  email: string;
+  is_active: boolean;
+  is_admin: boolean;
+  email_verified: boolean;
+  subscription_tier: string | null;
+  subscription_status: string;
+  has_used_trial: boolean;
+  has_payment_method: boolean;
+  created_at: string;
+  updated_at: string;
+  usage_summary: {
+    total_requests: number;
+    total_tokens: number;
+    total_cost_usd: string;
+    start_date: string;
+    end_date: string;
+  };
+}
+
+export interface DailySignup {
+  date: string;
+  count: number;
+}
+
+export interface TopUser {
+  user_id: string;
+  email: string;
+  subscription_tier: string | null;
+  total_cost_usd: string;
+  cost_limit_usd: string | null;
+  percent_of_limit: number | null;
+}
+
+export interface AdminAuditEvent {
+  id: string;
+  user_id: string | null;
+  user_email: string | null;
+  event_type: string;
+  severity: string;
+  ip_address: string | null;
+  created_at: string;
+  details: Record<string, unknown> | null;
 }

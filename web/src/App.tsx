@@ -21,6 +21,9 @@ import { BillingCancel } from './pages/BillingCancel/BillingCancel';
 import { CardSetupSuccess } from './pages/CardSetupSuccess/CardSetupSuccess';
 import { TermsOfService } from './pages/Legal/TermsOfService';
 import { PrivacyPolicy } from './pages/Legal/PrivacyPolicy';
+import { AdminDashboard } from './pages/Admin/AdminDashboard';
+import { AdminUsers } from './pages/Admin/AdminUsers';
+import { AdminUserDetail } from './pages/Admin/AdminUserDetail';
 import { NotFound } from './pages/NotFound/NotFound';
 import './styles/globals.css';
 
@@ -193,6 +196,32 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Pricing />
+          </ProtectedRoute>
+        }
+      />
+
+      {/* Admin routes */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute>
+            <AdminUsers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users/:userId"
+        element={
+          <ProtectedRoute>
+            <AdminUserDetail />
           </ProtectedRoute>
         }
       />

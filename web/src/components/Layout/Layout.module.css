@@ -203,6 +203,20 @@
   opacity: 1;
 }
 
+.navDivider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border-default), transparent);
+  margin: var(--space-sm) var(--space-md);
+}
+
+.adminLink {
+  color: var(--text-tertiary);
+}
+
+.adminLink.active {
+  color: var(--accent-primary);
+}
+
 /* Trial banner */
 .trialBanner {
   display: flex;

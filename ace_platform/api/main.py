@@ -357,6 +357,7 @@ def _register_routes(app: FastAPI) -> None:
     """
     from ace_platform.api.routes import (
         account_router,
+        admin_router,
         auth_router,
         billing_router,
         evolutions_router,
@@ -369,6 +370,7 @@ def _register_routes(app: FastAPI) -> None:
     # Include API routers
     app.include_router(auth_router)
     app.include_router(account_router)
+    app.include_router(admin_router)
     app.include_router(oauth_router)
     app.include_router(billing_router)
     app.include_router(playbooks_router)

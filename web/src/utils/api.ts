@@ -1,10 +1,14 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
+  AdminAuditEvent,
+  AdminUserDetail,
+  AdminUserItem,
   ApiKey,
   ApiKeyCreate,
   ApiKeyCreateResponse,
   AuditLogItem,
   DailyEvolution,
+  DailySignup,
   DailyUsage,
   EvolutionJob,
   EvolutionSummary,
@@ -18,8 +22,10 @@ import type {
   PlaybookUpdate,
   PlaybookUsage,
   PlaybookVersion,
+  PlatformStats,
   RecentEvolution,
   TokenResponse,
+  TopUser,
   UsageSummary,
   User,
   VersionCreate,
@@ -356,6 +362,50 @@ export const billingApi = {
   getCardStatus: async (): Promise<{ has_payment_method: boolean; payment_method_id: string | null }> => {
     const response = await api.get<{ has_payment_method: boolean; payment_method_id: string | null }>(
       '/billing/card-status'
+    );
+    return response.data;
+  },
+};
+
+// Admin API
+export const adminApi = {
+  getStats: async (): Promise<PlatformStats> => {
+    const response = await api.get<PlatformStats>('/admin/stats');
+    return response.data;
+  },
+
+  getUsers: async (
+    page = 1,
+    search?: string,
+    tier?: string
+  ): Promise<PaginatedResponse<AdminUserItem>> => {
+    const params = new URLSearchParams({ page: String(page), page_size: '50' });
+    if (search) params.set('search', search);
+    if (tier) params.set('tier', tier);
+    const response = await api.get<PaginatedResponse<AdminUserItem>>(
+      `/admin/users?${params}`
+    );
+    return response.data;
+  },
+
+  getUser: async (userId: string): Promise<AdminUserDetail> => {
+    const response = await api.get<AdminUserDetail>(`/admin/users/${userId}`);
+    return response.data;
+  },
+
+  getSignups: async (days = 30): Promise<DailySignup[]> => {
+    const response = await api.get<DailySignup[]>(`/admin/signups?days=${days}`);
+    return response.data;
+  },
+
+  getTopUsers: async (limit = 10): Promise<TopUser[]> => {
+    const response = await api.get<TopUser[]>(`/admin/top-users?limit=${limit}`);
+    return response.data;
+  },
+
+  getAuditEvents: async (page = 1): Promise<PaginatedResponse<AdminAuditEvent>> => {
+    const response = await api.get<PaginatedResponse<AdminAuditEvent>>(
+      `/admin/audit-events?page=${page}&page_size=50`
     );
     return response.data;
   },

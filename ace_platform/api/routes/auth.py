@@ -117,6 +117,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: str
     is_active: bool
+    is_admin: bool = False
     email_verified: bool
     subscription_tier: str | None = None
     subscription_status: str = "none"
