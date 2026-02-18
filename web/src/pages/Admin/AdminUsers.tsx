@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
@@ -18,20 +18,21 @@ import styles from './AdminUsers.module.css';
 export function AdminUsers() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = user?.is_admin === true;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [tier, setTier] = useState('');
   const [searchInput, setSearchInput] = useState('');
 
-  if (!user?.is_admin) {
-    navigate('/dashboard');
-    return null;
-  }
-
   const usersQuery = useQuery<PaginatedResponse<AdminUserItem>>({
     queryKey: ['admin-users', page, search, tier],
     queryFn: () => adminApi.getUsers(page, search || undefined, tier || undefined),
+    enabled: isAdmin,
   });
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

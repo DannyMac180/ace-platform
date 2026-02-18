@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Navigate, useParams, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
@@ -23,17 +23,17 @@ export function AdminUserDetail() {
   const { user: currentUser } = useAuth();
   const { userId } = useParams<{ userId: string }>();
   const navigate = useNavigate();
-
-  if (!currentUser?.is_admin) {
-    navigate('/dashboard');
-    return null;
-  }
+  const isAdmin = currentUser?.is_admin === true;
 
   const userQuery = useQuery<AdminUserDetailType>({
     queryKey: ['admin-user', userId],
     queryFn: () => adminApi.getUser(userId!),
-    enabled: !!userId,
+    enabled: !!userId && isAdmin,
   });
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const detail = userQuery.data;
 

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Card } from '../../components/ui/Card';
@@ -17,26 +17,29 @@ import styles from './AdminDashboard.module.css';
 export function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
-
-  if (!user?.is_admin) {
-    navigate('/dashboard');
-    return null;
-  }
+  const isAdmin = user?.is_admin === true;
 
   const statsQuery = useQuery<PlatformStats>({
     queryKey: ['admin-stats'],
     queryFn: adminApi.getStats,
+    enabled: isAdmin,
   });
 
   const signupsQuery = useQuery<DailySignup[]>({
     queryKey: ['admin-signups'],
     queryFn: () => adminApi.getSignups(30),
+    enabled: isAdmin,
   });
 
   const topUsersQuery = useQuery<TopUser[]>({
     queryKey: ['admin-top-users'],
     queryFn: () => adminApi.getTopUsers(10),
+    enabled: isAdmin,
   });
+
+  if (!isAdmin) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const isLoading = statsQuery.isLoading || signupsQuery.isLoading || topUsersQuery.isLoading;
   const isError = statsQuery.isError || signupsQuery.isError || topUsersQuery.isError;
