@@ -151,13 +151,14 @@ async def get_platform_stats(
     )
 
     # Tier distribution
+    tier_expr = func.coalesce(User.subscription_tier, "free").label("tier")
     tier_rows = await db.execute(
         select(
-            func.coalesce(User.subscription_tier, "free").label("tier"),
-            func.count(User.id).label("count"),
-        ).group_by(func.coalesce(User.subscription_tier, "free"))
+            tier_expr,
+            func.count(User.id).label("user_count"),
+        ).group_by(tier_expr)
     )
-    tier_distribution = {row.tier: row.count for row in tier_rows}
+    tier_distribution = {row.tier: row.user_count for row in tier_rows}
 
     # Platform daily summary (active users + cost today)
     daily_summary = await get_platform_daily_summary(db, now)
@@ -327,8 +328,8 @@ async def get_signups(
     date_trunc = func.date_trunc("day", User.created_at)
     results = await db.execute(
         select(
-            date_trunc.label("date"),
-            func.count(User.id).label("count"),
+            date_trunc.label("signup_date"),
+            func.count(User.id).label("signup_count"),
         )
         .where(User.created_at >= start)
         .group_by(date_trunc)
@@ -337,8 +338,8 @@ async def get_signups(
 
     return [
         DailySignupResponse(
-            date=row.date.strftime("%Y-%m-%d"),
-            count=row.count,
+            date=row.signup_date.strftime("%Y-%m-%d"),
+            count=row.signup_count,
         )
         for row in results
     ]
