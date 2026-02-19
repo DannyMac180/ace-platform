@@ -10,6 +10,9 @@ primary_region = 'iad'
     VITE_SENTRY_RELEASE = ""
     VITE_SENTRY_ENVIRONMENT = "staging"
 
+[env]
+  CSP_API_URL = "https://ace-platform-staging.fly.dev"
+
 [http_service]
   internal_port = 80
   force_https = true

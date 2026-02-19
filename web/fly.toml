@@ -10,6 +10,9 @@ primary_region = 'iad'
     VITE_SENTRY_RELEASE = ""
     VITE_SENTRY_ENVIRONMENT = "production"
 
+[env]
+  CSP_API_URL = "https://aceagent.io"
+
 [http_service]
   internal_port = 80
   force_https = true
