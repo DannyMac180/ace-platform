@@ -173,20 +173,35 @@ jobs:
         run: |
           set -euo pipefail
 
-          for attempt in 1 2; do
-            echo "Frontend deploy attempt ${attempt}/2"
-            if flyctl deploy --config fly.staging.toml --remote-only --wait-timeout 10m; then
+          deploy_frontend() {
+            local depot_flag="$1"
+            flyctl deploy \
+              --config fly.staging.toml \
+              --remote-only \
+              --wait-timeout 10m \
+              --depot="${depot_flag}"
+          }
+
+          for attempt in 1 2 3; do
+            echo "Frontend deploy attempt ${attempt}/3"
+            if [[ "${attempt}" -eq 1 ]]; then
+              depot="true"
+            else
+              depot="false"
+            fi
+
+            if deploy_frontend "${depot}"; then
               echo "Frontend deploy succeeded on attempt ${attempt}"
               exit 0
             fi
 
-            if [[ "${attempt}" -lt 2 ]]; then
+            if [[ "${attempt}" -lt 3 ]]; then
               echo "Frontend deploy attempt ${attempt} failed. Retrying in 30s..."
               sleep 30
             fi
           done
 
-          echo "Frontend deploy failed after 2 attempts."
+          echo "Frontend deploy failed after 3 attempts."
           exit 1
 
       - name: Verify Backend Deployment
