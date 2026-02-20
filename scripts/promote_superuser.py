@@ -49,7 +49,8 @@ async def promote_user(email: str) -> None:
         sys.exit(1)
 
     # Convert to async URL if needed
-    database_url = normalize_database_url(database_url)
+    if database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
     engine = create_async_engine(database_url)
 
