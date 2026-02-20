@@ -16,8 +16,14 @@ Usage:
     celery -A ace_platform.workers.celery_app beat -l info
 """
 
+from ace_platform.workers.admin_alerts_task import send_daily_spend_summary
 from ace_platform.workers.auto_evolution import check_auto_evolution
 from ace_platform.workers.celery_app import celery_app
 from ace_platform.workers.evolution_task import process_evolution_job
 
-__all__ = ["celery_app", "process_evolution_job", "check_auto_evolution"]
+__all__ = [
+    "celery_app",
+    "process_evolution_job",
+    "check_auto_evolution",
+    "send_daily_spend_summary",
+]

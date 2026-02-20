@@ -215,10 +215,10 @@ async def get_platform_stats(
     )
 
     # Tier distribution
-    tier_expr = func.coalesce(User.subscription_tier, "free").label("tier")
+    tier_expr = func.coalesce(User.subscription_tier, "free")
     tier_rows = await db.execute(
         select(
-            tier_expr,
+            tier_expr.label("tier"),
             func.count(User.id).label("user_count"),
         ).group_by(tier_expr)
     )
