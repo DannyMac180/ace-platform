@@ -96,10 +96,30 @@
   margin: 0 auto;
 }
 
+.videoShowcase {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+}
+
+.landingVideo {
+  width: min(100%, 760px);
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-gold);
+  box-shadow: var(--shadow-lg);
+  background: #000;
+  object-fit: cover;
+}
+
 @media (max-width: 900px) {
   .content {
     grid-template-columns: 1fr;
     max-width: 480px;
+  }
+
+  .videoShowcase {
+    margin-bottom: var(--space-lg);
   }
 
   .branding {
