@@ -127,6 +127,8 @@ def is_user_trialing(user: User) -> bool:
 def get_effective_tier_for_limits(user: User) -> SubscriptionTier:
     """Get the effective tier used for enforcing usage limits.
 
+    Admin users always get ENTERPRISE tier (unlimited everything).
+
     During a free trial, users are treated as FREE tier for limit purposes
     (1 playbook, 10 evolutions/month) even though their subscription_tier
     is set to the plan they're trialing (e.g. 'starter').
@@ -135,6 +137,9 @@ def get_effective_tier_for_limits(user: User) -> SubscriptionTier:
     control (require_paid_access), where the actual tier should be used
     so trial users can still access the platform.
     """
+    if getattr(user, "is_admin", False):
+        return SubscriptionTier.ENTERPRISE
+
     if is_user_trialing(user):
         return SubscriptionTier.FREE
 

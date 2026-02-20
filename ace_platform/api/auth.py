@@ -464,6 +464,10 @@ async def require_active_subscription(
     Raises:
         SubscriptionError: If subscription is in a bad state.
     """
+    # Admin users bypass all subscription checks
+    if user.is_admin:
+        return user
+
     # Free tier (NONE) is always allowed
     if user.subscription_status == SubscriptionStatus.NONE:
         return user
@@ -505,6 +509,10 @@ async def require_paid_access(
 
     It returns 402 Payment Required for all non-eligible states.
     """
+    # Admin users bypass all subscription checks
+    if user.is_admin:
+        return user
+
     user_tier = get_user_tier(user)
 
     if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:

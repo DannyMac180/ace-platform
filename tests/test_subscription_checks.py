@@ -16,13 +16,21 @@ from ace_platform.core.limits import SubscriptionTier
 from ace_platform.db.models import SubscriptionStatus, User
 
 
+def _make_user(**kwargs) -> MagicMock:
+    """Create a mock User with is_admin=False by default."""
+    user = MagicMock(spec=User)
+    user.is_admin = kwargs.pop("is_admin", False)
+    for key, value in kwargs.items():
+        setattr(user, key, value)
+    return user
+
+
 class TestGetUserTier:
     """Tests for get_user_tier function."""
 
     def test_returns_free_for_none_tier(self):
         """Returns FREE tier when user has no subscription_tier."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = None
+        user = _make_user(subscription_tier=None)
 
         result = get_user_tier(user)
 
@@ -30,8 +38,7 @@ class TestGetUserTier:
 
     def test_returns_free_for_empty_tier(self):
         """Returns FREE tier when user has empty subscription_tier."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = ""
+        user = _make_user(subscription_tier="")
 
         result = get_user_tier(user)
 
@@ -39,8 +46,7 @@ class TestGetUserTier:
 
     def test_returns_free_for_invalid_tier(self):
         """Returns FREE tier when user has invalid subscription_tier."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = "invalid_tier"
+        user = _make_user(subscription_tier="invalid_tier")
 
         result = get_user_tier(user)
 
@@ -48,8 +54,7 @@ class TestGetUserTier:
 
     def test_returns_starter_tier(self):
         """Returns STARTER tier when user has starter subscription."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = "starter"
+        user = _make_user(subscription_tier="starter")
 
         result = get_user_tier(user)
 
@@ -57,8 +62,7 @@ class TestGetUserTier:
 
     def test_returns_professional_tier(self):
         """Returns PRO tier when user has professional subscription."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = "pro"
+        user = _make_user(subscription_tier="pro")
 
         result = get_user_tier(user)
 
@@ -66,8 +70,7 @@ class TestGetUserTier:
 
     def test_returns_enterprise_tier(self):
         """Returns ENTERPRISE tier when user has enterprise subscription."""
-        user = MagicMock(spec=User)
-        user.subscription_tier = "enterprise"
+        user = _make_user(subscription_tier="enterprise")
 
         result = get_user_tier(user)
 
@@ -80,8 +83,7 @@ class TestRequireActiveSubscription:
     @pytest.mark.asyncio
     async def test_allows_none_status(self):
         """Allows users with NONE subscription status (free tier)."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.NONE
+        user = _make_user(subscription_status=SubscriptionStatus.NONE)
 
         result = await require_active_subscription(user)
 
@@ -90,8 +92,19 @@ class TestRequireActiveSubscription:
     @pytest.mark.asyncio
     async def test_allows_active_status(self):
         """Allows users with ACTIVE subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
+        user = _make_user(subscription_status=SubscriptionStatus.ACTIVE)
+
+        result = await require_active_subscription(user)
+
+        assert result == user
+
+    @pytest.mark.asyncio
+    async def test_admin_bypasses_subscription_check(self):
+        """Admin users bypass all subscription status checks."""
+        user = _make_user(
+            is_admin=True,
+            subscription_status=SubscriptionStatus.CANCELED,
+        )
 
         result = await require_active_subscription(user)
 
@@ -100,8 +113,7 @@ class TestRequireActiveSubscription:
     @pytest.mark.asyncio
     async def test_rejects_past_due_status(self):
         """Rejects users with PAST_DUE subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.PAST_DUE
+        user = _make_user(subscription_status=SubscriptionStatus.PAST_DUE)
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_active_subscription(user)
@@ -112,8 +124,7 @@ class TestRequireActiveSubscription:
     @pytest.mark.asyncio
     async def test_rejects_canceled_status(self):
         """Rejects users with CANCELED subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.CANCELED
+        user = _make_user(subscription_status=SubscriptionStatus.CANCELED)
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_active_subscription(user)
@@ -124,8 +135,7 @@ class TestRequireActiveSubscription:
     @pytest.mark.asyncio
     async def test_rejects_unpaid_status(self):
         """Rejects users with UNPAID subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.UNPAID
+        user = _make_user(subscription_status=SubscriptionStatus.UNPAID)
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_active_subscription(user)
@@ -138,11 +148,25 @@ class TestRequirePaidAccess:
     """Tests for require_paid_access dependency."""
 
     @pytest.mark.asyncio
+    async def test_admin_bypasses_paid_access(self):
+        """Admin users bypass all paid access checks."""
+        user = _make_user(
+            is_admin=True,
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+
+        result = await require_paid_access(user)
+
+        assert result == user
+
+    @pytest.mark.asyncio
     async def test_allows_active_paid_tier(self):
         """Allows users with ACTIVE status and a paid tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "starter"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
 
         result = await require_paid_access(user)
 
@@ -151,9 +175,10 @@ class TestRequirePaidAccess:
     @pytest.mark.asyncio
     async def test_rejects_none_status(self):
         """Rejects users with NONE subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.NONE
-        user.subscription_tier = None
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_paid_access(user)
@@ -164,9 +189,10 @@ class TestRequirePaidAccess:
     @pytest.mark.asyncio
     async def test_rejects_active_without_paid_tier(self):
         """Rejects users with ACTIVE status but missing/invalid tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = None
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier=None,
+        )
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_paid_access(user)
@@ -177,9 +203,10 @@ class TestRequirePaidAccess:
     @pytest.mark.asyncio
     async def test_rejects_past_due_status(self):
         """Rejects users with PAST_DUE subscription status."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.PAST_DUE
-        user.subscription_tier = "starter"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.PAST_DUE,
+            subscription_tier="starter",
+        )
 
         with pytest.raises(SubscriptionError) as exc_info:
             await require_paid_access(user)
@@ -194,9 +221,10 @@ class TestRequireTier:
     @pytest.mark.asyncio
     async def test_allows_matching_tier(self):
         """Allows access when user has matching tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "starter"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
 
         checker = require_tier(SubscriptionTier.STARTER)
         result = await checker(user)
@@ -206,9 +234,10 @@ class TestRequireTier:
     @pytest.mark.asyncio
     async def test_allows_higher_tier(self):
         """Allows access when user has higher tier than required."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "pro"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="pro",
+        )
 
         checker = require_tier(SubscriptionTier.STARTER)
         result = await checker(user)
@@ -218,9 +247,10 @@ class TestRequireTier:
     @pytest.mark.asyncio
     async def test_rejects_lower_tier(self):
         """Rejects access when user has lower tier than required."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "free"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="free",
+        )
 
         checker = require_tier(SubscriptionTier.STARTER)
 
@@ -233,9 +263,10 @@ class TestRequireTier:
     @pytest.mark.asyncio
     async def test_free_user_for_free_tier(self):
         """Allows free user for routes requiring FREE tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.NONE
-        user.subscription_tier = None
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
 
         checker = require_tier(SubscriptionTier.FREE)
         result = await checker(user)
@@ -245,9 +276,10 @@ class TestRequireTier:
     @pytest.mark.asyncio
     async def test_enterprise_required(self):
         """Rejects professional user for enterprise-only features."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "pro"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="pro",
+        )
 
         checker = require_tier(SubscriptionTier.ENTERPRISE)
 
@@ -264,9 +296,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_allows_feature_available(self):
         """Allows access when tier has the required feature."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "starter"  # Starter has can_export_data
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
 
         checker = require_feature("can_export_data")
         result = await checker(user)
@@ -276,9 +309,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_rejects_feature_unavailable(self):
         """Rejects access when tier lacks the required feature."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.NONE
-        user.subscription_tier = None  # Free tier lacks can_export_data
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
 
         checker = require_feature("can_export_data")
 
@@ -291,9 +325,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_premium_models_on_starter(self):
         """Allows premium models for starter tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "starter"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
 
         checker = require_feature("can_use_premium_models")
         result = await checker(user)
@@ -303,9 +338,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_premium_models_on_free(self):
         """Rejects premium models for free tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.NONE
-        user.subscription_tier = None
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
 
         checker = require_feature("can_use_premium_models")
 
@@ -317,9 +353,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_priority_support_on_professional(self):
         """Allows priority support for professional tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "pro"
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="pro",
+        )
 
         checker = require_feature("priority_support")
         result = await checker(user)
@@ -329,9 +366,10 @@ class TestRequireFeature:
     @pytest.mark.asyncio
     async def test_priority_support_on_starter(self):
         """Rejects priority support for starter tier."""
-        user = MagicMock(spec=User)
-        user.subscription_status = SubscriptionStatus.ACTIVE
-        user.subscription_tier = "starter"  # Starter lacks priority_support
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
 
         checker = require_feature("priority_support")
 

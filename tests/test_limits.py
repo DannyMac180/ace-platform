@@ -468,12 +468,14 @@ def _make_mock_user(
     subscription_tier: str | None = None,
     subscription_status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     trial_ends_at: datetime | None = None,
+    is_admin: bool = False,
 ) -> MagicMock:
     """Create a mock User object for trial tests."""
     user = MagicMock()
     user.subscription_tier = subscription_tier
     user.subscription_status = subscription_status
     user.trial_ends_at = trial_ends_at
+    user.is_admin = is_admin
     return user
 
 
@@ -547,4 +549,22 @@ class TestGetEffectiveTierForLimits:
     def test_invalid_tier_defaults_to_free(self):
         """Test that invalid tier string defaults to FREE."""
         user = _make_mock_user(subscription_tier="invalid_tier", trial_ends_at=None)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
+
+    def test_admin_user_gets_enterprise_tier(self):
+        """Test that admin users always get ENTERPRISE tier regardless of subscription."""
+        user = _make_mock_user(subscription_tier=None, trial_ends_at=None, is_admin=True)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.ENTERPRISE
+
+    def test_admin_user_bypasses_trial_downgrade(self):
+        """Test that admin users get ENTERPRISE even during trial."""
+        from datetime import timedelta
+
+        future = datetime.now(UTC) + timedelta(days=5)
+        user = _make_mock_user(subscription_tier="starter", trial_ends_at=future, is_admin=True)
+        assert get_effective_tier_for_limits(user) == SubscriptionTier.ENTERPRISE
+
+    def test_non_admin_user_not_affected(self):
+        """Test that non-admin users are not affected by admin bypass."""
+        user = _make_mock_user(subscription_tier=None, trial_ends_at=None, is_admin=False)
         assert get_effective_tier_for_limits(user) == SubscriptionTier.FREE
