@@ -877,6 +877,36 @@ class TestGetApiKeyWithHeaders:
         assert result == "env_key"
 
 
+class TestRequirePaidAccess:
+    """Tests for _require_paid_access helper."""
+
+    def test_admin_bypasses_paid_access(self):
+        """Admin users should bypass paid access checks."""
+        from ace_platform.mcp.server import _require_paid_access
+
+        user = SimpleNamespace(
+            is_admin=True,
+            subscription_status=SubscriptionStatus.CANCELED,
+            subscription_tier=None,
+        )
+
+        assert _require_paid_access(user) is None
+
+    def test_non_admin_requires_paid_subscription(self):
+        """Non-admin users without paid plans should be blocked."""
+        from ace_platform.mcp.server import _require_paid_access
+
+        user = SimpleNamespace(
+            is_admin=False,
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+
+        error = _require_paid_access(user)
+        assert error is not None
+        assert "Start your free trial" in error
+
+
 class TestExtractSection:
     """Tests for _extract_section helper function."""
 

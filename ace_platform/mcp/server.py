@@ -390,6 +390,9 @@ def _get_user_tier(user: User) -> SubscriptionTier:
 
 
 def _require_paid_access(user: User) -> str | None:
+    if user.is_admin:
+        return None
+
     user_tier = _get_user_tier(user)
 
     if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:
