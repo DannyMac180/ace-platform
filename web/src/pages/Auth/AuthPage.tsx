@@ -75,21 +75,6 @@ export function AuthPage() {
       </div>
 
       <div className={styles.content}>
-        <div className={styles.videoShowcase}>
-          <video
-            className={styles.landingVideo}
-            autoPlay
-            loop
-            muted
-            playsInline
-            controls
-            aria-label="ACE platform demo video"
-          >
-            <source src="/landing-hero-video.mp4" type="video/mp4" />
-            Your browser does not support the video tag.
-          </video>
-        </div>
-
         {/* Left side - Branding */}
         <div className={styles.branding}>
           <div className={styles.logoSection}>

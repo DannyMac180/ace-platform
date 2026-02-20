@@ -667,6 +667,19 @@ def _register_routes(app: FastAPI) -> None:
             background: rgba(196, 30, 58, 0.05);
             color: var(--accent-dark);
         }
+        .hero-video-wrap {
+            max-width: 920px;
+            margin: 2.5rem auto 0;
+            padding: 0 0.5rem;
+        }
+        .hero-video {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 14px;
+            border: 1px solid var(--border-default);
+            box-shadow: var(--shadow-md);
+            background: #000;
+        }
 
         /* Features */
         .features {
@@ -808,6 +821,7 @@ def _register_routes(app: FastAPI) -> None:
             .hero { padding: 4rem 2rem; }
             .hero-title { font-size: 2.5rem; }
             .hero-subtitle { font-size: 1.25rem; }
+            .hero-video-wrap { margin-top: 2rem; }
             .features-inner { grid-template-columns: 1fr; }
             .feature { margin-bottom: 1rem; }
             .link-cards { grid-template-columns: 1fr; }
@@ -853,6 +867,20 @@ def _register_routes(app: FastAPI) -> None:
         <div class="hero-buttons">
             <a href="{{FRONTEND_URL}}/login" class="btn btn-primary">Get Started</a>
             <a href="{{DOCS_URL}}/docs/developer-guides/mcp-integration/overview" class="btn btn-secondary">MCP Integration</a>
+        </div>
+        <div class="hero-video-wrap">
+            <video
+                class="hero-video"
+                autoplay
+                loop
+                muted
+                playsinline
+                controls
+                aria-label="ACE platform demo video"
+            >
+                <source src="{{FRONTEND_URL}}/landing-hero-video.mp4" type="video/mp4" />
+                Your browser does not support the video tag.
+            </video>
         </div>
     </section>
 
