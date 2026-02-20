@@ -12,12 +12,13 @@ This module sets up the FastAPI application with:
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
@@ -38,6 +39,9 @@ from .middleware import (
 
 settings = get_settings()
 logger = get_logger(__name__)
+LANDING_VIDEO_PATH = (
+    Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
+)
 
 
 def _init_sentry() -> None:
@@ -497,6 +501,17 @@ def _register_routes(app: FastAPI) -> None:
             media_type=CONTENT_TYPE_LATEST,
         )
 
+    @app.get("/landing-hero-video.mp4", include_in_schema=False)
+    async def landing_video():
+        """Serve landing page hero video from same origin."""
+        if not LANDING_VIDEO_PATH.exists():
+            raise HTTPException(status_code=404, detail="Landing video not found")
+        return FileResponse(
+            LANDING_VIDEO_PATH,
+            media_type="video/mp4",
+            filename="landing-hero-video.mp4",
+        )
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing_page():
         """Serve the landing page."""
@@ -878,7 +893,7 @@ def _register_routes(app: FastAPI) -> None:
                 controls
                 aria-label="ACE platform demo video"
             >
-                <source src="{{FRONTEND_URL}}/landing-hero-video.mp4" type="video/mp4" />
+                <source src="/landing-hero-video.mp4" type="video/mp4" />
                 Your browser does not support the video tag.
             </video>
         </div>
