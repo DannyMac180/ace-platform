@@ -8,6 +8,7 @@ These tests verify:
 4. Response schema validation
 """
 
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -22,6 +23,7 @@ from ace_platform.api.routes.admin import (
     PlatformStatsResponse,
     TopUserResponse,
     build_conversion_funnel_response,
+    get_conversion_funnel,
 )
 
 
@@ -136,6 +138,34 @@ class TestAdminSchemas:
         assert response.conversion_signup_to_checkout_intent_pct == 0.0
         assert response.conversion_signup_to_trial_started_pct == 0.0
         assert response.conversion_signup_to_paid_active_non_trial_pct == 0.0
+
+    @pytest.mark.asyncio
+    async def test_get_conversion_funnel_scopes_later_stages_to_prior_cohorts(self):
+        """Ensure later funnel queries are constrained to prior-stage users."""
+        mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(side_effect=[20, 10, 8, 6, 4])
+
+        response = await get_conversion_funnel(_admin=object(), db=mock_db, days=30)
+
+        assert response.signups == 20
+        assert response.trial_started == 8
+        assert response.first_playbook_created == 6
+        assert response.paid_active_non_trial == 4
+        assert mock_db.scalar.call_count == 5
+
+        first_playbook_query = mock_db.scalar.call_args_list[3].args[0]
+        paid_query = mock_db.scalar.call_args_list[4].args[0]
+        first_playbook_sql = str(first_playbook_query)
+        paid_sql = str(paid_query)
+
+        assert "has_used_trial" in first_playbook_sql
+        assert "trial_ends_at" in first_playbook_sql
+        assert "EXISTS" in first_playbook_sql
+        assert "playbooks.user_id = users.id" in first_playbook_sql
+
+        assert "has_used_trial" in paid_sql
+        assert "playbooks.user_id = users.id" in paid_sql
+        assert "subscription_status" in paid_sql
 
     def test_top_user_response(self):
         """Test top user response schema."""

@@ -446,12 +446,19 @@ async def get_conversion_funnel(
         or 0
     )
 
+    # Keep funnel stages as strict subsets so step conversion math is always valid.
+    trial_started_filter = (User.has_used_trial.is_(True)) | (
+        (User.trial_ends_at.is_not(None)) & (User.trial_ends_at > now)
+    )
+    has_any_playbook = select(Playbook.id).where(Playbook.user_id == User.id).exists()
+
     first_playbook_created = (
         await db.scalar(
-            select(func.count(func.distinct(User.id)))
-            .select_from(User)
-            .join(Playbook, Playbook.user_id == User.id)
-            .where(User.created_at >= start)
+            select(func.count(User.id)).where(
+                User.created_at >= start,
+                trial_started_filter,
+                has_any_playbook,
+            )
         )
         or 0
     )
@@ -460,6 +467,8 @@ async def get_conversion_funnel(
         await db.scalar(
             select(func.count(User.id)).where(
                 User.created_at >= start,
+                trial_started_filter,
+                has_any_playbook,
                 User.subscription_status == SubscriptionStatus.ACTIVE,
                 User.subscription_tier.is_not(None),
                 User.subscription_tier != "free",
