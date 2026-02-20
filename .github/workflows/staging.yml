@@ -9,6 +9,10 @@ on:
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
 jobs:
   test-backend:
     name: Test Backend
@@ -101,6 +105,7 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend]
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -109,11 +114,80 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Backend to Staging
-        run: flyctl deploy --config fly.staging.toml --remote-only
+        run: |
+          set -euo pipefail
+
+          cleanup_stale_release_machines() {
+            local stale_ids
+            stale_ids="$(flyctl machine list -a ace-platform-staging --json | jq -r '.[] | select(.config.metadata.fly_process_group == "fly_app_release_command") | select(.state == "created" or .state == "pending" or .state == "starting" or .state == "stopped" or .state == "suspended" or .state == "replacing") | .id')"
+
+            if [[ -z "${stale_ids}" ]]; then
+              echo "No stale release command machines detected."
+              return 0
+            fi
+
+            echo "Cleaning up stale release command machines:"
+            while IFS= read -r machine_id; do
+              [[ -z "${machine_id}" ]] && continue
+              echo " - Destroying ${machine_id}"
+              flyctl machine destroy "${machine_id}" -a ace-platform-staging --force || true
+            done <<< "${stale_ids}"
+          }
+
+          deploy_backend() {
+            local depot_flag="$1"
+            flyctl deploy \
+              --config fly.staging.toml \
+              --remote-only \
+              --wait-timeout 15m \
+              --depot="${depot_flag}"
+          }
+
+          for attempt in 1 2 3; do
+            echo "Backend deploy attempt ${attempt}/3"
+            cleanup_stale_release_machines
+
+            if [[ "${attempt}" -eq 1 ]]; then
+              depot="true"
+            else
+              depot="false"
+            fi
+
+            if deploy_backend "${depot}"; then
+              echo "Backend deploy succeeded on attempt ${attempt}"
+              exit 0
+            fi
+
+            if [[ "${attempt}" -lt 3 ]]; then
+              sleep_seconds=$((attempt * 45))
+              echo "Backend deploy attempt ${attempt} failed. Retrying in ${sleep_seconds}s..."
+              sleep "${sleep_seconds}"
+            fi
+          done
+
+          echo "Backend deploy failed after 3 attempts."
+          exit 1
 
       - name: Deploy Frontend to Staging
         working-directory: web
-        run: flyctl deploy --config fly.staging.toml --remote-only
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2; do
+            echo "Frontend deploy attempt ${attempt}/2"
+            if flyctl deploy --config fly.staging.toml --remote-only --wait-timeout 10m; then
+              echo "Frontend deploy succeeded on attempt ${attempt}"
+              exit 0
+            fi
+
+            if [[ "${attempt}" -lt 2 ]]; then
+              echo "Frontend deploy attempt ${attempt} failed. Retrying in 30s..."
+              sleep 30
+            fi
+          done
+
+          echo "Frontend deploy failed after 2 attempts."
+          exit 1
 
       - name: Verify Backend Deployment
         run: |
