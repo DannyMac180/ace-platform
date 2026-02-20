@@ -401,6 +401,23 @@
   font-size: 1.0625rem;
 }
 
+.subscriptionActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  width: 100%;
+  max-width: 280px;
+}
+
+.trialError {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin: 0 0 var(--space-md) 0;
+  color: var(--error);
+  font-size: 0.875rem;
+}
+
 /* Modal */
 .modalOverlay {
   position: fixed;

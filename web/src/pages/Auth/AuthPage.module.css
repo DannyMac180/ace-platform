@@ -281,6 +281,12 @@
   font-size: 1rem;
 }
 
+.formHeader .trialDisclosure {
+  margin-top: var(--space-xs);
+  color: var(--gold-primary);
+  font-size: 0.875rem;
+}
+
 /* Form */
 .form {
   display: flex;

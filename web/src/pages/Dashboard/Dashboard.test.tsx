@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Dashboard } from './Dashboard';
 
-const { mockListPlaybooks, mockCreatePlaybook, mockAuthState } = vi.hoisted(() => {
+const { mockListPlaybooks, mockCreatePlaybook, mockStartStarterTrial, mockAuthState } = vi.hoisted(() => {
   const mockAuthState: {
     user: {
       subscription_status: 'active' | 'past_due' | 'canceled' | 'unpaid' | 'none';
@@ -26,6 +27,7 @@ const { mockListPlaybooks, mockCreatePlaybook, mockAuthState } = vi.hoisted(() =
   return {
     mockListPlaybooks: vi.fn(),
     mockCreatePlaybook: vi.fn(),
+    mockStartStarterTrial: vi.fn(),
     mockAuthState,
   };
 });
@@ -38,6 +40,9 @@ vi.mock('../../utils/api', () => ({
   playbooksApi: {
     list: mockListPlaybooks,
     create: mockCreatePlaybook,
+  },
+  billingApi: {
+    startStarterTrial: mockStartStarterTrial,
   },
 }));
 
@@ -75,6 +80,12 @@ describe('Dashboard', () => {
       page_size: 50,
       total_pages: 0,
     });
+    mockStartStarterTrial.mockResolvedValue({
+      success: false,
+      message: 'Checkout session could not be created',
+      checkout_url: null,
+      subscription: null,
+    });
   });
 
   it('shows the empty state for paid users with no playbooks', async () => {
@@ -102,5 +113,48 @@ describe('Dashboard', () => {
 
     expect(screen.queryByText('Failed to load playbooks')).not.toBeInTheDocument();
     expect(mockListPlaybooks).not.toHaveBeenCalled();
+  });
+
+  it('starts trial checkout directly from the subscription state CTA', async () => {
+    const user = userEvent.setup();
+    mockAuthState.user = {
+      subscription_status: 'none',
+      subscription_tier: null,
+      has_used_trial: false,
+    };
+
+    renderWithProviders(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Start Free Trial' }));
+
+    await waitFor(() => {
+      expect(mockStartStarterTrial).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('shows an error when trial checkout initiation fails', async () => {
+    const user = userEvent.setup();
+    mockAuthState.user = {
+      subscription_status: 'none',
+      subscription_tier: null,
+      has_used_trial: false,
+    };
+    mockStartStarterTrial.mockRejectedValue(new Error('network'));
+
+    renderWithProviders(<Dashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Start Free Trial' })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Start Free Trial' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to start your trial. Please try again.')).toBeInTheDocument();
+    });
   });
 });

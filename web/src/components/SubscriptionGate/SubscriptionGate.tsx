@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { billingApi } from '../../utils/api';
 import styles from './SubscriptionGate.module.css';
 
 interface SubscriptionGateProps {
@@ -17,6 +18,8 @@ export function SubscriptionGate({ children, featureName = 'this feature' }: Sub
   const { user } = useAuth();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [isStartingTrial, setIsStartingTrial] = useState(false);
+  const [trialError, setTrialError] = useState<string | null>(null);
 
   const hasActiveSubscription = user?.subscription_status === 'active' && user?.subscription_tier;
   const hasUsedTrial = user?.has_used_trial ?? false;
@@ -30,15 +33,43 @@ export function SubscriptionGate({ children, featureName = 'this feature' }: Sub
     e.preventDefault();
     e.stopPropagation();
     setShowModal(true);
+    setTrialError(null);
   };
 
-  const handleStartTrial = () => {
+  const handleStartTrial = async () => {
+    if (hasUsedTrial) {
+      setShowModal(false);
+      navigate('/pricing');
+      return;
+    }
+
+    setIsStartingTrial(true);
+    setTrialError(null);
+
+    try {
+      const result = await billingApi.startStarterTrial();
+      if (result.success && result.checkout_url) {
+        window.location.href = result.checkout_url;
+        return;
+      }
+
+      setTrialError(result.message || 'Failed to start trial. Please try again.');
+    } catch {
+      setTrialError('Failed to start trial. Please try again.');
+    } finally {
+      setIsStartingTrial(false);
+    }
+  };
+
+  const handleViewPlans = () => {
     setShowModal(false);
     navigate('/pricing');
   };
 
   const handleClose = () => {
     setShowModal(false);
+    setTrialError(null);
+    setIsStartingTrial(false);
   };
 
   return (
@@ -79,11 +110,26 @@ export function SubscriptionGate({ children, featureName = 'this feature' }: Sub
                   </div>
                   <h2>Start Your Free Trial</h2>
                   <p>
-                    To use {featureName}, start your 7-day free trial. No charge until your trial ends.
+                    To use {featureName}, start your 7-day free trial. Card required, no charge today.
+                    Your trial includes 1 playbook and 5 evolutions.
                   </p>
-                  <button className={styles.primaryButton} onClick={handleStartTrial}>
-                    Start Free Trial
-                  </button>
+                  {trialError && <p className={styles.error}>{trialError}</p>}
+                  <div className={styles.actions}>
+                    <button
+                      className={styles.primaryButton}
+                      onClick={handleStartTrial}
+                      disabled={isStartingTrial}
+                    >
+                      {isStartingTrial ? 'Starting trial...' : 'Start Free Trial'}
+                    </button>
+                    <button
+                      className={styles.secondaryButton}
+                      onClick={handleViewPlans}
+                      disabled={isStartingTrial}
+                    >
+                      See all plans
+                    </button>
+                  </div>
                 </>
               )}
             </div>

@@ -146,6 +146,9 @@ export function Pricing() {
       <div className={styles.header}>
         <h1>Choose Your Plan</h1>
         <p>Scale your playbook evolution with the right plan for your needs</p>
+        <p className={styles.trialDisclosure}>
+          Starter trial is card-required. Trial includes 1 playbook and 5 evolutions; full Starter limits unlock after trial.
+        </p>
       </div>
 
       <div className={styles.billingToggle} role="group" aria-label="Billing interval">
@@ -174,7 +177,7 @@ export function Pricing() {
         <div className={styles.trialLimitsBanner}>
           <Clock size={18} />
           <span>
-            You&apos;re on a free trial ({trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} remaining) with limited access: 1 playbook and 5 evolutions. Subscribe to unlock more.
+            You&apos;re on a free trial ({trialDaysRemaining} day{trialDaysRemaining !== 1 ? 's' : ''} remaining) with 1 playbook and 5 evolutions. Full Starter limits (100 evolutions/month, 5 playbooks) unlock after trial.
           </span>
         </div>
       )}

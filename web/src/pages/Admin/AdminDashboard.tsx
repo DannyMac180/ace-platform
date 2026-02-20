@@ -11,7 +11,7 @@ import {
   AlertCircle,
   Shield,
 } from 'lucide-react';
-import type { PlatformStats, DailySignup, TopUser } from '../../types';
+import type { PlatformStats, DailySignup, TopUser, ConversionFunnel } from '../../types';
 import styles from './AdminDashboard.module.css';
 
 export function AdminDashboard() {
@@ -31,6 +31,12 @@ export function AdminDashboard() {
     enabled: isAdmin,
   });
 
+  const funnelQuery = useQuery<ConversionFunnel>({
+    queryKey: ['admin-funnel'],
+    queryFn: () => adminApi.getFunnel(30),
+    enabled: isAdmin,
+  });
+
   const topUsersQuery = useQuery<TopUser[]>({
     queryKey: ['admin-top-users'],
     queryFn: () => adminApi.getTopUsers(10),
@@ -41,11 +47,22 @@ export function AdminDashboard() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  const isLoading = statsQuery.isLoading || signupsQuery.isLoading || topUsersQuery.isLoading;
-  const isError = statsQuery.isError || signupsQuery.isError || topUsersQuery.isError;
+  const isLoading = (
+    statsQuery.isLoading ||
+    signupsQuery.isLoading ||
+    funnelQuery.isLoading ||
+    topUsersQuery.isLoading
+  );
+  const isError = (
+    statsQuery.isError ||
+    signupsQuery.isError ||
+    funnelQuery.isError ||
+    topUsersQuery.isError
+  );
 
   const stats = statsQuery.data;
   const signups = signupsQuery.data;
+  const funnel = funnelQuery.data;
   const topUsers = topUsersQuery.data;
 
   return (
@@ -71,6 +88,7 @@ export function AdminDashboard() {
           <button className={styles.retryButton} onClick={() => {
             statsQuery.refetch();
             signupsQuery.refetch();
+            funnelQuery.refetch();
             topUsersQuery.refetch();
           }}>
             Retry
@@ -118,6 +136,53 @@ export function AdminDashboard() {
                 </div>
               </Card>
             </div>
+          )}
+
+          {funnel && (
+            <Card variant="default" padding="lg" className={styles.funnelCard}>
+              <div className={styles.funnelHeader}>
+                <h3 className={styles.sectionTitle}>Signup Funnel (Last {funnel.days} Days)</h3>
+                <span className={styles.funnelMeta}>
+                  Trial start rate: {funnel.conversion_signup_to_trial_started_pct.toFixed(1)}%
+                </span>
+              </div>
+              <div className={styles.funnelRows}>
+                <FunnelRow
+                  label="Signups"
+                  count={funnel.signups}
+                  stepRate={null}
+                  overallRate={100}
+                />
+                <FunnelRow
+                  label="Trial Checkout Intent"
+                  count={funnel.trial_checkout_intent}
+                  stepRate={funnel.conversion_signup_to_checkout_intent_pct}
+                  overallRate={funnel.conversion_signup_to_checkout_intent_pct}
+                />
+                <FunnelRow
+                  label="Trial Started"
+                  count={funnel.trial_started}
+                  stepRate={funnel.conversion_checkout_intent_to_trial_started_pct}
+                  overallRate={funnel.conversion_signup_to_trial_started_pct}
+                />
+                <FunnelRow
+                  label="First Playbook Created"
+                  count={funnel.first_playbook_created}
+                  stepRate={funnel.conversion_trial_started_to_first_playbook_pct}
+                  overallRate={
+                    funnel.signups > 0
+                      ? Number(((funnel.first_playbook_created / funnel.signups) * 100).toFixed(2))
+                      : 0
+                  }
+                />
+                <FunnelRow
+                  label="Paid Active (Non-trial)"
+                  count={funnel.paid_active_non_trial}
+                  stepRate={funnel.conversion_first_playbook_to_paid_active_non_trial_pct}
+                  overallRate={funnel.conversion_signup_to_paid_active_non_trial_pct}
+                />
+              </div>
+            </Card>
           )}
 
           <div className={styles.contentGrid}>
@@ -215,6 +280,37 @@ export function AdminDashboard() {
           )}
         </>
       )}
+    </div>
+  );
+}
+
+function FunnelRow({
+  label,
+  count,
+  stepRate,
+  overallRate,
+}: {
+  label: string;
+  count: number;
+  stepRate: number | null;
+  overallRate: number;
+}) {
+  const safeRate = Number.isFinite(overallRate) ? Math.max(0, Math.min(100, overallRate)) : 0;
+  const widthPct = Math.max(safeRate, count > 0 ? 4 : 0);
+
+  return (
+    <div className={styles.funnelRow}>
+      <div className={styles.funnelRowHeader}>
+        <span className={styles.funnelLabel}>{label}</span>
+        <span className={styles.funnelCount}>{count}</span>
+      </div>
+      <div className={styles.funnelBar}>
+        <div className={styles.funnelFill} style={{ width: `${widthPct}%` }} />
+      </div>
+      <div className={styles.funnelRates}>
+        <span>{safeRate.toFixed(1)}% of signups</span>
+        <span>{stepRate === null ? 'Baseline' : `${stepRate.toFixed(1)}% step conversion`}</span>
+      </div>
     </div>
   );
 }

@@ -60,4 +60,13 @@ describe('Pricing', () => {
       });
     });
   });
+
+  it('renders explicit trial disclosure and starter trial limits copy', () => {
+    render(<Pricing />);
+
+    expect(
+      screen.getByText(/Starter trial is card-required/i)
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Trial includes 1 playbook and 5 evolutions/i).length).toBeGreaterThan(0);
+  });
 });

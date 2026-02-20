@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AxiosError } from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { playbooksApi } from '../../utils/api';
+import { billingApi, playbooksApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -165,7 +165,10 @@ export function Dashboard() {
           <span>Loading playbooks...</span>
         </div>
       ) : shouldShowSubscriptionState ? (
-        <SubscriptionRequiredState onUpgradeClick={() => navigate('/pricing')} />
+        <SubscriptionRequiredState
+          hasUsedTrial={user?.has_used_trial ?? false}
+          onUpgradeClick={() => navigate('/pricing')}
+        />
       ) : error ? (
         <div className={styles.error}>
           <AlertCircle size={24} />
@@ -193,15 +196,65 @@ export function Dashboard() {
   );
 }
 
-function SubscriptionRequiredState({ onUpgradeClick }: { onUpgradeClick: () => void }) {
+function SubscriptionRequiredState({
+  onUpgradeClick,
+  hasUsedTrial,
+}: {
+  onUpgradeClick: () => void;
+  hasUsedTrial: boolean;
+}) {
+  const [isStartingTrial, setIsStartingTrial] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePrimaryAction = async () => {
+    if (hasUsedTrial) {
+      onUpgradeClick();
+      return;
+    }
+
+    setIsStartingTrial(true);
+    setError(null);
+    try {
+      const result = await billingApi.startStarterTrial();
+      if (result.success && result.checkout_url) {
+        window.location.href = result.checkout_url;
+        return;
+      }
+      setError(result.message || 'Failed to start your trial. Please try again.');
+    } catch {
+      setError('Failed to start your trial. Please try again.');
+    } finally {
+      setIsStartingTrial(false);
+    }
+  };
+
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>
         <AlertCircle size={48} />
       </div>
-      <h2>Start Your Free Trial</h2>
-      <p>Start your free trial to access playbooks and create your first one.</p>
-      <Button onClick={onUpgradeClick}>Start Free Trial</Button>
+      <h2>{hasUsedTrial ? 'Upgrade to Continue' : 'Start Your Free Trial'}</h2>
+      <p>
+        {hasUsedTrial
+          ? 'Your free trial has ended. Upgrade to continue creating and evolving playbooks.'
+          : 'Start your 7-day free trial to access playbooks. Card required, no charge today. Trial includes 1 playbook and 5 evolutions.'}
+      </p>
+      {error && (
+        <div className={styles.trialError}>
+          <AlertCircle size={16} />
+          <span>{error}</span>
+        </div>
+      )}
+      <div className={styles.subscriptionActions}>
+        <Button onClick={handlePrimaryAction} isLoading={isStartingTrial}>
+          {hasUsedTrial ? 'View Plans' : 'Start Free Trial'}
+        </Button>
+        {!hasUsedTrial && (
+          <Button variant="ghost" onClick={onUpgradeClick} disabled={isStartingTrial}>
+            See all plans
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

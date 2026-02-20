@@ -131,6 +131,11 @@ export function AuthPage() {
                   ? 'Sign in to continue to your dashboard'
                   : 'Start building evolving playbooks today'}
               </p>
+              {mode === 'register' && (
+                <p className={styles.trialDisclosure}>
+                  7-day trial is card-required, no charge today.
+                </p>
+              )}
             </div>
 
             <form onSubmit={handleSubmit} className={styles.form}>

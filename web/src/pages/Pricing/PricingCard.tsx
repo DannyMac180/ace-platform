@@ -85,7 +85,10 @@ export function PricingCard({ tier, isCurrentPlan, isLoading, onSubscribe, showT
 
       {showTrialCTA && tier.id === 'starter' && (
         <div className={styles.trialBanner}>
-          <strong>7-day free trial</strong> — No charge until trial ends
+          <strong>7-day free trial</strong> — Card required, no charge today.
+          <div className={styles.trialBannerDetail}>
+            Trial includes 1 playbook and 5 evolutions. Full Starter limits unlock after trial.
+          </div>
         </div>
       )}
 

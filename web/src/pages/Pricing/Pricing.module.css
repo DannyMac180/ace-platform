@@ -25,6 +25,12 @@
   margin: 0 auto;
 }
 
+.header .trialDisclosure {
+  margin-top: var(--space-sm);
+  font-size: 0.9375rem;
+  color: var(--gold-primary);
+}
+
 .billingToggle {
   width: fit-content;
   margin: 0 auto var(--space-xl);
@@ -83,6 +89,13 @@
   margin-bottom: var(--space-md);
   font-size: 0.875rem;
   text-align: center;
+  line-height: 1.5;
+}
+
+.trialBannerDetail {
+  margin-top: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
 }
 
 /* Trial limits banner above pricing grid */

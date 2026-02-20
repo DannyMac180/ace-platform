@@ -255,6 +255,23 @@ export interface DailySignup {
   count: number;
 }
 
+export interface ConversionFunnel {
+  days: number;
+  start_date: string;
+  end_date: string;
+  signups: number;
+  trial_checkout_intent: number;
+  trial_started: number;
+  first_playbook_created: number;
+  paid_active_non_trial: number;
+  conversion_signup_to_checkout_intent_pct: number;
+  conversion_checkout_intent_to_trial_started_pct: number;
+  conversion_trial_started_to_first_playbook_pct: number;
+  conversion_first_playbook_to_paid_active_non_trial_pct: number;
+  conversion_signup_to_trial_started_pct: number;
+  conversion_signup_to_paid_active_non_trial_pct: number;
+}
+
 export interface TopUser {
   user_id: string;
   email: string;

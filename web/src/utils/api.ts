@@ -10,6 +10,7 @@ import type {
   DailyEvolution,
   DailySignup,
   DailyUsage,
+  ConversionFunnel,
   EvolutionJob,
   EvolutionSummary,
   Outcome,
@@ -352,6 +353,24 @@ export const usageApi = {
 
 // Billing API
 export const billingApi = {
+  startStarterTrial: async (): Promise<{
+    success: boolean;
+    message: string;
+    checkout_url: string | null;
+    subscription: unknown | null;
+  }> => {
+    const response = await api.post<{
+      success: boolean;
+      message: string;
+      checkout_url: string | null;
+      subscription: unknown | null;
+    }>('/billing/subscribe', {
+      tier: 'starter',
+      interval: 'month',
+    });
+    return response.data;
+  },
+
   setupCard: async (): Promise<{ success: boolean; checkout_url: string | null; message: string }> => {
     const response = await api.post<{ success: boolean; checkout_url: string | null; message: string }>(
       '/billing/setup-card'
@@ -395,6 +414,11 @@ export const adminApi = {
 
   getSignups: async (days = 30): Promise<DailySignup[]> => {
     const response = await api.get<DailySignup[]>(`/admin/signups?days=${days}`);
+    return response.data;
+  },
+
+  getFunnel: async (days = 30): Promise<ConversionFunnel> => {
+    const response = await api.get<ConversionFunnel>(`/admin/funnel?days=${days}`);
     return response.data;
   },
 

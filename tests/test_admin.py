@@ -1,3 +1,4 @@
+# Admin Dashboard Tests - v1 read-only admin endpoints
 """Tests for admin dashboard API routes.
 
 These tests verify:
@@ -16,9 +17,11 @@ from fastapi.testclient import TestClient
 from ace_platform.api.routes.admin import (
     AdminUserItem,
     AuditEventItem,
+    ConversionFunnelResponse,
     DailySignupResponse,
     PlatformStatsResponse,
     TopUserResponse,
+    build_conversion_funnel_response,
 )
 
 
@@ -64,6 +67,75 @@ class TestAdminSchemas:
         response = DailySignupResponse(date="2024-01-15", count=5)
         assert response.date == "2024-01-15"
         assert response.count == 5
+
+    def test_conversion_funnel_response(self):
+        """Test conversion funnel schema."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        response = ConversionFunnelResponse(
+            days=30,
+            start_date=now,
+            end_date=now,
+            signups=27,
+            trial_checkout_intent=6,
+            trial_started=2,
+            first_playbook_created=2,
+            paid_active_non_trial=1,
+            conversion_signup_to_checkout_intent_pct=22.22,
+            conversion_checkout_intent_to_trial_started_pct=33.33,
+            conversion_trial_started_to_first_playbook_pct=100.0,
+            conversion_first_playbook_to_paid_active_non_trial_pct=50.0,
+            conversion_signup_to_trial_started_pct=7.41,
+            conversion_signup_to_paid_active_non_trial_pct=3.7,
+        )
+        assert response.signups == 27
+        assert response.trial_started == 2
+        assert response.conversion_signup_to_trial_started_pct == 7.41
+
+    def test_build_conversion_funnel_response_rates(self):
+        """Test conversion funnel rate calculations."""
+        from datetime import datetime, timedelta, timezone
+
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=7)
+        response = build_conversion_funnel_response(
+            days=7,
+            start_date=start,
+            end_date=end,
+            signups=20,
+            trial_checkout_intent=10,
+            trial_started=4,
+            first_playbook_created=2,
+            paid_active_non_trial=1,
+        )
+
+        assert response.conversion_signup_to_checkout_intent_pct == 50.0
+        assert response.conversion_checkout_intent_to_trial_started_pct == 40.0
+        assert response.conversion_trial_started_to_first_playbook_pct == 50.0
+        assert response.conversion_first_playbook_to_paid_active_non_trial_pct == 50.0
+        assert response.conversion_signup_to_trial_started_pct == 20.0
+        assert response.conversion_signup_to_paid_active_non_trial_pct == 5.0
+
+    def test_build_conversion_funnel_response_zero_division_safe(self):
+        """Test conversion funnel avoids divide-by-zero errors."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        response = build_conversion_funnel_response(
+            days=30,
+            start_date=now,
+            end_date=now,
+            signups=0,
+            trial_checkout_intent=0,
+            trial_started=0,
+            first_playbook_created=0,
+            paid_active_non_trial=0,
+        )
+
+        assert response.conversion_signup_to_checkout_intent_pct == 0.0
+        assert response.conversion_signup_to_trial_started_pct == 0.0
+        assert response.conversion_signup_to_paid_active_non_trial_pct == 0.0
 
     def test_top_user_response(self):
         """Test top user response schema."""
@@ -150,6 +222,7 @@ class TestAdminRoutesIntegration:
         assert "/admin/users" in routes
         assert "/admin/users/{user_id}" in routes
         assert "/admin/signups" in routes
+        assert "/admin/funnel" in routes
         assert "/admin/top-users" in routes
         assert "/admin/audit-events" in routes
 
@@ -176,6 +249,11 @@ class TestAdminRoutesIntegration:
     def test_admin_top_users_requires_auth(self, client):
         """Test that /admin/top-users requires authentication (401)."""
         response = client.get("/admin/top-users")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_admin_funnel_requires_auth(self, client):
+        """Test that /admin/funnel requires authentication (401)."""
+        response = client.get("/admin/funnel")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_admin_audit_events_requires_auth(self, client):
@@ -239,4 +317,9 @@ class TestAdminQueryParams:
     def test_top_users_accepts_limit_param(self, client):
         """Test that /admin/top-users accepts limit query parameter."""
         response = client.get("/admin/top-users", params={"limit": "5"})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_funnel_accepts_days_param(self, client):
+        """Test that /admin/funnel accepts days query parameter."""
+        response = client.get("/admin/funnel", params={"days": "14"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED

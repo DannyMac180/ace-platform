@@ -21,7 +21,7 @@ from ace_platform.core.metering import (
     get_top_users_by_spend,
     get_user_usage_summary,
 )
-from ace_platform.db.models import AuditLog, Playbook, UsageRecord, User
+from ace_platform.db.models import AuditLog, Playbook, SubscriptionStatus, UsageRecord, User
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -90,6 +90,25 @@ class DailySignupResponse(BaseModel):
     count: int
 
 
+class ConversionFunnelResponse(BaseModel):
+    """Signup to paid conversion funnel."""
+
+    days: int
+    start_date: datetime
+    end_date: datetime
+    signups: int
+    trial_checkout_intent: int
+    trial_started: int
+    first_playbook_created: int
+    paid_active_non_trial: int
+    conversion_signup_to_checkout_intent_pct: float
+    conversion_checkout_intent_to_trial_started_pct: float
+    conversion_trial_started_to_first_playbook_pct: float
+    conversion_first_playbook_to_paid_active_non_trial_pct: float
+    conversion_signup_to_trial_started_pct: float
+    conversion_signup_to_paid_active_non_trial_pct: float
+
+
 class TopUserResponse(BaseModel):
     """Top user by spend."""
 
@@ -127,6 +146,51 @@ class PaginatedAuditEventsResponse(BaseModel):
 # =============================================================================
 # Routes
 # =============================================================================
+
+
+def _conversion_pct(source_count: int, target_count: int) -> float:
+    """Calculate a conversion percentage with divide-by-zero safety."""
+    if source_count <= 0:
+        return 0.0
+    return round((target_count / source_count) * 100, 2)
+
+
+def build_conversion_funnel_response(
+    *,
+    days: int,
+    start_date: datetime,
+    end_date: datetime,
+    signups: int,
+    trial_checkout_intent: int,
+    trial_started: int,
+    first_playbook_created: int,
+    paid_active_non_trial: int,
+) -> ConversionFunnelResponse:
+    """Build conversion funnel response with step-to-step percentages."""
+    return ConversionFunnelResponse(
+        days=days,
+        start_date=start_date,
+        end_date=end_date,
+        signups=signups,
+        trial_checkout_intent=trial_checkout_intent,
+        trial_started=trial_started,
+        first_playbook_created=first_playbook_created,
+        paid_active_non_trial=paid_active_non_trial,
+        conversion_signup_to_checkout_intent_pct=_conversion_pct(signups, trial_checkout_intent),
+        conversion_checkout_intent_to_trial_started_pct=_conversion_pct(
+            trial_checkout_intent, trial_started
+        ),
+        conversion_trial_started_to_first_playbook_pct=_conversion_pct(
+            trial_started, first_playbook_created
+        ),
+        conversion_first_playbook_to_paid_active_non_trial_pct=_conversion_pct(
+            first_playbook_created, paid_active_non_trial
+        ),
+        conversion_signup_to_trial_started_pct=_conversion_pct(signups, trial_started),
+        conversion_signup_to_paid_active_non_trial_pct=_conversion_pct(
+            signups, paid_active_non_trial
+        ),
+    )
 
 
 @router.get(
@@ -343,6 +407,78 @@ async def get_signups(
         )
         for row in results
     ]
+
+
+@router.get(
+    "/funnel",
+    response_model=ConversionFunnelResponse,
+    summary="Signup conversion funnel",
+)
+async def get_conversion_funnel(
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = Query(30, ge=1, le=365),
+) -> ConversionFunnelResponse:
+    """Get conversion funnel metrics for recent signups."""
+    now = datetime.now(UTC)
+    start = now - timedelta(days=days)
+
+    signups = await db.scalar(select(func.count(User.id)).where(User.created_at >= start)) or 0
+
+    trial_checkout_intent = (
+        await db.scalar(
+            select(func.count(User.id)).where(
+                User.created_at >= start,
+                User.stripe_customer_id.is_not(None),
+            )
+        )
+        or 0
+    )
+
+    trial_started = (
+        await db.scalar(
+            select(func.count(User.id)).where(
+                User.created_at >= start,
+                (User.has_used_trial.is_(True))
+                | ((User.trial_ends_at.is_not(None)) & (User.trial_ends_at > now)),
+            )
+        )
+        or 0
+    )
+
+    first_playbook_created = (
+        await db.scalar(
+            select(func.count(func.distinct(User.id)))
+            .select_from(User)
+            .join(Playbook, Playbook.user_id == User.id)
+            .where(User.created_at >= start)
+        )
+        or 0
+    )
+
+    paid_active_non_trial = (
+        await db.scalar(
+            select(func.count(User.id)).where(
+                User.created_at >= start,
+                User.subscription_status == SubscriptionStatus.ACTIVE,
+                User.subscription_tier.is_not(None),
+                User.subscription_tier != "free",
+                (User.trial_ends_at.is_(None)) | (User.trial_ends_at <= now),
+            )
+        )
+        or 0
+    )
+
+    return build_conversion_funnel_response(
+        days=days,
+        start_date=start,
+        end_date=now,
+        signups=int(signups),
+        trial_checkout_intent=int(trial_checkout_intent),
+        trial_started=int(trial_started),
+        first_playbook_created=int(first_playbook_created),
+        paid_active_non_trial=int(paid_active_non_trial),
+    )
 
 
 @router.get(
