@@ -293,6 +293,103 @@ class TestFlyReplayMiddleware:
         assert "data: /mcp/messages/?session_id=abc123&fly_instance=machine-a\r\n" in body_text
 
 
+class TestStreamableSessionAffinityMiddleware:
+    """Tests for Fly.io affinity middleware on Streamable HTTP transport."""
+
+    @staticmethod
+    async def _collect_response(app, scope):
+        parts = []
+
+        async def send(message):
+            parts.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await app(scope, receive, send)
+        return parts
+
+    @pytest.mark.asyncio
+    async def test_replays_request_for_different_target_instance(self):
+        """Requests routed to another machine return fly-replay response."""
+        from ace_platform.mcp.server import StreamableSessionAffinityMiddleware
+
+        class TrackingApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        base_app = TrackingApp()
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            middleware = StreamableSessionAffinityMiddleware(base_app)
+
+        parts = await self._collect_response(
+            middleware,
+            {
+                "type": "http",
+                "path": "/",
+                "headers": [(b"mcp-session-id", b"abc123@machine-b")],
+            },
+        )
+        assert not base_app.called
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        assert start["status"] == 404
+        assert dict(start.get("headers", [])).get(b"fly-replay") == b"instance=machine-b"
+
+    @pytest.mark.asyncio
+    async def test_strips_instance_suffix_before_forwarding(self):
+        """Session header suffix is removed before reaching FastMCP."""
+        from ace_platform.mcp.server import StreamableSessionAffinityMiddleware
+
+        captured = {}
+
+        async def base_app(scope, receive, send):
+            captured["headers"] = dict(scope.get("headers", []))
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            middleware = StreamableSessionAffinityMiddleware(base_app)
+
+        await self._collect_response(
+            middleware,
+            {
+                "type": "http",
+                "path": "/",
+                "headers": [(b"mcp-session-id", b"abc123@machine-a")],
+            },
+        )
+        assert captured["headers"][b"mcp-session-id"] == b"abc123"
+
+    @pytest.mark.asyncio
+    async def test_appends_instance_suffix_to_response_session_header(self):
+        """Newly created streamable session IDs include machine routing suffix."""
+        from ace_platform.mcp.server import StreamableSessionAffinityMiddleware
+
+        async def base_app(scope, receive, send):
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 200,
+                    "headers": [(b"mcp-session-id", b"abc123")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
+            middleware = StreamableSessionAffinityMiddleware(base_app)
+
+        parts = await self._collect_response(
+            middleware, {"type": "http", "path": "/", "headers": []}
+        )
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        assert dict(start.get("headers", [])).get(b"mcp-session-id") == b"abc123@machine-a"
+
+
 class TestMCPTransportDispatcher:
     """Tests for MCP transport dispatcher."""
 

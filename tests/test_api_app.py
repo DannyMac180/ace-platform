@@ -339,6 +339,16 @@ class TestAppConfiguration:
             response = client.options("/mcp/sse")
             assert response.status_code != 404
 
+    def test_app_lifespan_can_restart_after_streamable_http_session_shutdown(self):
+        """Repeated app startups should not fail on one-shot session manager reuse."""
+        with TestClient(app) as first_client:
+            first_response = first_client.get("/health")
+            assert first_response.status_code == 200
+
+        with TestClient(app) as second_client:
+            second_response = second_client.get("/health")
+            assert second_response.status_code == 200
+
 
 class TestRequestProcessing:
     """Tests for request processing features."""

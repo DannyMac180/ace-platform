@@ -80,6 +80,8 @@ logger = logging.getLogger(__name__)
 
 # Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
 ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
+MCP_SESSION_ID_HEADER = b"mcp-session-id"
+SESSION_ROUTING_SEPARATOR = "@"
 
 # Context variable for storing API key extracted from HTTP headers
 # This allows tools to access the API key without it being passed as a parameter
@@ -210,6 +212,88 @@ class FlyReplayMiddleware:
         await response(scope, receive, send)
 
 
+def _decode_routed_session_id(session_id: str) -> tuple[str, str | None]:
+    """Decode a session identifier with optional machine routing suffix."""
+    base_session_id, separator, target_instance = session_id.rpartition(SESSION_ROUTING_SEPARATOR)
+    if not separator or not base_session_id or not target_instance:
+        return session_id, None
+    return base_session_id, target_instance
+
+
+def _encode_routed_session_id(session_id: str, machine_id: str) -> str:
+    """Attach machine routing suffix to a bare session identifier."""
+    base_session_id, _ = _decode_routed_session_id(session_id)
+    return f"{base_session_id}{SESSION_ROUTING_SEPARATOR}{machine_id}"
+
+
+class StreamableSessionAffinityMiddleware:
+    """ASGI middleware for Fly.io affinity with Streamable HTTP transport.
+
+    Streamable HTTP sessions are in-memory and keyed by MCP session header.
+    In multi-machine Fly deployments, follow-up requests can land on a different
+    machine and lose session state.
+
+    This middleware appends `@<machine_id>` to outgoing `mcp-session-id` values.
+    Incoming requests with that suffix are routed back to the owning machine via
+    `fly-replay`, and the suffix is stripped before passing to FastMCP.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+        self.machine_id = os.environ.get("FLY_MACHINE_ID", "")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or not self.machine_id:
+            await self.app(scope, receive, send)
+            return
+
+        original_headers = list(scope.get("headers", []))
+        rewritten_headers = []
+        target_instance = None
+
+        for header_name, header_value in original_headers:
+            if header_name.lower() == MCP_SESSION_ID_HEADER:
+                decoded_value = header_value.decode("utf-8", errors="replace")
+                session_id, parsed_target_instance = _decode_routed_session_id(decoded_value)
+                if parsed_target_instance:
+                    target_instance = parsed_target_instance
+                    header_value = session_id.encode("utf-8")
+            rewritten_headers.append((header_name, header_value))
+
+        if target_instance and target_instance != self.machine_id:
+            response = Response(
+                "Session on another instance",
+                status_code=404,
+                headers={"fly-replay": f"instance={target_instance}"},
+            )
+            await response(scope, receive, send)
+            return
+
+        if rewritten_headers != original_headers:
+            scope = {**scope, "headers": rewritten_headers}
+
+        async def send_wrapper(message: Any) -> None:
+            if message.get("type") == "http.response.start":
+                response_headers = list(message.get("headers", []))
+                rewritten = False
+                for i, (header_name, header_value) in enumerate(response_headers):
+                    if header_name.lower() != MCP_SESSION_ID_HEADER:
+                        continue
+                    decoded_session_id = header_value.decode("utf-8", errors="replace")
+                    routed_session_id = _encode_routed_session_id(
+                        decoded_session_id, self.machine_id
+                    )
+                    encoded_value = routed_session_id.encode("utf-8")
+                    if encoded_value != header_value:
+                        response_headers[i] = (header_name, encoded_value)
+                        rewritten = True
+                if rewritten:
+                    message = {**message, "headers": response_headers}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
 class LegacySSEDeprecationMiddleware:
     """ASGI middleware that marks legacy SSE transport as deprecated.
 
@@ -313,6 +397,17 @@ def _is_legacy_sse_path(path: str) -> bool:
     """Return True when the path targets the legacy SSE transport."""
     normalized = _normalize_path(path)
     return normalized in {"/sse", "/messages"}
+
+
+class LazyStreamableHTTPApp:
+    """Resolve FastMCP's Streamable HTTP app at request time.
+
+    This allows the mounted app to keep working across repeated process-lifespan
+    startups where the underlying one-shot session manager must be recreated.
+    """
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await _streamable_http_app()(scope, receive, send)
 
 
 class HeaderAuthMiddleware:
@@ -459,7 +554,12 @@ async def streamable_http_session_lifespan() -> AsyncIterator[None]:
         yield
         return
 
-    # Lazily initialize the session manager if needed.
+    # StreamableHTTPSessionManager.run() is one-shot, so recreate the manager for
+    # every parent application lifespan cycle.
+    if hasattr(mcp, "_session_manager"):
+        setattr(mcp, "_session_manager", None)
+
+    # Lazily initialize the session manager for this lifespan.
     _streamable_http_app()
     session_manager = getattr(mcp, "_session_manager", None)
     if session_manager is None:
@@ -472,7 +572,8 @@ async def streamable_http_session_lifespan() -> AsyncIterator[None]:
 
 def create_mcp_asgi_app(*, include_legacy_sse: bool = True) -> ASGIApp:
     """Create MCP ASGI app with Streamable HTTP default and optional SSE compatibility."""
-    streamable_app = _streamable_http_app()
+    streamable_app: ASGIApp = LazyStreamableHTTPApp()
+    streamable_app = StreamableSessionAffinityMiddleware(streamable_app)
 
     if not include_legacy_sse:
         return HeaderAuthMiddleware(streamable_app)
