@@ -19,7 +19,7 @@ import sentry_sdk
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from ace_platform.config import get_settings
@@ -41,6 +41,7 @@ from .middleware import (
 settings = get_settings()
 logger = get_logger(__name__)
 LANDING_VIDEO_PATH = Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
+LANDING_FAVICON_PATH = Path(__file__).resolve().parent.parent / "static" / "ace-favicon.svg"
 
 
 def _init_sentry() -> None:
@@ -511,6 +512,22 @@ def _register_routes(app: FastAPI) -> None:
             filename="landing-hero-video.mp4",
         )
 
+    @app.get("/ace-favicon.svg", include_in_schema=False)
+    async def landing_favicon():
+        """Serve landing page favicon from same origin."""
+        if not LANDING_FAVICON_PATH.exists():
+            raise HTTPException(status_code=404, detail="Landing favicon not found")
+        return FileResponse(
+            LANDING_FAVICON_PATH,
+            media_type="image/svg+xml",
+            filename="ace-favicon.svg",
+        )
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon_ico():
+        """Redirect browser default favicon requests to the SVG favicon."""
+        return RedirectResponse(url="/ace-favicon.svg", status_code=307)
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing_page():
         """Serve the landing page."""
@@ -522,6 +539,8 @@ def _register_routes(app: FastAPI) -> None:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/ace-favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
     <title>ACE</title>
     <meta name="description" content="ACE helps individual developers and knowledge workers improve AI output quality continuously by evolving playbooks from real outcomes.">
     <style>
