@@ -6,7 +6,7 @@ This module sets up the FastAPI application with:
 - Request timing middleware for performance monitoring
 - Global error handling
 - Health check endpoints
-- MCP server integration (SSE transport)
+- MCP server integration (Streamable HTTP + legacy SSE compatibility)
 - Sentry error tracking (when configured)
 """
 
@@ -111,11 +111,15 @@ async def lifespan(app: FastAPI):
 
     # Setup OAuth clients
     from ace_platform.core.oauth import setup_oauth
+    from ace_platform.mcp.server import streamable_http_session_lifespan
 
     setup_oauth()
     logger.info("OAuth clients configured")
 
-    yield
+    # Mounted MCP Streamable HTTP transport needs the session manager to run in
+    # the parent app lifespan because mounted sub-app lifespans are not executed.
+    async with streamable_http_session_lifespan():
+        yield
 
     # Shutdown
     logger.info("ACE Platform API shutting down")
@@ -380,9 +384,11 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(evolutions_router)
     app.include_router(support_router)
 
-    # Mount MCP server at /mcp for SSE transport
+    # Mount MCP server at /mcp with Streamable HTTP as default transport.
+    # Legacy SSE endpoints remain available at /mcp/sse and /mcp/messages
+    # during the compatibility window.
     # This allows clients to connect to the MCP server via the same domain as the API
-    # using: https://aceagent.io/mcp/sse
+    # using: https://aceagent.io/mcp
     #
     # The HeaderAuthMiddleware wraps the MCP app to extract API keys from HTTP headers:
     # - X-API-Key: <api_key>
@@ -392,28 +398,20 @@ def _register_routes(app: FastAPI) -> None:
     # {
     #   "mcpServers": {
     #     "ace": {
-    #       "type": "sse",
-    #       "url": "https://aceagent.io/mcp/sse",
+    #       "type": "http",
+    #       "url": "https://aceagent.io/mcp",
     #       "headers": { "X-API-Key": "your-api-key" }
     #     }
     #   }
     # }
-    from ace_platform.mcp.server import (
-        FlyReplayMiddleware,
-        HeaderAuthMiddleware,
-        SSEDisconnectMiddleware,
-    )
-    from ace_platform.mcp.server import mcp as mcp_server
+    from ace_platform.mcp.server import create_mcp_asgi_app
 
-    mcp_sse_app = mcp_server.sse_app()
-    mcp_sse_app_with_auth = HeaderAuthMiddleware(mcp_sse_app)
-    mcp_sse_app_with_disconnect = SSEDisconnectMiddleware(mcp_sse_app_with_auth)
-    mcp_sse_app_with_replay = FlyReplayMiddleware(mcp_sse_app_with_disconnect)
-    app.mount("/mcp", app=mcp_sse_app_with_replay, name="mcp")
+    mcp_app = create_mcp_asgi_app(include_legacy_sse=True)
+    app.mount("/mcp", app=mcp_app, name="mcp")
 
     # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.
     # Claude Code's MCP client performs OAuth discovery (RFC 9728) before
-    # connecting to SSE endpoints. FastAPI's default 404 body {"detail":"Not Found"}
+    # connecting to remote MCP endpoints. FastAPI's default 404 body {"detail":"Not Found"}
     # doesn't match the expected OAuth error format {"error":"..."}, causing a
     # ZodError in the client. These endpoints return spec-compliant 404s.
     @app.get("/.well-known/oauth-protected-resource")

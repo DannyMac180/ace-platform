@@ -491,7 +491,7 @@ function NewKeyModal({ apiKey, onClose }: { apiKey: ApiKeyCreateResponse; onClos
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const mcpServerUrl = 'https://aceagent.io/mcp/sse';
+  const mcpServerUrl = 'https://aceagent.io/mcp';
 
   const promptInstructions = `Set up the ACE Platform MCP server with these settings:
 - Server Name: ace
@@ -503,7 +503,7 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
   const claudeCommand = `# Add to ~/.claude.json in your project's mcpServers config:
 {
   "ace": {
-    "type": "sse",
+    "type": "http",
     "url": "${mcpServerUrl}",
     "headers": {
       "X-API-Key": "${apiKey.key}"
@@ -513,7 +513,7 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
 
   const headersConfig = JSON.stringify({
     "ace": {
-      "type": "sse",
+      "type": "http",
       "url": mcpServerUrl,
       "headers": {
         "X-API-Key": apiKey.key
@@ -622,6 +622,12 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
                 The MCP server lets your coding agent read playbooks, record outcomes, and trigger evolution automatically.
               </span>
             </div>
+            <div className={styles.setupNote}>
+              <Info size={14} />
+              <span>
+                Legacy SSE endpoint compatibility remains available at <code>https://aceagent.io/mcp/sse</code> through May 22, 2026.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -717,7 +723,7 @@ function SetupDocsModal({ onClose }: { onClose: () => void }) {
   const [templateCopied, setTemplateCopied] = useState(false);
   const [templateExpanded, setTemplateExpanded] = useState(false);
 
-  const mcpServerUrl = 'https://aceagent.io/mcp/sse';
+  const mcpServerUrl = 'https://aceagent.io/mcp';
   const keyPlaceholder = '<YOUR_API_KEY>';
 
   const promptInstructions = `Set up the ACE Platform MCP server with these settings:
@@ -730,7 +736,7 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
   const claudeCommand = `# Add to ~/.claude.json in your project's mcpServers config:
 {
   "ace": {
-    "type": "sse",
+    "type": "http",
     "url": "${mcpServerUrl}",
     "headers": {
       "X-API-Key": "${keyPlaceholder}"
@@ -740,7 +746,7 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
 
   const headersConfig = JSON.stringify({
     "ace": {
-      "type": "sse",
+      "type": "http",
       "url": mcpServerUrl,
       "headers": {
         "X-API-Key": keyPlaceholder
@@ -836,6 +842,12 @@ For Claude Code, add this to your ~/.claude.json under the "mcpServers" key for 
               <Terminal size={14} />
               <span>
                 The MCP server lets your coding agent read playbooks, record outcomes, and trigger evolution automatically.
+              </span>
+            </div>
+            <div className={styles.setupNote}>
+              <Info size={14} />
+              <span>
+                Legacy SSE endpoint compatibility remains available at <code>https://aceagent.io/mcp/sse</code> through May 22, 2026.
               </span>
             </div>
           </div>

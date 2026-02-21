@@ -329,6 +329,16 @@ class TestAppConfiguration:
         assert "/health" in routes
         assert "/ready" in routes
 
+    def test_mcp_streamable_and_legacy_endpoints_are_mounted(self):
+        """Mounted MCP endpoints should exist for both HTTP and legacy SSE."""
+        with TestClient(app) as client:
+            response = client.get("/mcp")
+            assert response.status_code != 404
+
+            # Probe legacy SSE mount without opening a streaming SSE connection.
+            response = client.options("/mcp/sse")
+            assert response.status_code != 404
+
 
 class TestRequestProcessing:
     """Tests for request processing features."""

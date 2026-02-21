@@ -115,6 +115,7 @@ services:
     profiles:
       - full
 
+  # Standalone MCP process (Streamable HTTP default + legacy SSE compatibility)
   mcp:
     build:
       context: .

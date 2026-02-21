@@ -30,23 +30,25 @@ Integrate ACE with Claude Code for AI-assisted development with self-improving p
 The fastest way to add ACE is with the `claude mcp add` command:
 
 ```bash
-claude mcp add --transport sse ace https://aceagent.io/mcp/sse \
+claude mcp add --transport http ace https://aceagent.io/mcp \
   --header "X-API-Key: YOUR_API_KEY"
 ```
+
+Legacy SSE compatibility remains available through **May 22, 2026** at `https://aceagent.io/mcp/sse`.
 
 This adds the server to your **local** scope (current project only) by default.
 
 **To make it available across all projects**, use `--scope user`:
 
 ```bash
-claude mcp add --transport sse --scope user ace https://aceagent.io/mcp/sse \
+claude mcp add --transport http --scope user ace https://aceagent.io/mcp \
   --header "X-API-Key: YOUR_API_KEY"
 ```
 
 **To share it with your team**, use `--scope project` (adds to `.mcp.json` in your project root):
 
 ```bash
-claude mcp add --transport sse --scope project ace https://aceagent.io/mcp/sse \
+claude mcp add --transport http --scope project ace https://aceagent.io/mcp \
   --header "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -128,8 +130,8 @@ Keep API keys out of shared config files using environment variable expansion in
 {
   "mcpServers": {
     "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "type": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "${ACE_API_KEY}"
       }
@@ -153,11 +155,11 @@ export ACE_API_KEY="ace_..."
    ```bash
    claude mcp list
    ```
-3. Verify the URL is correct: `https://aceagent.io/mcp/sse`
+3. Verify the URL is correct: `https://aceagent.io/mcp`
 4. Try removing and re-adding:
    ```bash
    claude mcp remove ace
-   claude mcp add --transport sse ace https://aceagent.io/mcp/sse \
+   claude mcp add --transport http ace https://aceagent.io/mcp \
      --header "X-API-Key: YOUR_API_KEY"
    ```
 

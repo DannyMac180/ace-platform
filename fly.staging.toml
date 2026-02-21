@@ -30,7 +30,7 @@ kill_timeout = 30
 # =============================================================================
 [processes]
   api = "uvicorn ace_platform.api.main:app --host 0.0.0.0 --port 8000 --workers 1"
-  mcp = "python -m ace_platform.mcp.server"
+  mcp = "python -m ace_platform.mcp.server http"
   worker = "celery -A ace_platform.workers.celery_app worker --loglevel=info --concurrency=1"
   beat = "celery -A ace_platform.workers.celery_app beat --loglevel=info"
 

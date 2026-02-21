@@ -19,7 +19,7 @@ Benefits of MCP integration:
 ## MCP Server Endpoint
 
 ```
-https://aceagent.io/mcp/sse
+https://aceagent.io/mcp
 ```
 
 ## Available Tools
@@ -146,13 +146,14 @@ MCP requires API key authentication via the `X-API-Key` header:
 
 ## Connection
 
-Connect via SSE (Server-Sent Events):
+Connect via Streamable HTTP:
 
 ```
-https://aceagent.io/mcp/sse
+https://aceagent.io/mcp
 ```
 
-Use the native SSE configuration in your MCP client.
+Use HTTP transport in your MCP client.
+Legacy SSE endpoints (`https://aceagent.io/mcp/sse` and `/mcp/messages`) remain available through **May 22, 2026**.
 
 ## Quick Setup
 
@@ -162,8 +163,8 @@ Use the native SSE configuration in your MCP client.
 {
   "mcpServers": {
     "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "type": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -180,8 +181,8 @@ Use the native SSE configuration in your MCP client.
 {
   "mcpServers": {
     "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "type": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -194,14 +195,14 @@ Use the native SSE configuration in your MCP client.
 
 ### Any MCP Client
 
-Any MCP client that supports SSE transport can connect to ACE:
+Any MCP client that supports HTTP transport can connect to ACE:
 
 ```json
 {
   "mcpServers": {
     "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "type": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -335,7 +336,7 @@ Common error message patterns:
 
 - Check the MCP server URL
 - Verify network connectivity
-- Ensure your MCP client is configured for SSE transport to `https://aceagent.io/mcp/sse`
+- Ensure your MCP client is configured for HTTP transport to `https://aceagent.io/mcp`
 
 ### Authentication Failed
 

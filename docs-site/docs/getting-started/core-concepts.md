@@ -202,8 +202,10 @@ Never expose API keys with write scopes in client-side code or public repositori
 ### MCP Endpoint
 
 ```
-https://aceagent.io/mcp/sse
+https://aceagent.io/mcp
 ```
+
+Legacy SSE compatibility is still available at `https://aceagent.io/mcp/sse` through **May 22, 2026**.
 
 ## Subscriptions & Usage
 

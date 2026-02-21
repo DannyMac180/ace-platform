@@ -72,9 +72,10 @@ lsof -ti :3000 | xargs kill -9 2>/dev/null; cd web && npm run dev -- --port 3000
 ### MCP Server Access
 
 The MCP server is mounted within the API and accessible at:
-- **Production**: `https://aceagent.io/mcp/sse`
-- **Staging**: `https://ace-platform-staging.fly.dev/mcp/sse`
-- **Local**: `http://localhost:8000/mcp/sse`
+- **Production**: `https://aceagent.io/mcp`
+- **Staging**: `https://ace-platform-staging.fly.dev/mcp`
+- **Local**: `http://localhost:8000/mcp`
+Legacy SSE compatibility endpoints (`/mcp/sse`, `/mcp/messages`) are available through **May 22, 2026**.
 
 For local development with stdio transport (e.g., Claude Desktop):
 ```bash

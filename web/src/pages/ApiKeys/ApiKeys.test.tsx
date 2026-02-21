@@ -199,7 +199,7 @@ describe('ApiKeys', () => {
     it('shows correct MCP server URL', async () => {
       await openSetupDocsModal();
 
-      expect(screen.getByText(/aceagent\.io\/mcp\/sse/)).toBeInTheDocument();
+      expect(screen.getByText(/Server URL:\s*https:\/\/aceagent\.io\/mcp\b/)).toBeInTheDocument();
     });
 
     it('shows placeholder for API key', async () => {
@@ -227,7 +227,7 @@ describe('ApiKeys', () => {
       // Click "JSON Config" tab
       await user.click(screen.getByRole('button', { name: 'JSON Config' }));
       expect(screen.getByText(/Add this to your MCP client configuration:/)).toBeInTheDocument();
-      expect(screen.getByText(/"type": "sse"/)).toBeInTheDocument();
+      expect(screen.getByText(/"type": "http"/)).toBeInTheDocument();
     });
 
     it('has copy buttons in the code block', async () => {
@@ -278,6 +278,9 @@ describe('ApiKeys', () => {
       ).toBeInTheDocument();
       expect(
         screen.getByText(/If you've lost your key, create a new one/)
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Legacy SSE endpoint compatibility remains available at/)
       ).toBeInTheDocument();
     });
   });

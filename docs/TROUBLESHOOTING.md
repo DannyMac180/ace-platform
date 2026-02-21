@@ -162,7 +162,8 @@ docker compose logs mcp --tail=50
 
 2. **Wrong transport**
    - Local: use `stdio` transport with `python -m ace_platform.mcp.server stdio`
-   - Remote: use `sse` transport
+   - Remote: use `http` transport (`https://aceagent.io/mcp`)
+   - Legacy SSE endpoints are still available through May 22, 2026
 
 3. **Environment variables missing**
    ```json

@@ -179,7 +179,7 @@ show_deployment_info() {
     log_info "MCP Server Information:"
     echo ""
     echo "  The MCP server runs as a process group within the Fly.io app."
-    echo "  It uses SSE transport for remote connections."
+    echo "  It uses Streamable HTTP transport for remote connections."
     echo ""
     echo "  MCP Server Port: 8001 (internal)"
     echo ""
@@ -194,7 +194,7 @@ show_deployment_info() {
     echo "    Generate an API key via the API: POST /auth/api-keys"
     echo ""
     echo "  Claude Desktop Configuration (for remote access):"
-    echo "    Configure Claude Desktop to connect via SSE transport"
+    echo "    Configure Claude Desktop to connect via HTTP transport"
     echo "    with the appropriate API key for authentication."
     echo ""
 }

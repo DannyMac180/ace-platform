@@ -50,7 +50,8 @@ Your agent will use the `create_playbook` tool to generate well-structured instr
 
 The fastest way to use your playbook is through MCP (Model Context Protocol).
 
-Add the ACE MCP server to your client's config with the endpoint `https://aceagent.io/mcp/sse` and your API key:
+Add the ACE MCP server to your client's config with the endpoint `https://aceagent.io/mcp` and your API key:
+Legacy SSE compatibility is still available at `https://aceagent.io/mcp/sse` through **May 22, 2026**.
 
 - [Claude Desktop setup](/docs/developer-guides/mcp-integration/claude-desktop)
 - [Claude Code setup](/docs/developer-guides/mcp-integration/claude-code)

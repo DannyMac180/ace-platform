@@ -125,17 +125,17 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-### Production (SSE transport)
+### Production (Streamable HTTP transport)
 
-For production deployments, the MCP server is mounted on the API app at `/mcp/sse`.
+For production deployments, the MCP server is mounted on the API app at `/mcp`.
 Configure your client to connect via HTTP:
 
 ```json
 {
   "mcpServers": {
     "ace-platform": {
-      "transport": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "transport": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -259,7 +259,8 @@ Response:
 The MCP server uses these environment variables:
 
 These apply when running `python -m ace_platform.mcp.server` directly.
-For hosted deployments, clients should use `<api-domain>/mcp/sse`.
+For hosted deployments, clients should use `<api-domain>/mcp`.
+Legacy SSE compatibility endpoints (`<api-domain>/mcp/sse` and `<api-domain>/mcp/messages`) remain available through **May 22, 2026**.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

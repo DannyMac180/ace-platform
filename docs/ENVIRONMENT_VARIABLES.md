@@ -207,7 +207,8 @@ STRIPE_WEBHOOK_SECRET=whsec_xyz789...
 
 ## MCP Server
 
-In hosted deployments, the MCP SSE endpoint is mounted on the API domain at `/mcp/sse`.
+In hosted deployments, the MCP Streamable HTTP endpoint is mounted on the API domain at `/mcp`.
+Legacy SSE endpoints (`/mcp/sse` and `/mcp/messages`) remain available through **May 22, 2026**.
 `MCP_SERVER_HOST` and `MCP_SERVER_PORT` apply when running `python -m ace_platform.mcp.server` directly.
 
 ### MCP_SERVER_HOST

@@ -18,8 +18,8 @@ def _mcp_test_settings() -> Settings:
     )
 
 
-def test_mcp_run_server_initializes_sentry_with_process_context():
-    """Verify that run_server() calls init_sentry_for_process before starting."""
+def test_mcp_run_server_initializes_sentry_with_process_context_stdio():
+    """Verify run_server(stdio) initializes Sentry and starts stdio transport."""
     settings = _mcp_test_settings()
     with (
         patch("ace_platform.mcp.server.settings", settings),
@@ -38,3 +38,46 @@ def test_mcp_run_server_initializes_sentry_with_process_context():
         assert called_settings.sentry_release == "test-release"
 
         mock_mcp.run.assert_called_once_with(transport="stdio")
+
+
+def test_mcp_run_server_initializes_sentry_with_process_context_sse():
+    """Verify run_server(sse) initializes Sentry and starts SSE transport."""
+    settings = _mcp_test_settings()
+    with (
+        patch("ace_platform.mcp.server.settings", settings),
+        patch("ace_platform.mcp.server.init_sentry_for_process") as init_call,
+        patch("ace_platform.mcp.server.mcp") as mock_mcp,
+    ):
+        from ace_platform.mcp.server import run_server
+
+        run_server(transport="sse")
+
+        init_call.assert_called_once()
+        mock_mcp.run.assert_called_once_with(transport="sse")
+
+
+def test_mcp_run_server_initializes_sentry_with_process_context_http():
+    """Verify run_server(http) initializes Sentry and starts ASGI HTTP app."""
+    settings = _mcp_test_settings()
+    sentinel_app = object()
+    with (
+        patch("ace_platform.mcp.server.settings", settings),
+        patch("ace_platform.mcp.server.init_sentry_for_process") as init_call,
+        patch(
+            "ace_platform.mcp.server.create_mcp_asgi_app", return_value=sentinel_app
+        ) as build_app,
+        patch("uvicorn.run") as uvicorn_run,
+        patch("ace_platform.mcp.server.mcp") as mock_mcp,
+    ):
+        from ace_platform.mcp.server import run_server
+
+        run_server(transport="http")
+
+        init_call.assert_called_once()
+        build_app.assert_called_once_with(include_legacy_sse=True)
+        uvicorn_run.assert_called_once_with(
+            sentinel_app,
+            host=settings.mcp_server_host,
+            port=settings.mcp_server_port,
+        )
+        mock_mcp.run.assert_not_called()

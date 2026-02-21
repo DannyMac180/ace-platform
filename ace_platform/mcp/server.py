@@ -2,7 +2,8 @@
 
 This module provides the MCP server entry point that exposes playbook
 management tools to LLM clients (like Claude). It uses FastMCP for
-simplified tool registration and supports SSE/stdio transports.
+simplified tool registration and supports Streamable HTTP, SSE, and stdio
+transports.
 
 Configuration is loaded from environment variables:
 - MCP_SERVER_HOST: Server bind host (default: 0.0.0.0)
@@ -11,11 +12,12 @@ Configuration is loaded from environment variables:
 
 Authentication priority (first match wins):
 1. Explicit `api_key` parameter passed to tool
-2. `X-API-Key` header (for SSE/HTTP transport)
-3. `Authorization: Bearer <token>` header (for SSE/HTTP transport)
+2. `X-API-Key` header (for HTTP transport)
+3. `Authorization: Bearer <token>` header (for HTTP transport)
 4. `ACE_API_KEY` environment variable (for stdio transport)
 """
 
+import logging
 import os
 import re
 import time
@@ -74,6 +76,7 @@ from ace_platform.db.models import (
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
 ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
@@ -207,6 +210,111 @@ class FlyReplayMiddleware:
         await response(scope, receive, send)
 
 
+class LegacySSEDeprecationMiddleware:
+    """ASGI middleware that marks legacy SSE transport as deprecated.
+
+    Adds deprecation response headers to /sse and /messages responses and logs
+    usage so we can monitor migration progress before removing SSE endpoints.
+    """
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        sunset_http_date: str = "Fri, 22 May 2026 00:00:00 GMT",
+        migration_guide_url: str | None = None,
+    ) -> None:
+        self.app = app
+        self.sunset_http_date = sunset_http_date
+        self.migration_guide_url = (
+            migration_guide_url
+            or f"{settings.docs_url.rstrip('/')}/docs/developer-guides/mcp-integration/overview"
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = _scope_relative_path(scope)
+        if not _is_legacy_sse_path(path):
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "GET")
+        client = scope.get("client") or ("unknown", 0)
+        logger.info(
+            "MCP legacy SSE transport used",
+            extra={
+                "transport": "sse",
+                "path": path,
+                "method": method,
+                "client_ip": client[0],
+                "sunset": self.sunset_http_date,
+            },
+        )
+
+        async def send_wrapper(message: Any) -> None:
+            if message.get("type") == "http.response.start":
+                headers = list(message.get("headers", []))
+                headers.append((b"deprecation", b"true"))
+                headers.append((b"sunset", self.sunset_http_date.encode("utf-8")))
+                headers.append(
+                    (
+                        b"link",
+                        (
+                            f'<{self.migration_guide_url}>; rel="deprecation"; type="text/html", '
+                            f'<https://aceagent.io/mcp>; rel="successor-version"'
+                        ).encode(),
+                    )
+                )
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+class MCPTransportDispatcher:
+    """Route MCP HTTP requests between Streamable HTTP and legacy SSE apps."""
+
+    def __init__(self, streamable_app: ASGIApp, legacy_sse_app: ASGIApp) -> None:
+        self.streamable_app = streamable_app
+        self.legacy_sse_app = legacy_sse_app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.streamable_app(scope, receive, send)
+            return
+
+        path = _scope_relative_path(scope)
+        if _is_legacy_sse_path(path):
+            await self.legacy_sse_app(scope, receive, send)
+            return
+
+        await self.streamable_app(scope, receive, send)
+
+
+def _normalize_path(path: str) -> str:
+    """Normalize URL path for transport routing checks."""
+    return path.rstrip("/") or "/"
+
+
+def _scope_relative_path(scope: Scope) -> str:
+    """Return request path normalized and stripped of root_path when mounted."""
+    path = str(scope.get("path", ""))
+    root_path = str(scope.get("root_path", "")) or ""
+    if root_path and path.startswith(root_path):
+        stripped = path[len(root_path) :]
+        path = stripped or "/"
+    return _normalize_path(path)
+
+
+def _is_legacy_sse_path(path: str) -> bool:
+    """Return True when the path targets the legacy SSE transport."""
+    normalized = _normalize_path(path)
+    return normalized in {"/sse", "/messages"}
+
+
 class HeaderAuthMiddleware:
     """ASGI middleware to extract API key from HTTP headers.
 
@@ -224,8 +332,8 @@ class HeaderAuthMiddleware:
         {
             "mcpServers": {
                 "ace": {
-                    "type": "sse",
-                    "url": "https://aceagent.io/mcp/sse",
+                    "type": "http",
+                    "url": "https://aceagent.io/mcp",
                     "headers": {
                         "X-API-Key": "your-api-key-here"
                     }
@@ -315,13 +423,71 @@ _transport_security = TransportSecuritySettings(
     allowed_origins=_allowed_origins,
 )
 
-mcp = FastMCP(
-    name="ACE Platform",
-    lifespan=mcp_lifespan,
-    host=settings.mcp_server_host,
-    port=settings.mcp_server_port,
-    transport_security=_transport_security,
-)
+_mcp_kwargs = {
+    "name": "ACE Platform",
+    "lifespan": mcp_lifespan,
+    "host": settings.mcp_server_host,
+    "port": settings.mcp_server_port,
+    "transport_security": _transport_security,
+}
+try:
+    # Use root path so /mcp (mount point) is the Streamable HTTP endpoint.
+    mcp = FastMCP(streamable_http_path="/", **_mcp_kwargs)
+except TypeError:
+    # Fallback for older mcp package versions that don't expose streamable_http_path.
+    mcp = FastMCP(**_mcp_kwargs)
+
+
+def _streamable_http_app() -> ASGIApp:
+    """Get the Streamable HTTP ASGI app from FastMCP."""
+    if hasattr(mcp, "streamable_http_app"):
+        return mcp.streamable_http_app()
+    if hasattr(mcp, "http_app"):
+        return mcp.http_app()
+    raise RuntimeError("Installed mcp package does not support Streamable HTTP transport")
+
+
+@asynccontextmanager
+async def streamable_http_session_lifespan() -> AsyncIterator[None]:
+    """Run FastMCP's Streamable HTTP session manager for mounted deployments.
+
+    FastAPI/Starlette mounted sub-applications do not automatically receive lifespan
+    events, so we start the session manager from the parent application's lifespan
+    when MCP is mounted under /mcp.
+    """
+    if not hasattr(mcp, "streamable_http_app"):
+        yield
+        return
+
+    # Lazily initialize the session manager if needed.
+    _streamable_http_app()
+    session_manager = getattr(mcp, "_session_manager", None)
+    if session_manager is None:
+        yield
+        return
+
+    async with session_manager.run():
+        yield
+
+
+def create_mcp_asgi_app(*, include_legacy_sse: bool = True) -> ASGIApp:
+    """Create MCP ASGI app with Streamable HTTP default and optional SSE compatibility."""
+    streamable_app = _streamable_http_app()
+
+    if not include_legacy_sse:
+        return HeaderAuthMiddleware(streamable_app)
+
+    legacy_sse_app = mcp.sse_app()
+    legacy_sse_app = SSEDisconnectMiddleware(legacy_sse_app)
+    legacy_sse_app = FlyReplayMiddleware(legacy_sse_app)
+
+    app: ASGIApp = MCPTransportDispatcher(
+        streamable_app=streamable_app,
+        legacy_sse_app=legacy_sse_app,
+    )
+    app = HeaderAuthMiddleware(app)
+    app = LegacySSEDeprecationMiddleware(app)
+    return app
 
 
 # Health check endpoints for Docker/Kubernetes
@@ -1494,17 +1660,35 @@ def run_server(transport: str = "stdio") -> None:
     """Run the MCP server.
 
     Args:
-        transport: Transport to use ('stdio' or 'sse').
+        transport: Transport to use ('stdio', 'sse', or 'http').
                    Use 'stdio' for local development with Claude Desktop.
-                   Use 'sse' for web-based clients.
+                   Use 'http' for Streamable HTTP + legacy SSE compatibility.
+                   Use 'sse' only for legacy compatibility testing.
     """
     # Initialize Sentry for standalone MCP process.
     # When MCP is mounted inside the API (via _register_routes), the API
     # handles its own Sentry init, so this only runs for standalone mode.
     init_sentry_for_process(process_name="mcp", settings=settings)
 
-    # Host and port are configured at FastMCP initialization
-    mcp.run(transport=transport)
+    normalized_transport = transport.strip().lower()
+
+    if normalized_transport in {"http", "streamable-http", "streamable_http"}:
+        import uvicorn
+
+        app = create_mcp_asgi_app(include_legacy_sse=True)
+        uvicorn.run(
+            app,
+            host=settings.mcp_server_host,
+            port=settings.mcp_server_port,
+        )
+        return
+
+    if normalized_transport in {"stdio", "sse"}:
+        # Host and port are configured at FastMCP initialization.
+        mcp.run(transport=normalized_transport)
+        return
+
+    raise ValueError(f"Unsupported MCP transport '{transport}'. Use one of: stdio, sse, http.")
 
 
 if __name__ == "__main__":

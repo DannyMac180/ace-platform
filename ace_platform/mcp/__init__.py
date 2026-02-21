@@ -7,8 +7,8 @@ Usage:
     # Run with stdio transport (for Claude Desktop)
     python -m ace_platform.mcp.server
 
-    # Run with SSE transport (for web clients)
-    python -m ace_platform.mcp.server sse
+    # Run with Streamable HTTP + legacy SSE compatibility
+    python -m ace_platform.mcp.server http
 """
 
 from ace_platform.mcp.auth import (

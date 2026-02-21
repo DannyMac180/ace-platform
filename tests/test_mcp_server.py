@@ -293,6 +293,239 @@ class TestFlyReplayMiddleware:
         assert "data: /mcp/messages/?session_id=abc123&fly_instance=machine-a\r\n" in body_text
 
 
+class TestMCPTransportDispatcher:
+    """Tests for MCP transport dispatcher."""
+
+    @staticmethod
+    async def _collect_response(app, scope):
+        parts = []
+
+        async def send(message):
+            parts.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await app(scope, receive, send)
+        return parts
+
+    @pytest.mark.asyncio
+    async def test_routes_root_to_streamable_http(self):
+        """Root path is handled by Streamable HTTP app."""
+        from ace_platform.mcp.server import MCPTransportDispatcher
+
+        class TrackingApp:
+            def __init__(self, name):
+                self.name = name
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": self.name.encode()})
+
+        streamable = TrackingApp("streamable")
+        legacy = TrackingApp("legacy")
+        dispatcher = MCPTransportDispatcher(streamable_app=streamable, legacy_sse_app=legacy)
+
+        await self._collect_response(dispatcher, {"type": "http", "path": "/", "query_string": b""})
+        assert streamable.called
+        assert not legacy.called
+
+    @pytest.mark.asyncio
+    async def test_routes_mcp_path_to_streamable_http(self):
+        """Non-legacy paths such as /mcp route to Streamable HTTP app."""
+        from ace_platform.mcp.server import MCPTransportDispatcher
+
+        class TrackingApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        streamable = TrackingApp()
+        legacy = TrackingApp()
+        dispatcher = MCPTransportDispatcher(streamable_app=streamable, legacy_sse_app=legacy)
+
+        await self._collect_response(
+            dispatcher,
+            {"type": "http", "path": "/mcp", "query_string": b""},
+        )
+        assert streamable.called
+        assert not legacy.called
+
+    @pytest.mark.asyncio
+    async def test_routes_sse_path_to_legacy_transport(self):
+        """Legacy /sse path routes to SSE app."""
+        from ace_platform.mcp.server import MCPTransportDispatcher
+
+        class TrackingApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        streamable = TrackingApp()
+        legacy = TrackingApp()
+        dispatcher = MCPTransportDispatcher(streamable_app=streamable, legacy_sse_app=legacy)
+
+        await self._collect_response(
+            dispatcher,
+            {"type": "http", "path": "/sse", "query_string": b""},
+        )
+        assert legacy.called
+        assert not streamable.called
+
+    @pytest.mark.asyncio
+    async def test_routes_messages_path_to_legacy_transport(self):
+        """Legacy /messages path routes to SSE app."""
+        from ace_platform.mcp.server import MCPTransportDispatcher
+
+        class TrackingApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        streamable = TrackingApp()
+        legacy = TrackingApp()
+        dispatcher = MCPTransportDispatcher(streamable_app=streamable, legacy_sse_app=legacy)
+
+        await self._collect_response(
+            dispatcher,
+            {"type": "http", "path": "/messages/", "query_string": b"session_id=abc"},
+        )
+        assert legacy.called
+        assert not streamable.called
+
+    @pytest.mark.asyncio
+    async def test_routes_mounted_legacy_paths_to_sse_app(self):
+        """Mounted /mcp/sse path routes to SSE app using root_path stripping."""
+        from ace_platform.mcp.server import MCPTransportDispatcher
+
+        class TrackingApp:
+            def __init__(self):
+                self.called = False
+
+            async def __call__(self, scope, receive, send):
+                self.called = True
+                await send({"type": "http.response.start", "status": 200, "headers": []})
+                await send({"type": "http.response.body", "body": b"ok"})
+
+        streamable = TrackingApp()
+        legacy = TrackingApp()
+        dispatcher = MCPTransportDispatcher(streamable_app=streamable, legacy_sse_app=legacy)
+
+        await self._collect_response(
+            dispatcher,
+            {
+                "type": "http",
+                "path": "/mcp/sse",
+                "root_path": "/mcp",
+                "query_string": b"",
+            },
+        )
+        assert legacy.called
+        assert not streamable.called
+
+
+class TestLegacySSEDeprecationMiddleware:
+    """Tests for legacy SSE deprecation response headers."""
+
+    @staticmethod
+    async def _collect_response(app, scope):
+        parts = []
+
+        async def send(message):
+            parts.append(message)
+
+        async def receive():
+            return {"type": "http.request", "body": b""}
+
+        await app(scope, receive, send)
+        return parts
+
+    @pytest.mark.asyncio
+    async def test_adds_deprecation_headers_for_sse(self):
+        """Legacy /sse responses include deprecation and sunset headers."""
+        from ace_platform.mcp.server import LegacySSEDeprecationMiddleware
+
+        async def base_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = LegacySSEDeprecationMiddleware(base_app)
+        parts = await self._collect_response(middleware, {"type": "http", "path": "/sse"})
+
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        headers = dict(start.get("headers", []))
+        assert headers.get(b"deprecation") == b"true"
+        assert headers.get(b"sunset") == b"Fri, 22 May 2026 00:00:00 GMT"
+        assert b"deprecation" in headers.get(b"link", b"")
+
+    @pytest.mark.asyncio
+    async def test_adds_deprecation_headers_for_messages(self):
+        """Legacy /messages responses include deprecation and sunset headers."""
+        from ace_platform.mcp.server import LegacySSEDeprecationMiddleware
+
+        async def base_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = LegacySSEDeprecationMiddleware(base_app)
+        parts = await self._collect_response(middleware, {"type": "http", "path": "/messages/"})
+
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        headers = dict(start.get("headers", []))
+        assert headers.get(b"deprecation") == b"true"
+        assert headers.get(b"sunset") == b"Fri, 22 May 2026 00:00:00 GMT"
+
+    @pytest.mark.asyncio
+    async def test_does_not_add_deprecation_headers_for_streamable_paths(self):
+        """Streamable HTTP paths do not receive legacy SSE deprecation headers."""
+        from ace_platform.mcp.server import LegacySSEDeprecationMiddleware
+
+        async def base_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = LegacySSEDeprecationMiddleware(base_app)
+        parts = await self._collect_response(middleware, {"type": "http", "path": "/"})
+
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        headers = dict(start.get("headers", []))
+        assert b"deprecation" not in headers
+        assert b"sunset" not in headers
+
+    @pytest.mark.asyncio
+    async def test_adds_deprecation_headers_for_mounted_legacy_path(self):
+        """Mounted /mcp/messages path still receives legacy deprecation headers."""
+        from ace_platform.mcp.server import LegacySSEDeprecationMiddleware
+
+        async def base_app(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b"ok"})
+
+        middleware = LegacySSEDeprecationMiddleware(base_app)
+        parts = await self._collect_response(
+            middleware,
+            {"type": "http", "path": "/mcp/messages", "root_path": "/mcp"},
+        )
+
+        start = next(p for p in parts if p.get("type") == "http.response.start")
+        headers = dict(start.get("headers", []))
+        assert headers.get(b"deprecation") == b"true"
+
+
 # Integration tests require PostgreSQL
 pytestmark_integration = pytest.mark.skipif(
     not RUN_INTEGRATION_TESTS,

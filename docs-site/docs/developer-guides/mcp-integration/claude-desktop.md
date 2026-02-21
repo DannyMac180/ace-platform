@@ -42,8 +42,8 @@ Add the ACE MCP server to the config file:
 {
   "mcpServers": {
     "ace": {
-      "type": "sse",
-      "url": "https://aceagent.io/mcp/sse",
+      "type": "http",
+      "url": "https://aceagent.io/mcp",
       "headers": {
         "X-API-Key": "YOUR_API_KEY"
       }
@@ -53,6 +53,7 @@ Add the ACE MCP server to the config file:
 ```
 
 Replace `YOUR_API_KEY` with your actual API key.
+Legacy SSE compatibility remains available through **May 22, 2026** at `https://aceagent.io/mcp/sse`.
 
 ### Step 4: Restart Claude Desktop
 
@@ -154,7 +155,7 @@ Request specific sections for focused tasks:
 
 1. **Check config file** - Open via Settings > Developer > Edit Config
 2. **Validate JSON syntax** - Use a JSON validator
-3. **Verify URL is correct** - `https://aceagent.io/mcp/sse`
+3. **Verify URL is correct** - `https://aceagent.io/mcp`
 4. **Restart Claude Desktop** - Full quit, not just close window
 
 ### Authentication Errors
