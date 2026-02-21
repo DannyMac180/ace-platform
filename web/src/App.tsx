@@ -4,7 +4,6 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary';
 import { Layout } from './components/Layout/Layout';
 import { AuthPage } from './pages/Auth/AuthPage';
-import { LandingPage } from './pages/Landing';
 import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
@@ -77,14 +76,6 @@ function AppRoutes() {
   return (
     <Routes>
       {/* Public routes */}
-      <Route
-        path="/"
-        element={
-          <PublicRoute>
-            <LandingPage />
-          </PublicRoute>
-        }
-      />
       <Route
         path="/login"
         element={
@@ -236,6 +227,7 @@ function AppRoutes() {
       />
 
       {/* Redirects */}
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
