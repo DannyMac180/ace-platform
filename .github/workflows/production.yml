@@ -125,11 +125,11 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Backend to Production
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --wait-timeout 15m --release-command-timeout 20m
 
       - name: Deploy Frontend to Production
         working-directory: web
-        run: flyctl deploy --remote-only
+        run: flyctl deploy --remote-only --wait-timeout 10m
 
       - name: Verify Backend Deployment
         run: |
