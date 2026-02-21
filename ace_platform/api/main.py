@@ -39,9 +39,7 @@ from .middleware import (
 
 settings = get_settings()
 logger = get_logger(__name__)
-LANDING_VIDEO_PATH = (
-    Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
-)
+LANDING_VIDEO_PATH = Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
 
 
 def _init_sentry() -> None:
