@@ -193,9 +193,25 @@ async def google_callback(
     try:
         token = await oauth.google.authorize_access_token(request)
     except Exception as e:
-        logger.error("Google OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        # Log detailed error info to help diagnose OAuth failures
+        # Common causes: session cookie lost (missing state), network errors,
+        # or Google rejecting the token exchange
+        session_has_state = bool(request.session.get("_state_google_"))
+        logger.error(
+            "Google OAuth token exchange failed: %s: %s (session_has_state=%s)",
+            type(e).__name__,
+            str(e),
+            session_has_state,
+            exc_info=True,
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "session_has_state": session_has_state,
+                "query_params": dict(request.query_params),
+            },
+        )
         await audit_oauth_login_failure(
-            db, request, provider="google", reason="Token exchange failed"
+            db, request, provider="google", reason=f"Token exchange failed: {type(e).__name__}: {e}"
         )
         await db.commit()
         return _oauth_error_redirect("Failed to authenticate with Google. Please try again.")
@@ -306,9 +322,22 @@ async def github_callback(
     try:
         token = await oauth.github.authorize_access_token(request)
     except Exception as e:
-        logger.error("GitHub OAuth token exchange failed", exc_info=True, extra={"error": str(e)})
+        session_has_state = bool(request.session.get("_state_github_"))
+        logger.error(
+            "GitHub OAuth token exchange failed: %s: %s (session_has_state=%s)",
+            type(e).__name__,
+            str(e),
+            session_has_state,
+            exc_info=True,
+            extra={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "session_has_state": session_has_state,
+                "query_params": dict(request.query_params),
+            },
+        )
         await audit_oauth_login_failure(
-            db, request, provider="github", reason="Token exchange failed"
+            db, request, provider="github", reason=f"Token exchange failed: {type(e).__name__}: {e}"
         )
         await db.commit()
         return _oauth_error_redirect("Failed to authenticate with GitHub. Please try again.")
