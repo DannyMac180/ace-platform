@@ -59,6 +59,38 @@ class TestHealthEndpoints:
             assert data["status"] == "not_ready"
             assert data["database"] == "disconnected"
 
+    def test_root_landing_contains_social_meta_tags(self, client):
+        """Landing page should include required OG/Twitter metadata tags."""
+        response = client.get("/")
+        assert response.status_code == 200
+        html = response.text
+
+        assert 'property="og:title"' in html
+        assert 'property="og:description"' in html
+        assert 'property="og:image"' in html
+        assert 'property="og:url"' in html
+        assert 'property="og:site_name"' in html
+        assert 'name="twitter:card"' in html
+        assert 'name="twitter:title"' in html
+        assert 'name="twitter:description"' in html
+        assert 'name="twitter:image"' in html
+
+    def test_x_landing_contains_social_meta_tags(self, client):
+        """X landing page should include required OG/Twitter metadata tags."""
+        response = client.get("/x")
+        assert response.status_code == 200
+        html = response.text
+
+        assert 'property="og:title"' in html
+        assert 'property="og:description"' in html
+        assert 'property="og:image"' in html
+        assert 'property="og:url"' in html
+        assert 'property="og:site_name"' in html
+        assert 'name="twitter:card"' in html
+        assert 'name="twitter:title"' in html
+        assert 'name="twitter:description"' in html
+        assert 'name="twitter:image"' in html
+
 
 class TestExceptionHandlers:
     """Tests for global exception handlers."""

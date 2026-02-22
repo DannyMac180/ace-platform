@@ -42,6 +42,7 @@ settings = get_settings()
 logger = get_logger(__name__)
 LANDING_VIDEO_PATH = Path(__file__).resolve().parent.parent / "static" / "landing-hero-video.mp4"
 LANDING_FAVICON_PATH = Path(__file__).resolve().parent.parent / "static" / "ace-favicon.svg"
+LANDING_SOCIAL_CARD_PATH = Path(__file__).resolve().parent.parent / "static" / "ace-social-card.png"
 
 
 def _init_sentry() -> None:
@@ -530,11 +531,351 @@ def _register_routes(app: FastAPI) -> None:
         """Redirect browser default favicon requests to the SVG favicon."""
         return RedirectResponse(url="/ace-favicon.svg", status_code=307)
 
+    @app.get("/ace-social-card.png", include_in_schema=False)
+    async def landing_social_card():
+        """Serve social preview image for Open Graph/Twitter cards."""
+        if not LANDING_SOCIAL_CARD_PATH.exists():
+            raise HTTPException(status_code=404, detail="Social card not found")
+        return FileResponse(
+            LANDING_SOCIAL_CARD_PATH,
+            media_type="image/png",
+            filename="ace-social-card.png",
+        )
+
+    @app.get("/x", response_class=HTMLResponse, include_in_schema=False)
+    async def x_landing_page(request: Request):
+        """Serve an X-optimized mobile-first acquisition landing page."""
+        if not settings.x_landing_enabled:
+            return RedirectResponse(url="/", status_code=307)
+
+        frontend_url = settings.frontend_url.rstrip("/")
+        docs_url = settings.docs_url.rstrip("/")
+        site_url = settings.oauth_redirect_base_url.rstrip("/")
+        x_url = f"{site_url}/x"
+        social_image_url = f"{site_url}/ace-social-card.png"
+        current_year = datetime.now(UTC).year
+        html = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="/ace-favicon.svg">
+    <link rel="shortcut icon" href="/favicon.ico">
+    <title>ACE | X Quick Start</title>
+    <meta name="description" content="Start your ACE free trial in under 2 minutes. Built for mobile visitors discovering ACE from X.">
+    <meta property="og:title" content="ACE: Improve AI output after every task">
+    <meta property="og:description" content="Start your free trial. ACE turns real outcomes into evolving playbooks for better AI results.">
+    <meta property="og:image" content="{{SOCIAL_IMAGE_URL}}">
+    <meta property="og:url" content="{{OG_URL}}">
+    <meta property="og:site_name" content="ACE">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ACE: Improve AI output after every task">
+    <meta name="twitter:description" content="Start your free trial. ACE turns real outcomes into evolving playbooks for better AI results.">
+    <meta name="twitter:image" content="{{SOCIAL_IMAGE_URL}}">
+    <style>
+        :root {
+            --bg: #fbf9f4;
+            --surface: #ffffff;
+            --ink: #121212;
+            --muted: #585858;
+            --line: rgba(0, 0, 0, 0.1);
+            --accent: #bf1d3a;
+            --accent-deep: #94142c;
+            --gold: #b8860b;
+            --radius: 14px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "Baskerville", "Garamond", Georgia, serif;
+            color: var(--ink);
+            background: radial-gradient(circle at 8% 5%, rgba(184, 134, 11, 0.12), transparent 40%),
+                        radial-gradient(circle at 85% 95%, rgba(191, 29, 58, 0.12), transparent 42%),
+                        var(--bg);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        .page {
+            max-width: 760px;
+            margin: 0 auto;
+            padding: 1rem 1rem 6.5rem;
+        }
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin-bottom: 1.4rem;
+        }
+        .brand {
+            font-family: "Palatino Linotype", Palatino, serif;
+            font-weight: 700;
+            text-decoration: none;
+            color: var(--ink);
+            letter-spacing: 0.02em;
+            font-size: 1.05rem;
+        }
+        .nav-links {
+            display: flex;
+            gap: 0.45rem;
+        }
+        .nav-link {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 0.35rem 0.72rem;
+            font-size: 0.8rem;
+            color: var(--ink);
+            text-decoration: none;
+            background: var(--surface);
+        }
+        .hero {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(184, 134, 11, 0.35);
+            border-radius: var(--radius);
+            padding: 1.2rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        }
+        .eyebrow {
+            display: inline-flex;
+            margin-bottom: 0.7rem;
+            padding: 0.2rem 0.55rem;
+            font-size: 0.75rem;
+            border-radius: 999px;
+            background: rgba(184, 134, 11, 0.1);
+            color: #6d5310;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        h1 {
+            font-family: "Palatino Linotype", Palatino, serif;
+            font-size: clamp(1.9rem, 7vw, 2.6rem);
+            line-height: 1.1;
+            margin-bottom: 0.7rem;
+        }
+        .hero p { color: var(--muted); font-size: 1.05rem; }
+        .proof {
+            margin-top: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .badge {
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            padding: 0.25rem 0.55rem;
+            font-size: 0.78rem;
+            background: var(--surface);
+        }
+        .steps {
+            margin-top: 1rem;
+            display: grid;
+            gap: 0.6rem;
+        }
+        .step {
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 0.75rem;
+            background: var(--surface);
+        }
+        .step strong {
+            font-family: "Palatino Linotype", Palatino, serif;
+            display: block;
+            margin-bottom: 0.15rem;
+            font-size: 1rem;
+        }
+        .step span { color: var(--muted); font-size: 0.95rem; }
+        .sticky-cta {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 20;
+            border-top: 1px solid var(--line);
+            background: rgba(251, 249, 244, 0.98);
+            backdrop-filter: blur(6px);
+            padding: 0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom, 0px));
+        }
+        .sticky-shell {
+            max-width: 760px;
+            margin: 0 auto;
+            display: grid;
+            gap: 0.35rem;
+        }
+        .cta {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            border-radius: 10px;
+            padding: 0.82rem 1rem;
+            text-decoration: none;
+            font-family: "Palatino Linotype", Palatino, serif;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            font-size: 0.82rem;
+            color: #fff;
+            border: 1px solid transparent;
+            background: linear-gradient(145deg, var(--accent), var(--accent-deep));
+        }
+        .micro {
+            text-align: center;
+            font-size: 0.74rem;
+            color: var(--muted);
+        }
+        .footer {
+            margin-top: 1.5rem;
+            font-size: 0.82rem;
+            color: var(--muted);
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+        .footer a { color: var(--accent); text-decoration: none; }
+        @media (min-width: 901px) {
+            .page { padding-top: 1.4rem; }
+            .sticky-cta { padding-bottom: 0.65rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header class="nav">
+            <a href="/" class="brand">ACE</a>
+            <nav class="nav-links" aria-label="X landing links">
+                <a class="nav-link" data-preserve-attribution href="{{FRONTEND_URL}}/login">Sign in</a>
+                <a class="nav-link" href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer">Docs</a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="hero">
+                <p class="eyebrow">From X to first value</p>
+                <h1>Your AI workflow should improve after every task.</h1>
+                <p>ACE captures what worked and failed, then evolves your playbooks so outcomes get better over time.</p>
+                <div class="proof" aria-label="social proof">
+                    <span class="badge">Built for Claude Code</span>
+                    <span class="badge">Works with Codex</span>
+                    <span class="badge">MCP-native</span>
+                </div>
+                <div class="steps" aria-label="How ACE works">
+                    <article class="step">
+                        <strong>1. Connect in minutes</strong>
+                        <span>Drop ACE into your existing MCP workflow.</span>
+                    </article>
+                    <article class="step">
+                        <strong>2. Run normal work</strong>
+                        <span>Keep coding, shipping, and recording outcomes.</span>
+                    </article>
+                    <article class="step">
+                        <strong>3. Get smarter playbooks</strong>
+                        <span>ACE proposes evolved versions from your real results.</span>
+                    </article>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span>&copy; {{CURRENT_YEAR}} ACE</span>
+            <div>
+                <a data-preserve-attribution href="{{FRONTEND_URL}}/terms">Terms</a>
+                ·
+                <a data-preserve-attribution href="{{FRONTEND_URL}}/privacy">Privacy</a>
+            </div>
+        </footer>
+    </div>
+
+    <div class="sticky-cta">
+        <div class="sticky-shell">
+            <a class="cta" data-preserve-attribution href="{{FRONTEND_URL}}/register">Start free trial</a>
+            <p class="micro">7-day trial available. Card required when starting trial.</p>
+        </div>
+    </div>
+
+    <script>
+      (function () {
+        const keepKeys = [
+          "src", "aid", "anonymous_id", "exp_trial_disclosure",
+          "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"
+        ];
+        const params = new URLSearchParams(window.location.search);
+        const carried = new URLSearchParams();
+        for (const key of keepKeys) {
+          const value = params.get(key);
+          if (value) carried.set(key, value);
+        }
+        if (carried.toString()) {
+          document.querySelectorAll("[data-preserve-attribution]").forEach((el) => {
+            if (!(el instanceof HTMLAnchorElement)) return;
+            const url = new URL(el.href);
+            carried.forEach((value, key) => {
+              if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+            });
+            el.href = url.toString();
+          });
+        }
+
+        const getAnonymousId = () => {
+          const key = "ace_anonymous_id";
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) return existing;
+            const generated = (window.crypto && window.crypto.randomUUID)
+              ? window.crypto.randomUUID()
+              : ("anon_" + Math.random().toString(36).slice(2, 14));
+            localStorage.setItem(key, generated);
+            return generated;
+          } catch {
+            return null;
+          }
+        };
+
+        const attribution = {
+          landing_path: window.location.pathname,
+          device_type: window.matchMedia("(max-width: 900px)").matches ? "mobile" : "desktop",
+        };
+        keepKeys.forEach((key) => {
+          const value = params.get(key);
+          if (value) attribution[key] = value;
+        });
+        if (document.referrer) {
+          try {
+            attribution.referrer_host = new URL(document.referrer).hostname;
+          } catch {
+            // Ignore malformed referrer values.
+          }
+        }
+
+        fetch("/analytics/events", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          keepalive: true,
+          body: JSON.stringify({
+            event_type: "landing_view",
+            anonymous_id: getAnonymousId(),
+            source: params.get("src") || params.get("utm_source"),
+            experiment_variant: params.get("exp_trial_disclosure"),
+            attribution,
+            event_data: { surface: "backend_x" },
+          }),
+        }).catch(() => {});
+      })();
+    </script>
+</body>
+</html>"""
+        return (
+            html.replace("{{FRONTEND_URL}}", frontend_url)
+            .replace("{{DOCS_URL}}", docs_url)
+            .replace("{{CURRENT_YEAR}}", str(current_year))
+            .replace("{{OG_URL}}", x_url)
+            .replace("{{SOCIAL_IMAGE_URL}}", social_image_url)
+        )
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     async def landing_page():
         """Serve the landing page."""
         frontend_url = settings.frontend_url.rstrip("/")
         docs_url = settings.docs_url.rstrip("/")
+        site_url = settings.oauth_redirect_base_url.rstrip("/")
+        social_image_url = f"{site_url}/ace-social-card.png"
         current_year = datetime.now(UTC).year
         html = """<!DOCTYPE html>
 <html lang="en">
@@ -545,6 +886,15 @@ def _register_routes(app: FastAPI) -> None:
     <link rel="shortcut icon" href="/favicon.ico">
     <title>ACE</title>
     <meta name="description" content="ACE helps individual developers and knowledge workers improve AI output quality continuously by evolving playbooks from real outcomes.">
+    <meta property="og:title" content="ACE: Improve AI output after every task">
+    <meta property="og:description" content="Turn real outcomes into evolving playbooks that compound AI quality over time.">
+    <meta property="og:image" content="{{SOCIAL_IMAGE_URL}}">
+    <meta property="og:url" content="{{ROOT_URL}}">
+    <meta property="og:site_name" content="ACE">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="ACE: Improve AI output after every task">
+    <meta name="twitter:description" content="Turn real outcomes into evolving playbooks that compound AI quality over time.">
+    <meta name="twitter:image" content="{{SOCIAL_IMAGE_URL}}">
     <style>
         :root {
             --bg-primary: #fdfcfa;
@@ -1039,8 +1389,8 @@ def _register_routes(app: FastAPI) -> None:
                 <a href="#use-cases">Use cases</a>
                 <a href="#pricing">Pricing</a>
                 <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer">Docs</a>
-                <a href="{{FRONTEND_URL}}/login" class="action">Sign in</a>
-                <a href="{{FRONTEND_URL}}/register" class="action primary">Start free</a>
+                <a href="{{FRONTEND_URL}}/login" class="action" data-preserve-attribution>Sign in</a>
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
             </nav>
         </header>
 
@@ -1050,7 +1400,7 @@ def _register_routes(app: FastAPI) -> None:
                 <h1>Your AI workflow gets better after every task.</h1>
                 <p class="hero-subhead">ACE captures what worked, what failed, and what to improve so your assistant becomes more reliable with real use.</p>
                 <div class="hero-actions">
-                    <a href="{{FRONTEND_URL}}/register" class="action primary">Start free</a>
+                    <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
                     <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer" class="action">See 2-min setup</a>
                 </div>
                 <p class="micro-copy">Works with MCP-enabled workflows.</p>
@@ -1204,8 +1554,8 @@ def _register_routes(app: FastAPI) -> None:
                 </article>
             </div>
             <div class="hero-actions">
-                <a href="{{FRONTEND_URL}}/register" class="action primary">Start free</a>
-                <a href="{{FRONTEND_URL}}/login" class="action">Sign in</a>
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
+                <a href="{{FRONTEND_URL}}/login" class="action" data-preserve-attribution>Sign in</a>
             </div>
         </section>
 
@@ -1235,7 +1585,7 @@ def _register_routes(app: FastAPI) -> None:
             <h2>Make your AI improve continuously</h2>
             <p>Turn today's tasks into tomorrow's better results.</p>
             <div class="hero-actions">
-                <a href="{{FRONTEND_URL}}/register" class="action primary">Start free</a>
+                <a href="{{FRONTEND_URL}}/register" class="action primary" data-preserve-attribution>Start free</a>
                 <a href="{{DOCS_URL}}/docs/getting-started/quick-start" target="_blank" rel="noreferrer" class="action">Open quick start</a>
             </div>
         </section>
@@ -1243,18 +1593,160 @@ def _register_routes(app: FastAPI) -> None:
         <footer class="footer">
             <span>&copy; {{CURRENT_YEAR}} ACE</span>
             <div class="footer-links">
-                <a href="{{FRONTEND_URL}}/terms">Terms</a>
-                <a href="{{FRONTEND_URL}}/privacy">Privacy</a>
+                <a href="{{FRONTEND_URL}}/terms" data-preserve-attribution>Terms</a>
+                <a href="{{FRONTEND_URL}}/privacy" data-preserve-attribution>Privacy</a>
                 <a href="{{DOCS_URL}}" target="_blank" rel="noreferrer">Docs</a>
             </div>
         </footer>
     </div>
+    <script>
+      (function () {
+        const KEEP_KEYS = [
+          "src",
+          "aid",
+          "anonymous_id",
+          "exp_trial_disclosure",
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_term",
+          "utm_content",
+        ];
+
+        const params = new URLSearchParams(window.location.search);
+        const carried = new URLSearchParams();
+        KEEP_KEYS.forEach((key) => {
+          const value = params.get(key);
+          if (value) carried.set(key, value);
+        });
+
+        if (carried.toString()) {
+          document.querySelectorAll("[data-preserve-attribution]").forEach((el) => {
+            if (!(el instanceof HTMLAnchorElement)) return;
+            const url = new URL(el.href);
+            carried.forEach((value, key) => {
+              if (!url.searchParams.has(key)) url.searchParams.set(key, value);
+            });
+            el.href = url.toString();
+          });
+        }
+
+        const getAnonymousId = () => {
+          const key = "ace_anonymous_id";
+          try {
+            const existing = localStorage.getItem(key);
+            if (existing) return existing;
+            const generated = (window.crypto && window.crypto.randomUUID)
+              ? window.crypto.randomUUID()
+              : ("anon_" + Math.random().toString(36).slice(2, 14));
+            localStorage.setItem(key, generated);
+            return generated;
+          } catch {
+            return null;
+          }
+        };
+
+        const getAttribution = () => {
+          const attribution = {
+            landing_path: window.location.pathname,
+            device_type: window.matchMedia("(max-width: 900px)").matches ? "mobile" : "desktop",
+          };
+          KEEP_KEYS.forEach((key) => {
+            const value = params.get(key);
+            if (value) attribution[key] = value;
+          });
+          if (document.referrer) {
+            try {
+              attribution.referrer_host = new URL(document.referrer).hostname;
+            } catch {
+              // Ignore malformed referrer values.
+            }
+          }
+          return attribution;
+        };
+
+        const postEvent = (eventType, eventData = {}) => {
+          fetch("/analytics/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+            body: JSON.stringify({
+              event_type: eventType,
+              anonymous_id: getAnonymousId(),
+              source: params.get("src") || params.get("utm_source"),
+              experiment_variant: params.get("exp_trial_disclosure"),
+              attribution: getAttribution(),
+              event_data: eventData,
+            }),
+          }).catch(() => {});
+        };
+
+        postEvent("landing_view", { surface: "backend" });
+
+        const video = document.querySelector(".js-hero-video");
+        if (!(video instanceof HTMLVideoElement)) return;
+
+        const playButton = document.querySelector("[data-video-play]");
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        const saveData = Boolean(navigator.connection && navigator.connection.saveData);
+        const isMobile = window.matchMedia("(max-width: 900px)").matches;
+        let sourceAttached = false;
+
+        const attachVideoSource = () => {
+          if (sourceAttached) return;
+          const src = video.getAttribute("data-src");
+          if (!src) return;
+          const source = document.createElement("source");
+          source.src = src;
+          source.type = "video/mp4";
+          video.appendChild(source);
+          video.load();
+          sourceAttached = true;
+          postEvent("hero_video_loaded", { surface: "backend" });
+        };
+
+        video.addEventListener(
+          "play",
+          () => postEvent("hero_video_played", { surface: "backend" }),
+          { once: true }
+        );
+
+        if (isMobile || reduceMotion || saveData) {
+          if (playButton instanceof HTMLButtonElement) {
+            playButton.hidden = false;
+            playButton.addEventListener("click", () => {
+              attachVideoSource();
+              video.controls = true;
+              video.play().catch(() => {});
+              playButton.hidden = true;
+            });
+          }
+          return;
+        }
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            const entry = entries[0];
+            if (!entry || !entry.isIntersecting) return;
+            attachVideoSource();
+            video.autoplay = true;
+            video.loop = true;
+            video.play().catch(() => {});
+            observer.disconnect();
+          },
+          { threshold: 0.35 }
+        );
+        observer.observe(video);
+      })();
+    </script>
 </body>
 </html>"""
         return (
             html.replace("{{FRONTEND_URL}}", frontend_url)
             .replace("{{DOCS_URL}}", docs_url)
             .replace("{{CURRENT_YEAR}}", str(current_year))
+            .replace("{{ROOT_URL}}", site_url)
+            .replace("{{SOCIAL_IMAGE_URL}}", social_image_url)
         )
 
 

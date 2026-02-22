@@ -25,6 +25,7 @@ import { PrivacyPolicy } from './pages/Legal/PrivacyPolicy';
 import { AdminDashboard } from './pages/Admin/AdminDashboard';
 import { AdminUsers } from './pages/Admin/AdminUsers';
 import { AdminUserDetail } from './pages/Admin/AdminUserDetail';
+import { XLandingPage } from './pages/XLanding/XLandingPage';
 import { NotFound } from './pages/NotFound/NotFound';
 import './styles/globals.css';
 
@@ -74,6 +75,8 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 }
 
 function AppRoutes() {
+  const xLandingEnabled = import.meta.env.VITE_X_LANDING_ENABLED !== 'false';
+
   return (
     <Routes>
       {/* Public routes */}
@@ -82,6 +85,14 @@ function AppRoutes() {
         element={
           <PublicRoute>
             <LandingPage />
+          </PublicRoute>
+        }
+      />
+      <Route
+        path="/x"
+        element={
+          <PublicRoute>
+            {xLandingEnabled ? <XLandingPage /> : <Navigate to="/" replace />}
           </PublicRoute>
         }
       />
