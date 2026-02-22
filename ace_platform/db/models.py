@@ -147,6 +147,24 @@ class AuditSeverity(str, enum.Enum):
     CRITICAL = "critical"  # Security concerns (account locked, suspicious activity)
 
 
+class AcquisitionEventType(str, enum.Enum):
+    """Types of first-party acquisition tracking events."""
+
+    LANDING_VIEW = "landing_view"
+    REGISTER_START = "register_start"
+    REGISTER_SUBMIT = "register_submit"
+    REGISTER_STEP_TRANSITION = "register_step_transition"
+    REGISTER_SUCCESS = "register_success"
+    TRIAL_CHECKOUT_INTENT = "trial_checkout_intent"
+    TRIAL_STARTED = "trial_started"
+    FIRST_PLAYBOOK_CREATED = "first_playbook_created"
+    EXPERIMENT_EXPOSURE = "experiment_exposure"
+    HERO_VIDEO_LOADED = "hero_video_loaded"
+    HERO_VIDEO_PLAYED = "hero_video_played"
+    OAUTH_ERROR = "oauth_error"
+    OAUTH_FALLBACK_USED = "oauth_fallback_used"
+
+
 class User(Base):
     """Platform user."""
 
@@ -169,6 +187,12 @@ class User(Base):
     subscription_current_period_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    signup_source: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    signup_channel: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    signup_campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    signup_anonymous_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    signup_variant: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    signup_attribution: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     has_used_trial: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     has_payment_method: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -192,6 +216,9 @@ class User(Base):
     )
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
         "UserOAuthAccount", back_populates="user", cascade="all, delete-orphan"
+    )
+    acquisition_events: Mapped[list["AcquisitionEvent"]] = relationship(
+        "AcquisitionEvent", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:
@@ -621,6 +648,45 @@ class AuditLog(Base):
 
     def __repr__(self) -> str:
         return f"<AuditLog {self.event_type.value} user={self.user_id}>"
+
+
+class AcquisitionEvent(Base):
+    """First-party acquisition and conversion tracking event."""
+
+    __tablename__ = "acquisition_events"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    event_type: Mapped[AcquisitionEventType] = mapped_column(
+        Enum(AcquisitionEventType), nullable=False, index=True
+    )
+    event_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    anonymous_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    source: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    channel: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    campaign: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    experiment_variant: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    event_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    user: Mapped["User | None"] = relationship("User", back_populates="acquisition_events")
+
+    __table_args__ = (
+        Index("ix_acquisition_events_event_created", "event_type", "created_at"),
+        Index("ix_acquisition_events_source_created", "source", "created_at"),
+        Index("ix_acquisition_events_anon_created", "anonymous_id", "created_at"),
+        Index("ix_acquisition_events_user_created", "user_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<AcquisitionEvent {self.event_type.value} user={self.user_id}>"
 
 
 class ProcessedWebhookEvent(Base):

@@ -44,6 +44,7 @@ RATE_LIMITS = {
     "login": {"limit": 5, "window_seconds": 60},  # 5 per minute per IP
     "oauth": {"limit": 10, "window_seconds": 60},  # 10 per minute per IP (OAuth flow)
     "register": {"limit": 3, "window_seconds": 3600},  # 3 per hour per IP
+    "analytics_events": {"limit": 120, "window_seconds": 60},  # 120 per minute per IP
     "password_reset": {"limit": 3, "window_seconds": 3600},  # 3 per hour per email
     "outcome": {"limit": 100, "window_seconds": 3600},  # 100 per hour per user
     "playbook_create": {"limit": 30, "window_seconds": 3600},  # 30 per hour per user
@@ -370,6 +371,22 @@ async def rate_limit_register(request: Request) -> None:
     )
 
 
+async def rate_limit_analytics_events(request: Request) -> None:
+    """Rate limit dependency for analytics event ingestion.
+
+    Limits to 120 requests per minute per IP address.
+    """
+    client_ip = get_client_ip(request)
+    config = RATE_LIMITS["analytics_events"]
+    await _check_rate_limit(
+        request,
+        action="analytics_events",
+        identifier=client_ip,
+        limit=config["limit"],
+        window_seconds=config["window_seconds"],
+    )
+
+
 async def rate_limit_outcome(request: Request, user_id: str) -> None:
     """Rate limit dependency for outcome reporting.
 
@@ -508,3 +525,4 @@ async def rate_limit_contact_form(request: Request, user_id: str) -> None:
 RateLimitLogin = Annotated[None, Depends(rate_limit_login)]
 RateLimitRegister = Annotated[None, Depends(rate_limit_register)]
 RateLimitOAuth = Annotated[None, Depends(rate_limit_oauth)]
+RateLimitAnalyticsEvents = Annotated[None, Depends(rate_limit_analytics_events)]

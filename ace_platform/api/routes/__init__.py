@@ -2,6 +2,7 @@
 
 This package contains FastAPI routers for different resource types:
 - auth: User authentication (login, register, token refresh)
+- analytics: First-party analytics ingestion
 - billing: Billing and subscription management
 - oauth: OAuth authentication (Google, GitHub)
 - playbooks: Playbook CRUD operations
@@ -11,6 +12,7 @@ This package contains FastAPI routers for different resource types:
 
 from .account import router as account_router
 from .admin import router as admin_router
+from .analytics import router as analytics_router
 from .auth import router as auth_router
 from .billing import router as billing_router
 from .evolutions import router as evolutions_router
@@ -22,6 +24,7 @@ from .usage import router as usage_router
 __all__ = [
     "account_router",
     "admin_router",
+    "analytics_router",
     "auth_router",
     "billing_router",
     "evolutions_router",

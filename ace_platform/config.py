@@ -182,6 +182,14 @@ class Settings(BaseSettings):
         default="https://docs.aceagent.io",
         description="Documentation site URL for landing page links",
     )
+    acquisition_tracking_enabled: bool = Field(
+        default=True,
+        description="Enable first-party acquisition attribution and event tracking",
+    )
+    x_landing_enabled: bool = Field(
+        default=True,
+        description="Enable the conversion-focused /x landing page",
+    )
     session_secret_key: str = Field(
         default="",
         description="Secret key for OAuth session cookies (separate from JWT for security isolation)",
