@@ -460,8 +460,12 @@ export const adminApi = {
     return response.data;
   },
 
-  getFunnel: async (days = 30): Promise<ConversionFunnel> => {
-    const response = await api.get<ConversionFunnel>(`/admin/funnel?days=${days}`);
+  getFunnel: async (filters: FunnelFilters = {}): Promise<ConversionFunnel> => {
+    const params = new URLSearchParams();
+    params.set('days', String(filters.days ?? 30));
+    if (filters.source) params.set('source', filters.source);
+    if (filters.experiment_variant) params.set('experiment_variant', filters.experiment_variant);
+    const response = await api.get<ConversionFunnel>(`/admin/funnel?${params.toString()}`);
     return response.data;
   },
 

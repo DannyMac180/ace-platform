@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { billingApi, playbooksApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { trackAcquisitionEvent } from '../../lib/analytics';
+import { getTrialDisclosureVariant, type TrialDisclosureVariant } from '../../lib/experiments';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
@@ -29,6 +31,7 @@ export function Dashboard() {
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [isLimitError, setIsLimitError] = useState(false);
   const navigate = useNavigate();
+  const trialDisclosureVariant = getTrialDisclosureVariant();
 
   const queryClient = useQueryClient();
   const { user, isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -46,10 +49,16 @@ export function Dashboard() {
 
   const errorStatus = error instanceof AxiosError ? error.response?.status : undefined;
   const shouldShowSubscriptionState = !hasPaidAccess || errorStatus === 402;
+  const playbookCount = data?.items.length ?? 0;
 
   const createMutation = useMutation({
     mutationFn: (newPlaybook: PlaybookCreate) => playbooksApi.create(newPlaybook),
     onSuccess: () => {
+      if (playbookCount === 0) {
+        trackAcquisitionEvent('first_playbook_created', {
+          source: 'dashboard_create_modal',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
       setShowCreateModal(false);
       setMutationError(null);
@@ -77,7 +86,6 @@ export function Dashboard() {
 
   // Check if trial user is at playbook limit
   const isOnTrial = !!user?.trial_ends_at && new Date(user.trial_ends_at) > new Date();
-  const playbookCount = data?.items.length ?? 0;
   const atPlaybookLimit = isOnTrial && playbookCount >= 1;
 
   const handleNewPlaybookClick = () => {
@@ -167,6 +175,7 @@ export function Dashboard() {
       ) : shouldShowSubscriptionState ? (
         <SubscriptionRequiredState
           hasUsedTrial={user?.has_used_trial ?? false}
+          trialDisclosureVariant={trialDisclosureVariant}
           onUpgradeClick={() => navigate('/pricing')}
         />
       ) : error ? (
@@ -199,9 +208,11 @@ export function Dashboard() {
 function SubscriptionRequiredState({
   onUpgradeClick,
   hasUsedTrial,
+  trialDisclosureVariant,
 }: {
   onUpgradeClick: () => void;
   hasUsedTrial: boolean;
+  trialDisclosureVariant: TrialDisclosureVariant;
 }) {
   const [isStartingTrial, setIsStartingTrial] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -215,6 +226,9 @@ function SubscriptionRequiredState({
     setIsStartingTrial(true);
     setError(null);
     try {
+      trackAcquisitionEvent('trial_checkout_intent', {
+        source: 'dashboard_subscription_state',
+      });
       const result = await billingApi.startStarterTrial();
       if (result.success && result.checkout_url) {
         window.location.href = result.checkout_url;
@@ -237,7 +251,9 @@ function SubscriptionRequiredState({
       <p>
         {hasUsedTrial
           ? 'Your free trial has ended. Upgrade to continue creating and evolving playbooks.'
-          : 'Start your 7-day free trial to access playbooks. Card required, no charge today. Trial includes 1 playbook and 5 evolutions.'}
+          : trialDisclosureVariant === 'control'
+            ? 'Start your 7-day free trial to access playbooks. Card required, no charge today. Trial includes 1 playbook and 5 evolutions.'
+            : 'Start your 7-day free trial to access playbooks. Trial includes 1 playbook and 5 evolutions. Card is required before your trial starts.'}
       </p>
       {error && (
         <div className={styles.trialError}>

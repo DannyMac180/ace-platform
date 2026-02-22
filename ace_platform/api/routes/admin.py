@@ -21,7 +21,15 @@ from ace_platform.core.metering import (
     get_top_users_by_spend,
     get_user_usage_summary,
 )
-from ace_platform.db.models import AuditLog, Playbook, SubscriptionStatus, UsageRecord, User
+from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
+    AuditLog,
+    Playbook,
+    SubscriptionStatus,
+    UsageRecord,
+    User,
+)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -96,11 +104,17 @@ class ConversionFunnelResponse(BaseModel):
     days: int
     start_date: datetime
     end_date: datetime
+    landing_views: int
+    register_starts: int
+    register_completes: int
     signups: int
     trial_checkout_intent: int
     trial_started: int
     first_playbook_created: int
     paid_active_non_trial: int
+    conversion_landing_to_register_start_pct: float
+    conversion_register_start_to_register_complete_pct: float
+    conversion_landing_to_register_complete_pct: float
     conversion_signup_to_checkout_intent_pct: float
     conversion_checkout_intent_to_trial_started_pct: float
     conversion_trial_started_to_first_playbook_pct: float
@@ -160,6 +174,9 @@ def build_conversion_funnel_response(
     days: int,
     start_date: datetime,
     end_date: datetime,
+    landing_views: int,
+    register_starts: int,
+    register_completes: int,
     signups: int,
     trial_checkout_intent: int,
     trial_started: int,
@@ -171,11 +188,21 @@ def build_conversion_funnel_response(
         days=days,
         start_date=start_date,
         end_date=end_date,
+        landing_views=landing_views,
+        register_starts=register_starts,
+        register_completes=register_completes,
         signups=signups,
         trial_checkout_intent=trial_checkout_intent,
         trial_started=trial_started,
         first_playbook_created=first_playbook_created,
         paid_active_non_trial=paid_active_non_trial,
+        conversion_landing_to_register_start_pct=_conversion_pct(landing_views, register_starts),
+        conversion_register_start_to_register_complete_pct=_conversion_pct(
+            register_starts, register_completes
+        ),
+        conversion_landing_to_register_complete_pct=_conversion_pct(
+            landing_views, register_completes
+        ),
         conversion_signup_to_checkout_intent_pct=_conversion_pct(signups, trial_checkout_intent),
         conversion_checkout_intent_to_trial_started_pct=_conversion_pct(
             trial_checkout_intent, trial_started
@@ -418,17 +445,68 @@ async def get_conversion_funnel(
     _admin: AdminUser,
     db: Annotated[AsyncSession, Depends(get_db)],
     days: int = Query(30, ge=1, le=365),
+    source: Annotated[
+        str | None,
+        Query(description="Filter by canonical signup source"),
+    ] = None,
+    experiment_variant: Annotated[
+        str | None,
+        Query(description="Filter by signup experiment variant"),
+    ] = None,
 ) -> ConversionFunnelResponse:
     """Get conversion funnel metrics for recent signups."""
     now = datetime.now(UTC)
     start = now - timedelta(days=days)
 
-    signups = await db.scalar(select(func.count(User.id)).where(User.created_at >= start)) or 0
+    user_filters = [User.created_at >= start]
+    if source:
+        user_filters.append(User.signup_source == source.lower())
+    if experiment_variant:
+        user_filters.append(User.signup_variant == experiment_variant)
+
+    event_filters = [AcquisitionEvent.created_at >= start]
+    if source:
+        event_filters.append(AcquisitionEvent.source == source.lower())
+    if experiment_variant:
+        event_filters.append(AcquisitionEvent.experiment_variant == experiment_variant)
+
+    landing_views = (
+        await db.scalar(
+            select(func.count(AcquisitionEvent.id)).where(
+                *event_filters,
+                AcquisitionEvent.event_type == AcquisitionEventType.LANDING_VIEW,
+            )
+        )
+        or 0
+    )
+
+    register_starts = (
+        await db.scalar(
+            select(func.count(AcquisitionEvent.id)).where(
+                *event_filters,
+                AcquisitionEvent.event_type == AcquisitionEventType.REGISTER_START,
+            )
+        )
+        or 0
+    )
+
+    register_completes_events = (
+        await db.scalar(
+            select(func.count(AcquisitionEvent.id)).where(
+                *event_filters,
+                AcquisitionEvent.event_type == AcquisitionEventType.REGISTER_SUCCESS,
+            )
+        )
+        or 0
+    )
+
+    signups = await db.scalar(select(func.count(User.id)).where(*user_filters)) or 0
+    register_completes = int(register_completes_events or signups)
 
     trial_checkout_intent = (
         await db.scalar(
             select(func.count(User.id)).where(
-                User.created_at >= start,
+                *user_filters,
                 User.stripe_customer_id.is_not(None),
             )
         )
@@ -438,7 +516,7 @@ async def get_conversion_funnel(
     trial_started = (
         await db.scalar(
             select(func.count(User.id)).where(
-                User.created_at >= start,
+                *user_filters,
                 (User.has_used_trial.is_(True))
                 | ((User.trial_ends_at.is_not(None)) & (User.trial_ends_at > now)),
             )
@@ -455,7 +533,7 @@ async def get_conversion_funnel(
     first_playbook_created = (
         await db.scalar(
             select(func.count(User.id)).where(
-                User.created_at >= start,
+                *user_filters,
                 trial_started_filter,
                 has_any_playbook,
             )
@@ -466,7 +544,7 @@ async def get_conversion_funnel(
     paid_active_non_trial = (
         await db.scalar(
             select(func.count(User.id)).where(
-                User.created_at >= start,
+                *user_filters,
                 trial_started_filter,
                 has_any_playbook,
                 User.subscription_status == SubscriptionStatus.ACTIVE,
@@ -482,6 +560,9 @@ async def get_conversion_funnel(
         days=days,
         start_date=start,
         end_date=now,
+        landing_views=int(landing_views),
+        register_starts=int(register_starts),
+        register_completes=int(register_completes),
         signups=int(signups),
         trial_checkout_intent=int(trial_checkout_intent),
         trial_started=int(trial_started),

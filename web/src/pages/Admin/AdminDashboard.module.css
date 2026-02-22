@@ -116,6 +116,30 @@
   font-weight: 600;
 }
 
+.funnelFilters {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+
+.filterLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.filterSelect {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8125rem;
+}
+
 .funnelRows {
   display: flex;
   flex-direction: column;

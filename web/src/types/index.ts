@@ -259,11 +259,17 @@ export interface ConversionFunnel {
   days: number;
   start_date: string;
   end_date: string;
+  landing_views: number;
+  register_starts: number;
+  register_completes: number;
   signups: number;
   trial_checkout_intent: number;
   trial_started: number;
   first_playbook_created: number;
   paid_active_non_trial: number;
+  conversion_landing_to_register_start_pct: number;
+  conversion_register_start_to_register_complete_pct: number;
+  conversion_landing_to_register_complete_pct: number;
   conversion_signup_to_checkout_intent_pct: number;
   conversion_checkout_intent_to_trial_started_pct: number;
   conversion_trial_started_to_first_playbook_pct: number;

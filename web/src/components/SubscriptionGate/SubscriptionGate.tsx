@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { billingApi } from '../../utils/api';
+import { trackAcquisitionEvent } from '../../lib/analytics';
 import styles from './SubscriptionGate.module.css';
 
 interface SubscriptionGateProps {
@@ -47,6 +48,10 @@ export function SubscriptionGate({ children, featureName = 'this feature' }: Sub
     setTrialError(null);
 
     try {
+      trackAcquisitionEvent('trial_checkout_intent', {
+        source: 'subscription_gate_modal',
+        feature: featureName,
+      });
       const result = await billingApi.startStarterTrial();
       if (result.success && result.checkout_url) {
         window.location.href = result.checkout_url;

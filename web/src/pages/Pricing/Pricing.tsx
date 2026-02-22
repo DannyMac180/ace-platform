@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { AlertCircle, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { api } from '../../utils/api';
+import { trackAcquisitionEvent } from '../../lib/analytics';
+import { getTrialDisclosureVariant } from '../../lib/experiments';
 import { PricingCard, type PricingTier } from './PricingCard';
 import styles from './Pricing.module.css';
 
@@ -89,6 +91,7 @@ interface SubscribeResponse {
 
 export function Pricing() {
   const { user } = useAuth();
+  const trialDisclosureVariant = getTrialDisclosureVariant();
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('month');
   const [loadingTier, setLoadingTier] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +117,13 @@ export function Pricing() {
     setLoadingTier(tierId);
 
     try {
+      if (tierId === 'starter' && canUseTrial) {
+        trackAcquisitionEvent('trial_checkout_intent', {
+          source: 'pricing_page',
+          interval: billingInterval,
+        });
+      }
+
       const response = await api.post<SubscribeResponse>('/billing/subscribe', {
         tier: tierId,
         interval: billingInterval,
@@ -146,9 +156,11 @@ export function Pricing() {
       <div className={styles.header}>
         <h1>Choose Your Plan</h1>
         <p>Scale your playbook evolution with the right plan for your needs</p>
-        <p className={styles.trialDisclosure}>
-          Starter trial is card-required. Trial includes 1 playbook and 5 evolutions; full Starter limits unlock after trial.
-        </p>
+        {trialDisclosureVariant === 'control' && (
+          <p className={styles.trialDisclosure}>
+            Starter trial is card-required. Trial includes 1 playbook and 5 evolutions; full Starter limits unlock after trial.
+          </p>
+        )}
       </div>
 
       <div className={styles.billingToggle} role="group" aria-label="Billing interval">
@@ -201,6 +213,12 @@ export function Pricing() {
           />
         ))}
       </div>
+
+      {trialDisclosureVariant === 'late_disclosure' && (
+        <p className={styles.lateDisclosureNote}>
+          Card required when starting the Starter trial. No charge today.
+        </p>
+      )}
 
     </div>
   );

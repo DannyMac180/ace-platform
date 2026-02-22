@@ -79,11 +79,17 @@ class TestAdminSchemas:
             days=30,
             start_date=now,
             end_date=now,
+            landing_views=90,
+            register_starts=30,
+            register_completes=27,
             signups=27,
             trial_checkout_intent=6,
             trial_started=2,
             first_playbook_created=2,
             paid_active_non_trial=1,
+            conversion_landing_to_register_start_pct=33.33,
+            conversion_register_start_to_register_complete_pct=90.0,
+            conversion_landing_to_register_complete_pct=30.0,
             conversion_signup_to_checkout_intent_pct=22.22,
             conversion_checkout_intent_to_trial_started_pct=33.33,
             conversion_trial_started_to_first_playbook_pct=100.0,
@@ -105,6 +111,9 @@ class TestAdminSchemas:
             days=7,
             start_date=start,
             end_date=end,
+            landing_views=100,
+            register_starts=30,
+            register_completes=20,
             signups=20,
             trial_checkout_intent=10,
             trial_started=4,
@@ -112,6 +121,9 @@ class TestAdminSchemas:
             paid_active_non_trial=1,
         )
 
+        assert response.conversion_landing_to_register_start_pct == 30.0
+        assert response.conversion_register_start_to_register_complete_pct == 66.67
+        assert response.conversion_landing_to_register_complete_pct == 20.0
         assert response.conversion_signup_to_checkout_intent_pct == 50.0
         assert response.conversion_checkout_intent_to_trial_started_pct == 40.0
         assert response.conversion_trial_started_to_first_playbook_pct == 50.0
@@ -128,6 +140,9 @@ class TestAdminSchemas:
             days=30,
             start_date=now,
             end_date=now,
+            landing_views=0,
+            register_starts=0,
+            register_completes=0,
             signups=0,
             trial_checkout_intent=0,
             trial_started=0,
@@ -135,6 +150,9 @@ class TestAdminSchemas:
             paid_active_non_trial=0,
         )
 
+        assert response.conversion_landing_to_register_start_pct == 0.0
+        assert response.conversion_register_start_to_register_complete_pct == 0.0
+        assert response.conversion_landing_to_register_complete_pct == 0.0
         assert response.conversion_signup_to_checkout_intent_pct == 0.0
         assert response.conversion_signup_to_trial_started_pct == 0.0
         assert response.conversion_signup_to_paid_active_non_trial_pct == 0.0
@@ -143,18 +161,21 @@ class TestAdminSchemas:
     async def test_get_conversion_funnel_scopes_later_stages_to_prior_cohorts(self):
         """Ensure later funnel queries are constrained to prior-stage users."""
         mock_db = AsyncMock()
-        mock_db.scalar = AsyncMock(side_effect=[20, 10, 8, 6, 4])
+        mock_db.scalar = AsyncMock(side_effect=[100, 35, 22, 20, 10, 8, 6, 4])
 
         response = await get_conversion_funnel(_admin=object(), db=mock_db, days=30)
 
+        assert response.landing_views == 100
+        assert response.register_starts == 35
+        assert response.register_completes == 22
         assert response.signups == 20
         assert response.trial_started == 8
         assert response.first_playbook_created == 6
         assert response.paid_active_non_trial == 4
-        assert mock_db.scalar.call_count == 5
+        assert mock_db.scalar.call_count == 8
 
-        first_playbook_query = mock_db.scalar.call_args_list[3].args[0]
-        paid_query = mock_db.scalar.call_args_list[4].args[0]
+        first_playbook_query = mock_db.scalar.call_args_list[6].args[0]
+        paid_query = mock_db.scalar.call_args_list[7].args[0]
         first_playbook_sql = str(first_playbook_query)
         paid_sql = str(paid_query)
 
@@ -166,6 +187,30 @@ class TestAdminSchemas:
         assert "has_used_trial" in paid_sql
         assert "playbooks.user_id = users.id" in paid_sql
         assert "subscription_status" in paid_sql
+
+    @pytest.mark.asyncio
+    async def test_get_conversion_funnel_applies_source_and_variant_filters(self):
+        """Ensure source/variant filters are applied to both event and user stages."""
+        mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(side_effect=[10, 6, 4, 4, 3, 2, 1, 1])
+
+        await get_conversion_funnel(
+            _admin=object(),
+            db=mock_db,
+            days=14,
+            source="x",
+            experiment_variant="late_disclosure",
+        )
+
+        event_query = mock_db.scalar.call_args_list[0].args[0]
+        user_query = mock_db.scalar.call_args_list[3].args[0]
+        event_sql = str(event_query)
+        user_sql = str(user_query)
+
+        assert "acquisition_events.source = :source_1" in event_sql
+        assert "acquisition_events.experiment_variant = :experiment_variant_1" in event_sql
+        assert "users.signup_source = :signup_source_1" in user_sql
+        assert "users.signup_variant = :signup_variant_1" in user_sql
 
     def test_top_user_response(self):
         """Test top user response schema."""
@@ -352,4 +397,14 @@ class TestAdminQueryParams:
     def test_funnel_accepts_days_param(self, client):
         """Test that /admin/funnel accepts days query parameter."""
         response = client.get("/admin/funnel", params={"days": "14"})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_funnel_accepts_source_filter(self, client):
+        """Test that /admin/funnel accepts source query parameter."""
+        response = client.get("/admin/funnel", params={"source": "x"})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_funnel_accepts_experiment_variant_filter(self, client):
+        """Test that /admin/funnel accepts experiment_variant query parameter."""
+        response = client.get("/admin/funnel", params={"experiment_variant": "control"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED

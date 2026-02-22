@@ -31,6 +31,13 @@
   color: var(--gold-primary);
 }
 
+.lateDisclosureNote {
+  margin-top: var(--space-md);
+  text-align: center;
+  color: var(--gold-primary);
+  font-size: 0.9rem;
+}
+
 .billingToggle {
   width: fit-content;
   margin: 0 auto var(--space-xl);

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
+import { trackAcquisitionEvent } from '../../lib/analytics';
 import styles from './BillingSuccess.module.css';
 
 export function BillingSuccess() {
@@ -14,7 +15,11 @@ export function BillingSuccess() {
   useEffect(() => {
     // Refresh user data to get updated subscription
     refreshUser();
-  }, [refreshUser]);
+    trackAcquisitionEvent('trial_started', {
+      source: 'billing_success_page',
+      has_session_id: Boolean(sessionId),
+    });
+  }, [refreshUser, sessionId]);
 
   return (
     <div className={styles.container}>

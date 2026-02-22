@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { adminApi } from '../../utils/api';
@@ -18,6 +19,8 @@ export function AdminDashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const isAdmin = user?.is_admin === true;
+  const [funnelSource, setFunnelSource] = useState('');
+  const [funnelVariant, setFunnelVariant] = useState('');
 
   const statsQuery = useQuery<PlatformStats>({
     queryKey: ['admin-stats'],
@@ -32,8 +35,13 @@ export function AdminDashboard() {
   });
 
   const funnelQuery = useQuery<ConversionFunnel>({
-    queryKey: ['admin-funnel'],
-    queryFn: () => adminApi.getFunnel(30),
+    queryKey: ['admin-funnel', funnelSource, funnelVariant],
+    queryFn: () =>
+      adminApi.getFunnel({
+        days: 30,
+        source: funnelSource || undefined,
+        experiment_variant: funnelVariant || undefined,
+      }),
     enabled: isAdmin,
   });
 
@@ -146,12 +154,63 @@ export function AdminDashboard() {
                   Trial start rate: {funnel.conversion_signup_to_trial_started_pct.toFixed(1)}%
                 </span>
               </div>
+              <div className={styles.funnelFilters}>
+                <label className={styles.filterLabel}>
+                  Source
+                  <select
+                    className={styles.filterSelect}
+                    value={funnelSource}
+                    onChange={(e) => setFunnelSource(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option value="x">x</option>
+                  </select>
+                </label>
+                <label className={styles.filterLabel}>
+                  Variant
+                  <select
+                    className={styles.filterSelect}
+                    value={funnelVariant}
+                    onChange={(e) => setFunnelVariant(e.target.value)}
+                  >
+                    <option value="">All</option>
+                    <option value="control">control</option>
+                    <option value="late_disclosure">late_disclosure</option>
+                  </select>
+                </label>
+              </div>
               <div className={styles.funnelRows}>
                 <FunnelRow
-                  label="Signups"
-                  count={funnel.signups}
+                  label="Landing Views"
+                  count={funnel.landing_views}
                   stepRate={null}
                   overallRate={100}
+                />
+                <FunnelRow
+                  label="Register Starts"
+                  count={funnel.register_starts}
+                  stepRate={funnel.conversion_landing_to_register_start_pct}
+                  overallRate={funnel.conversion_landing_to_register_start_pct}
+                />
+                <FunnelRow
+                  label="Register Completes"
+                  count={funnel.register_completes}
+                  stepRate={funnel.conversion_register_start_to_register_complete_pct}
+                  overallRate={funnel.conversion_landing_to_register_complete_pct}
+                />
+                <FunnelRow
+                  label="Signups (users)"
+                  count={funnel.signups}
+                  stepRate={
+                    funnel.register_completes > 0
+                      ? Number(((funnel.signups / funnel.register_completes) * 100).toFixed(2))
+                      : 0
+                  }
+                  overallRate={
+                    funnel.landing_views > 0
+                      ? Number(((funnel.signups / funnel.landing_views) * 100).toFixed(2))
+                      : 0
+                  }
                 />
                 <FunnelRow
                   label="Trial Checkout Intent"
