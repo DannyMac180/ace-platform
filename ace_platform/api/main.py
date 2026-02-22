@@ -20,6 +20,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.logging import get_logger, setup_logging
@@ -146,6 +147,34 @@ async def _seed_starter_playbooks() -> None:
     except Exception as e:
         # Don't fail startup if seeding fails
         logger.error(f"Error seeding starter playbooks: {e}")
+
+
+class MountedRootPathAdapter:
+    """Dispatch an exact mount root path to a mounted ASGI app without redirecting.
+
+    FastAPI mounts redirect `/mcp` -> `/mcp/` by default. This adapter forwards
+    exact `/mcp` requests directly to the mounted app with a scope that matches
+    mounted semantics (`path=/`, `root_path=/mcp`), avoiding redirect-based
+    method changes through upstream proxies.
+    """
+
+    def __init__(self, app: ASGIApp, mount_path: str) -> None:
+        self.app = app
+        self.mount_path = mount_path.rstrip("/") or "/"
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        existing_root = str(scope.get("root_path", "")) or ""
+        normalized_root = f"{existing_root.rstrip('/')}{self.mount_path}"
+        forwarded_scope: Scope = {
+            **scope,
+            "root_path": normalized_root,
+            "path": "/",
+        }
+        await self.app(forwarded_scope, receive, send)
 
 
 def create_app() -> FastAPI:
@@ -407,6 +436,16 @@ def _register_routes(app: FastAPI) -> None:
     from ace_platform.mcp.server import create_mcp_asgi_app
 
     mcp_app = create_mcp_asgi_app(include_legacy_sse=True)
+
+    # Handle exact `/mcp` requests without redirecting to `/mcp/`.
+    # This prevents proxies from turning redirected POSTs into GETs and breaking
+    # Streamable HTTP initialization.
+    app.add_route(
+        "/mcp",
+        MountedRootPathAdapter(mcp_app, mount_path="/mcp"),
+        methods=["GET", "POST", "DELETE", "HEAD", "OPTIONS"],
+        include_in_schema=False,
+    )
     app.mount("/mcp", app=mcp_app, name="mcp")
 
     # OAuth discovery endpoints - return OAuth-spec-compatible 404 responses.

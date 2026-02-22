@@ -305,6 +305,21 @@ class TestCORSMiddleware:
 class TestAppConfiguration:
     """Tests for application configuration."""
 
+    _MCP_INITIALIZE_HEADERS = {
+        "Accept": "application/json, text/event-stream",
+        "Content-Type": "application/json",
+    }
+    _MCP_INITIALIZE_PAYLOAD = {
+        "jsonrpc": "2.0",
+        "id": "init-1",
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "test-client", "version": "1.0"},
+        },
+    }
+
     def test_create_app_returns_fastapi_instance(self):
         """Test that create_app returns a FastAPI instance."""
         from fastapi import FastAPI
@@ -338,6 +353,18 @@ class TestAppConfiguration:
             # Probe legacy SSE mount without opening a streaming SSE connection.
             response = client.options("/mcp/sse")
             assert response.status_code != 404
+
+    def test_mcp_root_post_does_not_redirect(self):
+        """POST /mcp should initialize directly without slash redirect."""
+        with TestClient(app) as client:
+            response = client.post(
+                "/mcp",
+                headers=self._MCP_INITIALIZE_HEADERS,
+                json=self._MCP_INITIALIZE_PAYLOAD,
+                follow_redirects=False,
+            )
+            assert response.status_code != 307
+            assert response.headers.get("mcp-session-id")
 
     def test_app_lifespan_can_restart_after_streamable_http_session_shutdown(self):
         """Repeated app startups should not fail on one-shot session manager reuse."""
