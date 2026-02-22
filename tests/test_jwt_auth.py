@@ -285,8 +285,16 @@ class TestAuthRoutesIntegration:
     def app(self):
         """Create a test FastAPI app with auth routes."""
         from ace_platform.api.main import create_app
+        from ace_platform.core.rate_limit import rate_limit_login, rate_limit_register
 
-        return create_app()
+        async def _no_rate_limit():
+            """Disable rate limits for schema/validation integration tests."""
+            pass
+
+        app = create_app()
+        app.dependency_overrides[rate_limit_register] = _no_rate_limit
+        app.dependency_overrides[rate_limit_login] = _no_rate_limit
+        return app
 
     @pytest.fixture
     def client(self, app):

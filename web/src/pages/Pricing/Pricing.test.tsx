@@ -5,6 +5,7 @@ import { Pricing } from './Pricing';
 
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
+  getTrialDisclosureVariant: vi.fn(() => 'control'),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -26,9 +27,14 @@ vi.mock('../../utils/api', () => ({
   },
 }));
 
+vi.mock('../../lib/experiments', () => ({
+  getTrialDisclosureVariant: mocks.getTrialDisclosureVariant,
+}));
+
 describe('Pricing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.getTrialDisclosureVariant.mockReturnValue('control');
     mocks.apiPost.mockResolvedValue({
       data: {
         success: false,
@@ -68,5 +74,13 @@ describe('Pricing', () => {
       screen.getByText(/Starter trial is card-required/i)
     ).toBeInTheDocument();
     expect(screen.getAllByText(/Trial includes 1 playbook and 5 evolutions/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders late disclosure note for late_disclosure variant', () => {
+    mocks.getTrialDisclosureVariant.mockReturnValue('late_disclosure');
+    render(<Pricing />);
+
+    expect(screen.queryByText(/Starter trial is card-required/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Card required when starting the Starter trial/i)).toBeInTheDocument();
   });
 });
