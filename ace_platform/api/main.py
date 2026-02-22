@@ -1088,6 +1088,20 @@ def _register_routes(app: FastAPI) -> None:
             background: var(--bg-secondary);
             object-fit: cover;
         }
+        .hero-video-play {
+            align-self: flex-start;
+            margin-top: -0.1rem;
+            border-radius: 999px;
+            border: 1px solid var(--border-default);
+            background: var(--bg-surface);
+            color: var(--ink-primary);
+            font-family: var(--font-display);
+            font-size: 0.8rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            padding: 0.35rem 0.75rem;
+            cursor: pointer;
+        }
         .metric-panel {
             border-radius: 10px;
             border: 1px solid var(--border-default);
@@ -1407,9 +1421,15 @@ def _register_routes(app: FastAPI) -> None:
             </div>
 
             <div class="hero-visual" aria-hidden="true">
-                <video class="hero-video" autoplay loop muted playsinline preload="metadata">
-                    <source src="/landing-hero-video.mp4" type="video/mp4" />
-                </video>
+                <video
+                    class="hero-video js-hero-video"
+                    muted
+                    playsinline
+                    preload="none"
+                    poster="/ace-social-card.png"
+                    data-src="/landing-hero-video.mp4"
+                ></video>
+                <button class="hero-video-play" type="button" data-video-play hidden>Play demo</button>
                 <div class="metric-panel">
                     <p>Latest improvement</p>
                     <strong>Fewer repeat bugs</strong>

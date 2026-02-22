@@ -243,6 +243,20 @@
   background: var(--bg-tertiary);
 }
 
+.heroVideoPlay {
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.36rem 0.72rem;
+  cursor: pointer;
+}
+
 .metricPanel {
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
@@ -424,6 +438,13 @@
 .controlList p {
   border-left: 3px solid var(--border-default);
   padding-left: var(--space-md);
+}
+
+.trialDisclosure {
+  margin-top: calc(var(--space-sm) * -1);
+  margin-bottom: var(--space-md);
+  color: var(--gold-primary);
+  font-size: 0.92rem;
 }
 
 .priceCard ul {

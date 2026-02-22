@@ -1,5 +1,9 @@
 import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { Logo } from '../../components/Logo';
+import { appendAttributionParams } from '../../lib/attribution';
+import { trackAcquisitionEvent } from '../../lib/analytics';
+import { getTrialDisclosureVariant } from '../../lib/experiments';
 import styles from './LandingPage.module.css';
 
 const TRUST_BADGES = ['Claude Code', 'Codex', 'MCP'];
@@ -71,7 +75,8 @@ const FAQS = [
   },
   {
     question: 'How are changes applied?',
-    answer: 'Evolutions generate new playbook versions automatically, and you can inspect version history in the app.',
+    answer:
+      'Evolutions generate new playbook versions automatically, and you can inspect version history in the app.',
   },
   {
     question: 'Will this work with my current AI toolchain?',
@@ -79,12 +84,101 @@ const FAQS = [
   },
   {
     question: 'Is this only for coding?',
-    answer: 'No. ACE works for coding and broader knowledge workflows like research, writing, and analysis.',
+    answer:
+      'No. ACE works for coding and broader knowledge workflows like research, writing, and analysis.',
   },
 ];
 
 export function LandingPage() {
   const currentYear = new Date().getFullYear();
+  const trialDisclosureVariant = getTrialDisclosureVariant();
+  const [isDeferredVideoMode, setIsDeferredVideoMode] = useState(true);
+  const [showMobilePlayButton, setShowMobilePlayButton] = useState(false);
+  const [videoSourceAttached, setVideoSourceAttached] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  const registerHref = appendAttributionParams('/register');
+  const loginHref = appendAttributionParams('/login');
+
+  const attachVideoSource = () => {
+    const video = videoRef.current;
+    if (!video || videoSourceAttached) {
+      return;
+    }
+
+    const source = document.createElement('source');
+    source.src = '/landing-hero-video.mp4';
+    source.type = 'video/mp4';
+    video.appendChild(source);
+    video.load();
+    setVideoSourceAttached(true);
+
+    trackAcquisitionEvent('hero_video_loaded', {
+      surface: 'landing_spa',
+    });
+  };
+
+  useEffect(() => {
+    trackAcquisitionEvent('landing_view', {
+      surface: 'landing_spa',
+      path: '/',
+    });
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const handlePlay = () => {
+      trackAcquisitionEvent('hero_video_played', {
+        surface: 'landing_spa',
+      });
+    };
+
+    video.addEventListener('play', handlePlay, { once: true });
+    return () => video.removeEventListener('play', handlePlay);
+  }, []);
+
+  useEffect(() => {
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile = window.matchMedia('(max-width: 900px)').matches;
+    const saveData = Boolean((navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData);
+
+    if (isMobile || reduceMotion || saveData) {
+      setIsDeferredVideoMode(true);
+      setShowMobilePlayButton(true);
+      return;
+    }
+
+    setIsDeferredVideoMode(false);
+    setShowMobilePlayButton(false);
+
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (!entry?.isIntersecting) {
+          return;
+        }
+
+        attachVideoSource();
+        video.autoplay = true;
+        video.loop = true;
+        void video.play();
+        observer.disconnect();
+      },
+      { threshold: 0.4 },
+    );
+
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, [videoSourceAttached]);
 
   return (
     <div className={styles.page}>
@@ -105,13 +199,25 @@ export function LandingPage() {
             <a href="#how-it-works">How it works</a>
             <a href="#use-cases">Use cases</a>
             <a href="#pricing">Pricing</a>
-            <a href="https://docs.aceagent.io/docs/getting-started/quick-start/" target="_blank" rel="noreferrer">
+            <a
+              href="https://docs.aceagent.io/docs/getting-started/quick-start/"
+              target="_blank"
+              rel="noreferrer"
+            >
               Docs
             </a>
-            <Link to="/login" className={styles.navGhost}>
+            <Link to={loginHref} className={styles.navGhost}>
               Sign in
             </Link>
-            <Link to="/register" className={styles.navCta}>
+            <Link
+              to={registerHref}
+              className={styles.navCta}
+              onClick={() => {
+                trackAcquisitionEvent('register_start', {
+                  source: 'landing_nav',
+                });
+              }}
+            >
               Start free
             </Link>
           </nav>
@@ -123,11 +229,20 @@ export function LandingPage() {
               <p className={styles.eyebrow}>Agentic Context Engineer</p>
               <h1>Your AI workflow gets better after every task.</h1>
               <p className={styles.heroSubhead}>
-                ACE captures what worked, what failed, and what to improve so your assistant becomes more reliable with real use.
+                ACE captures what worked, what failed, and what to improve so your assistant becomes
+                more reliable with real use.
               </p>
 
               <div className={styles.heroActions}>
-                <Link to="/register" className={styles.primaryAction}>
+                <Link
+                  to={registerHref}
+                  className={styles.primaryAction}
+                  onClick={() => {
+                    trackAcquisitionEvent('register_start', {
+                      source: 'landing_hero',
+                    });
+                  }}
+                >
                   Start free
                 </Link>
                 <a
@@ -144,9 +259,34 @@ export function LandingPage() {
             </div>
 
             <div className={styles.heroVisual} aria-hidden="true">
-              <video autoPlay loop muted playsInline preload="metadata" className={styles.heroVideo}>
-                <source src="/landing-hero-video.mp4" type="video/mp4" />
-              </video>
+              <video
+                ref={videoRef}
+                loop={!isDeferredVideoMode}
+                muted
+                playsInline
+                preload={isDeferredVideoMode ? 'none' : 'metadata'}
+                className={styles.heroVideo}
+                poster="/ace-social-card.png"
+              />
+              {showMobilePlayButton && (
+                <button
+                  type="button"
+                  className={styles.heroVideoPlay}
+                  onClick={() => {
+                    attachVideoSource();
+                    const video = videoRef.current;
+                    if (!video) {
+                      return;
+                    }
+
+                    video.controls = true;
+                    void video.play();
+                    setShowMobilePlayButton(false);
+                  }}
+                >
+                  Play demo
+                </button>
+              )}
               <div className={styles.metricPanel}>
                 <p>Latest improvement</p>
                 <strong>Fewer repeat bugs</strong>
@@ -246,6 +386,11 @@ export function LandingPage() {
             <div className={styles.sectionHeader}>
               <h2>Start free, upgrade when you need more power</h2>
             </div>
+            {trialDisclosureVariant === 'control' && (
+              <p className={styles.trialDisclosure}>
+                Starter trial is card-required. No charge today.
+              </p>
+            )}
             <div className={styles.pricingGrid}>
               <article className={styles.priceCard}>
                 <h3>Starter</h3>
@@ -295,10 +440,18 @@ export function LandingPage() {
               </article>
             </div>
             <div className={styles.pricingActions}>
-              <Link to="/register" className={styles.primaryAction}>
+              <Link
+                to={registerHref}
+                className={styles.primaryAction}
+                onClick={() => {
+                  trackAcquisitionEvent('register_start', {
+                    source: 'landing_pricing',
+                  });
+                }}
+              >
                 Start free
               </Link>
-              <Link to="/login" className={styles.secondaryAction}>
+              <Link to={loginHref} className={styles.secondaryAction}>
                 Sign in
               </Link>
             </div>
@@ -322,7 +475,15 @@ export function LandingPage() {
             <h2>Make your AI improve continuously</h2>
             <p>Turn today&apos;s tasks into tomorrow&apos;s better results.</p>
             <div className={styles.heroActions}>
-              <Link to="/register" className={styles.primaryAction}>
+              <Link
+                to={registerHref}
+                className={styles.primaryAction}
+                onClick={() => {
+                  trackAcquisitionEvent('register_start', {
+                    source: 'landing_final_cta',
+                  });
+                }}
+              >
                 Start free
               </Link>
               <a
