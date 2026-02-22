@@ -1,5 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api, authApi } from '../../utils/api';
+import { trackAcquisitionEvent } from '../../lib/analytics';
+import { getAnonymousId } from '../../lib/anonymousId';
+import {
+  buildAttributionQueryParams,
+  getAttributionSnapshot,
+} from '../../lib/attribution';
+import { getTrialDisclosureVariant } from '../../lib/experiments';
 import styles from './OAuthButtons.module.css';
 
 interface OAuthProviders {
@@ -7,11 +14,21 @@ interface OAuthProviders {
   github: boolean;
 }
 
+function isLikelyXInAppBrowser(userAgent: string): boolean {
+  const ua = userAgent.toLowerCase();
+  return ua.includes('twitter') || ua.includes('x-apple') || ua.includes('x-web-view');
+}
+
 export function OAuthButtons() {
   const [providers, setProviders] = useState<OAuthProviders | null>(null);
   const [loading, setLoading] = useState(true);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInAppHint, setShowInAppHint] = useState(false);
+
+  useEffect(() => {
+    setShowInAppHint(isLikelyXInAppBrowser(navigator.userAgent));
+  }, []);
 
   useEffect(() => {
     const fetchProviders = async () => {
@@ -19,7 +36,7 @@ export function OAuthButtons() {
         const response = await api.get<OAuthProviders>('/auth/oauth/providers');
         setProviders(response.data);
       } catch {
-        // OAuth not configured, hide buttons
+        // OAuth not configured, hide buttons.
         setProviders({ google: false, github: false });
       } finally {
         setLoading(false);
@@ -38,19 +55,43 @@ export function OAuthButtons() {
     setOauthLoading(true);
     setError(null);
     try {
-      // Get CSRF token first
       const csrfToken = await authApi.getOAuthCsrfToken();
+      const attribution = getAttributionSnapshot();
+      const variant = getTrialDisclosureVariant();
+      const anonymousId = getAnonymousId();
+      const queryParams = buildAttributionQueryParams(attribution);
 
-      // Redirect with CSRF token
-      const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      window.location.href = `${apiBaseUrl}/auth/oauth/${provider}/login?csrf_token=${encodeURIComponent(csrfToken)}`;
+      if (anonymousId) {
+        queryParams.set('anonymous_id', anonymousId);
+      }
+      queryParams.set('experiment_variant', variant);
+      queryParams.set('exp_trial_disclosure', variant);
+
+      const loginUrl = authApi.getOAuthLoginUrl(
+        provider,
+        csrfToken,
+        Object.fromEntries(queryParams.entries()),
+      );
+      window.location.href = loginUrl;
     } catch (err) {
       if (import.meta.env.DEV) {
         console.error('Failed to initiate OAuth login:', err);
       }
+
+      trackAcquisitionEvent('oauth_error', {
+        provider,
+        action: 'oauth_initiation_failed',
+      });
       setError('Failed to connect. Please try again.');
       setOauthLoading(false);
     }
+  };
+
+  const handleOpenInBrowserHint = () => {
+    trackAcquisitionEvent('oauth_fallback_used', {
+      action: 'open_in_browser_hint_clicked',
+    });
+    window.open(window.location.href, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -58,6 +99,15 @@ export function OAuthButtons() {
       <div className={styles.divider}>
         <span>or continue with</span>
       </div>
+
+      {showInAppHint && (
+        <div className={styles.inAppHint}>
+          <p>If Google fails in X, open this page in your browser and try again.</p>
+          <button type="button" onClick={handleOpenInBrowserHint} className={styles.hintButton}>
+            Open in browser
+          </button>
+        </div>
+      )}
 
       {error && <div className={styles.error}>{error}</div>}
 
@@ -88,6 +138,8 @@ export function OAuthButtons() {
           </button>
         )}
       </div>
+
+      <p className={styles.emailPath}>Prefer email? Use the email/password form above anytime.</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
@@ -6,14 +6,25 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Logo } from '../../components/Logo';
 import { OAuthButtons } from '../../components/OAuthButtons/OAuthButtons';
+import { getAnonymousId } from '../../lib/anonymousId';
+import { appendAttributionParams, getAttributionSnapshot } from '../../lib/attribution';
+import { trackAcquisitionEvent } from '../../lib/analytics';
+import { getTrialDisclosureVariant } from '../../lib/experiments';
 import styles from './AuthPage.module.css';
 
 type AuthMode = 'login' | 'register';
+
+function getIsMobileLayout(): boolean {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
+}
 
 export function AuthPage() {
   const location = useLocation();
   const isRegisterPath = location.pathname === '/register';
   const [mode, setMode] = useState<AuthMode>(isRegisterPath ? 'register' : 'login');
+  const [registerStep, setRegisterStep] = useState<1 | 2>(1);
+  const [isMobileLayout, setIsMobileLayout] = useState(getIsMobileLayout);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -22,19 +33,93 @@ export function AuthPage() {
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
+  const trialDisclosureVariant = getTrialDisclosureVariant();
+  const registerStartTrackedRef = useRef(false);
+
+  const showEarlyTrialDisclosure = trialDisclosureVariant === 'control';
+  const isMobileRegisterFlow = isMobileLayout && mode === 'register';
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 900px)');
+    const onChange = () => setIsMobileLayout(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     setMode(isRegisterPath ? 'register' : 'login');
     setError('');
+
+    if (!isRegisterPath) {
+      setRegisterStep(1);
+      registerStartTrackedRef.current = false;
+    }
   }, [isRegisterPath]);
+
+  useEffect(() => {
+    if (mode === 'register' && !registerStartTrackedRef.current) {
+      trackAcquisitionEvent(
+        'register_start',
+        {
+          source: 'auth_page',
+          path: location.pathname,
+        },
+        {
+          experiment_variant: trialDisclosureVariant,
+        },
+      );
+      registerStartTrackedRef.current = true;
+    }
+  }, [location.pathname, mode, trialDisclosureVariant]);
+
+  const handleContinueToStepTwo = () => {
+    if (!email.includes('@')) {
+      setError('Enter a valid email address');
+      return;
+    }
+
+    setError('');
+    setRegisterStep(2);
+    trackAcquisitionEvent(
+      'register_step_transition',
+      {
+        from_step: 'email',
+        to_step: 'password',
+        surface: 'auth_mobile',
+      },
+      {
+        experiment_variant: trialDisclosureVariant,
+      },
+    );
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (mode === 'register' && password !== confirmPassword) {
-      setError('Passwords do not match');
+    if (isMobileRegisterFlow && registerStep === 1) {
+      handleContinueToStepTwo();
       return;
+    }
+
+    if (mode === 'register') {
+      if (password !== confirmPassword) {
+        setError('Passwords do not match');
+        return;
+      }
+
+      trackAcquisitionEvent(
+        'register_submit',
+        {
+          source: 'auth_page',
+          path: location.pathname,
+          device: isMobileLayout ? 'mobile' : 'desktop',
+        },
+        {
+          experiment_variant: trialDisclosureVariant,
+        },
+      );
     }
 
     if (password.length < 8) {
@@ -47,14 +132,27 @@ export function AuthPage() {
       if (mode === 'login') {
         await login(email, password);
       } else {
-        await register(email, password);
+        await register(email, password, {
+          anonymous_id: getAnonymousId(),
+          attribution: getAttributionSnapshot(),
+          experiment_variant: trialDisclosureVariant,
+        });
+
+        trackAcquisitionEvent(
+          'register_success',
+          {
+            source: 'auth_page',
+            method: 'email',
+          },
+          {
+            experiment_variant: trialDisclosureVariant,
+          },
+        );
       }
       navigate('/dashboard');
     } catch (err: unknown) {
-      // Extract error message from API response or fall back to generic message
       let message = 'An error occurred';
       if (err instanceof AxiosError && err.response?.data) {
-        // Handle both error formats: {error: {message}} and {detail}
         const data = err.response.data;
         message = data.error?.message || data.detail || message;
       } else if (err instanceof Error) {
@@ -70,12 +168,21 @@ export function AuthPage() {
     const nextMode: AuthMode = mode === 'login' ? 'register' : 'login';
     setMode(nextMode);
     setError('');
-    navigate(nextMode === 'register' ? '/register' : '/login');
+    setRegisterStep(1);
+    registerStartTrackedRef.current = false;
+    navigate(appendAttributionParams(nextMode === 'register' ? '/register' : '/login'));
   };
+
+  const stickySwitchHref = appendAttributionParams(mode === 'login' ? '/register' : '/login');
 
   return (
     <div className={styles.container}>
-      {/* Animated background */}
+      <div className={styles.mobileTopBar}>
+        <Link to={stickySwitchHref} className={styles.mobileTopLink}>
+          {mode === 'login' ? 'New here? Start free' : 'Already have an account? Sign in'}
+        </Link>
+      </div>
+
       <div className={styles.background}>
         <div className={styles.orb1} />
         <div className={styles.orb2} />
@@ -84,7 +191,6 @@ export function AuthPage() {
       </div>
 
       <div className={styles.content}>
-        {/* Left side - Branding */}
         <div className={styles.branding}>
           <div className={styles.logoSection}>
             <Logo variant="card" size="xl" />
@@ -130,7 +236,6 @@ export function AuthPage() {
           </div>
         </div>
 
-        {/* Right side - Auth form */}
         <div className={styles.formSection}>
           <div className={styles.formCard}>
             <div className={styles.formHeader}>
@@ -140,10 +245,11 @@ export function AuthPage() {
                   ? 'Sign in to continue to your dashboard'
                   : 'Start building evolving playbooks today'}
               </p>
-              {mode === 'register' && (
-                <p className={styles.trialDisclosure}>
-                  7-day trial is card-required, no charge today.
-                </p>
+              {mode === 'register' && isMobileRegisterFlow && (
+                <p className={styles.stepLabel}>Step {registerStep} of 2</p>
+              )}
+              {mode === 'register' && showEarlyTrialDisclosure && (
+                <p className={styles.trialDisclosure}>7-day trial is card-required, no charge today.</p>
               )}
             </div>
 
@@ -158,26 +264,30 @@ export function AuthPage() {
                 autoComplete="email"
               />
 
-              <Input
-                type="password"
-                label="Password"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              />
+              {(mode === 'login' || !isMobileRegisterFlow || registerStep === 2) && (
+                <>
+                  <Input
+                    type="password"
+                    label="Password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  />
 
-              {mode === 'register' && (
-                <Input
-                  type="password"
-                  label="Confirm Password"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  autoComplete="new-password"
-                />
+                  {mode === 'register' && (
+                    <Input
+                      type="password"
+                      label="Confirm Password"
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      autoComplete="new-password"
+                    />
+                  )}
+                </>
               )}
 
               {error && (
@@ -198,9 +308,25 @@ export function AuthPage() {
                 </div>
               )}
 
-              <Button type="submit" isLoading={isLoading} className={styles.submitButton}>
-                {mode === 'login' ? 'Sign in' : 'Create account'}
-              </Button>
+              <div className={styles.stickySubmitArea}>
+                {isMobileRegisterFlow && registerStep === 2 && (
+                  <button
+                    type="button"
+                    className={styles.backButton}
+                    onClick={() => setRegisterStep(1)}
+                  >
+                    Back
+                  </button>
+                )}
+
+                <Button type="submit" isLoading={isLoading} className={styles.submitButton}>
+                  {mode === 'login'
+                    ? 'Sign in'
+                    : isMobileRegisterFlow && registerStep === 1
+                      ? 'Continue'
+                      : 'Create account'}
+                </Button>
+              </div>
             </form>
 
             <OAuthButtons />

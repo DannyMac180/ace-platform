@@ -425,3 +425,132 @@
   height: 1px;
   background: linear-gradient(90deg, transparent, var(--border-default), transparent);
 }
+
+.mobileTopBar {
+  display: none;
+}
+
+.mobileTopLink {
+  text-decoration: none;
+}
+
+.stepLabel {
+  margin-top: var(--space-xs);
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.stickySubmitArea {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.backButton {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.8rem;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .container {
+    min-height: 100dvh;
+    align-items: stretch;
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .background {
+    opacity: 0.55;
+  }
+
+  .content {
+    grid-template-columns: 1fr;
+    max-width: 520px;
+    width: 100%;
+    margin: 0 auto;
+    padding: calc(var(--space-md) + env(safe-area-inset-top, 0px)) var(--space-md)
+      calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
+    gap: var(--space-md);
+  }
+
+  .branding {
+    display: none;
+  }
+
+  .mobileTopBar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: calc(0.45rem + env(safe-area-inset-top, 0px)) var(--space-md) 0.45rem;
+    justify-content: center;
+    background: rgba(249, 246, 240, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .mobileTopLink {
+    color: var(--text-primary);
+    font-family: var(--font-display);
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    padding: 0.35rem 0.7rem;
+    background: var(--bg-card);
+  }
+
+  .formSection {
+    align-items: flex-start;
+  }
+
+  .formCard {
+    max-width: none;
+    padding: var(--space-lg) var(--space-md) var(--space-md);
+    border-radius: var(--radius-lg);
+    border-color: rgba(184, 134, 11, 0.28);
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .formCard::before,
+  .formCard::after {
+    display: none;
+  }
+
+  .formHeader {
+    margin-bottom: var(--space-md);
+    text-align: left;
+  }
+
+  .formHeader h2 {
+    font-size: 1.5rem;
+  }
+
+  .formHeader p {
+    font-size: 0.94rem;
+  }
+
+  .stickySubmitArea {
+    position: sticky;
+    bottom: env(safe-area-inset-bottom, 0px);
+    background: rgba(255, 255, 255, 0.95);
+    padding-top: var(--space-sm);
+    margin-top: var(--space-xs);
+    z-index: 5;
+  }
+
+  .submitButton {
+    margin-top: 0;
+  }
+}
