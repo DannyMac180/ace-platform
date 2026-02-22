@@ -322,6 +322,27 @@ class TestAuthRoutesIntegration:
         )
         assert response.status_code == 422
 
+    def test_register_request_schema_accepts_attribution_fields(self):
+        """Test register request schema supports optional attribution metadata."""
+        from ace_platform.api.routes.auth import UserRegisterRequest
+
+        payload = UserRegisterRequest(
+            email="test@example.com",
+            password="password123",
+            anonymous_id="anon_abc123",
+            attribution={
+                "src": "twitter",
+                "utm_campaign": "launch",
+                "landing_path": "/x",
+            },
+            experiment_variant="late_disclosure",
+        )
+
+        assert payload.anonymous_id == "anon_abc123"
+        assert payload.attribution is not None
+        assert payload.attribution["src"] == "twitter"
+        assert payload.experiment_variant == "late_disclosure"
+
     def test_login_missing_fields(self, client):
         """Test login with missing fields."""
         response = client.post("/auth/login", json={})

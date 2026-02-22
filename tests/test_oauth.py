@@ -174,6 +174,42 @@ class TestGoogleOAuthLogin:
         # The actual redirect behavior depends on Authlib, but we verify the call was made
         mock_oauth.google.authorize_redirect.assert_called_once()
 
+    @patch("ace_platform.api.routes.oauth._store_oauth_signup_context")
+    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
+    @patch("ace_platform.api.routes.oauth.oauth")
+    def test_google_login_stores_attribution_context(
+        self, mock_oauth, mock_enabled, mock_store_context, client
+    ):
+        """Test Google login stores attribution/session context for callback carry-through."""
+        mock_oauth.google.authorize_redirect = AsyncMock(
+            return_value=MagicMock(
+                status_code=302,
+                headers={"location": "https://accounts.google.com/o/oauth2/auth"},
+            )
+        )
+
+        csrf_response = client.get("/auth/oauth/csrf-token")
+        csrf_token = csrf_response.json()["csrf_token"]
+
+        client.get(
+            "/auth/oauth/google/login",
+            params={
+                "csrf_token": csrf_token,
+                "anonymous_id": "anon_123",
+                "src": "twitter",
+                "utm_campaign": "launch",
+                "exp_trial_disclosure": "late_disclosure",
+            },
+        )
+
+        mock_store_context.assert_called_once()
+        call_kwargs = mock_store_context.call_args.kwargs
+        assert call_kwargs["provider"] == OAuthProvider.GOOGLE
+        assert call_kwargs["anonymous_id"] == "anon_123"
+        assert call_kwargs["experiment_variant"] == "late_disclosure"
+        assert call_kwargs["attribution"] is not None
+        assert call_kwargs["attribution"]["source"] == "x"
+
 
 class TestGitHubOAuthLogin:
     """Tests for GitHub OAuth login flow."""
@@ -238,6 +274,36 @@ class TestOAuthCallback:
         """Test GitHub callback returns 400 when not configured."""
         response = client.get("/auth/oauth/github/callback")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+class TestOAuthAttributionContextHelpers:
+    """Tests for OAuth signup context session helpers."""
+
+    def test_store_and_pop_context_round_trip(self):
+        """Stored OAuth signup context should survive until callback pop."""
+        from ace_platform.api.routes.oauth import (
+            _pop_oauth_signup_context,
+            _store_oauth_signup_context,
+        )
+
+        request = MagicMock()
+        request.session = {}
+
+        _store_oauth_signup_context(
+            request,
+            provider=OAuthProvider.GITHUB,
+            anonymous_id="anon_abc",
+            experiment_variant="control",
+            attribution={"source": "x", "utm_campaign": "launch"},
+        )
+
+        context = _pop_oauth_signup_context(request, OAuthProvider.GITHUB)
+        assert context["anonymous_id"] == "anon_abc"
+        assert context["experiment_variant"] == "control"
+        assert context["attribution"]["source"] == "x"
+        # Ensure one-time use semantics.
+        second_pop = _pop_oauth_signup_context(request, OAuthProvider.GITHUB)
+        assert second_pop == {}
 
 
 class TestLinkedAccounts:

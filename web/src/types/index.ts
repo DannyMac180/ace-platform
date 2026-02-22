@@ -272,6 +272,58 @@ export interface ConversionFunnel {
   conversion_signup_to_paid_active_non_trial_pct: number;
 }
 
+export interface AttributionSnapshot {
+  src?: string;
+  source?: string;
+  channel?: string;
+  campaign?: string;
+  aid?: string;
+  anonymous_id?: string;
+  referrer_host?: string;
+  landing_path?: string;
+  device_type?: 'mobile' | 'desktop';
+  exp_trial_disclosure?: string;
+  experiment_variant?: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_term?: string;
+  utm_content?: string;
+}
+
+export type AcquisitionEventType =
+  | 'landing_view'
+  | 'register_start'
+  | 'register_submit'
+  | 'register_step_transition'
+  | 'register_success'
+  | 'trial_checkout_intent'
+  | 'trial_started'
+  | 'first_playbook_created'
+  | 'experiment_exposure'
+  | 'hero_video_loaded'
+  | 'hero_video_played'
+  | 'oauth_error'
+  | 'oauth_fallback_used';
+
+export interface AnalyticsEventPayload {
+  event_type: AcquisitionEventType;
+  event_id?: string;
+  anonymous_id?: string;
+  source?: string;
+  channel?: string;
+  campaign?: string;
+  experiment_variant?: string;
+  attribution?: AttributionSnapshot;
+  event_data?: Record<string, unknown>;
+}
+
+export interface FunnelFilters {
+  days?: number;
+  source?: string;
+  experiment_variant?: string;
+}
+
 export interface TopUser {
   user_id: string;
   email: string;

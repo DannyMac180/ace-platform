@@ -3,10 +3,13 @@ import type {
   AdminAuditEvent,
   AdminUserDetail,
   AdminUserItem,
+  AnalyticsEventPayload,
   ApiKey,
   ApiKeyCreate,
   ApiKeyCreateResponse,
+  AttributionSnapshot,
   AuditLogItem,
+  FunnelFilters,
   DailyEvolution,
   DailySignup,
   DailyUsage,
@@ -120,8 +123,22 @@ api.interceptors.response.use(
 
 // Auth API
 export const authApi = {
-  register: async (email: string, password: string): Promise<TokenResponse> => {
-    const response = await api.post<TokenResponse>('/auth/register', { email, password });
+  register: async (
+    email: string,
+    password: string,
+    options?: {
+      anonymous_id?: string | null;
+      attribution?: AttributionSnapshot | null;
+      experiment_variant?: string | null;
+    }
+  ): Promise<TokenResponse> => {
+    const response = await api.post<TokenResponse>('/auth/register', {
+      email,
+      password,
+      anonymous_id: options?.anonymous_id ?? undefined,
+      attribution: options?.attribution ?? undefined,
+      experiment_variant: options?.experiment_variant ?? undefined,
+    });
     setTokens(response.data);
     return response.data;
   },
@@ -197,6 +214,24 @@ export const authApi = {
     }
     const data = await response.json();
     return data.csrf_token;
+  },
+
+  getOAuthLoginUrl: (
+    provider: 'google' | 'github',
+    csrfToken: string,
+    params?: Record<string, string>
+  ): string => {
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+    const url = new URL(`${apiBaseUrl}/auth/oauth/${provider}/login`);
+    url.searchParams.set('csrf_token', csrfToken);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value) {
+          url.searchParams.set(key, value);
+        }
+      }
+    }
+    return url.toString();
   },
 };
 
@@ -382,6 +417,14 @@ export const billingApi = {
     const response = await api.get<{ has_payment_method: boolean; payment_method_id: string | null }>(
       '/billing/card-status'
     );
+    return response.data;
+  },
+};
+
+// Analytics API
+export const analyticsApi = {
+  trackEvent: async (payload: AnalyticsEventPayload): Promise<{ accepted: boolean }> => {
+    const response = await api.post<{ accepted: boolean }>('/analytics/events', payload);
     return response.data;
   },
 };

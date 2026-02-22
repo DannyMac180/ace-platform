@@ -7,14 +7,21 @@ import {
   type ReactNode,
 } from 'react';
 import { authApi, getAccessToken } from '../utils/api';
+import type { AttributionSnapshot } from '../types';
 import type { User } from '../types';
+
+interface RegisterOptions {
+  anonymous_id?: string | null;
+  attribution?: AttributionSnapshot | null;
+  experiment_variant?: string | null;
+}
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, options?: RegisterOptions) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -54,8 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshUser();
   };
 
-  const register = async (email: string, password: string) => {
-    await authApi.register(email, password);
+  const register = async (email: string, password: string, options?: RegisterOptions) => {
+    await authApi.register(email, password, options);
     await refreshUser();
   };
 

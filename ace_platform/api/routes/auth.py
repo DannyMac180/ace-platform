@@ -10,7 +10,7 @@ This module provides REST API endpoints for:
 """
 
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedPaidUser
 from ace_platform.api.deps import get_db
 from ace_platform.config import get_settings
+from ace_platform.core.acquisition import parse_signup_attribution
 from ace_platform.core.api_keys import (
     create_api_key_async,
     list_api_keys_async,
@@ -73,7 +74,12 @@ from ace_platform.core.security import (
     hash_password,
     verify_password,
 )
-from ace_platform.db.models import PasswordResetToken, User
+from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
+    PasswordResetToken,
+    User,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -88,6 +94,20 @@ class UserRegisterRequest(BaseModel):
 
     email: EmailStr = Field(..., description="User's email address")
     password: str = Field(..., min_length=8, description="Password (min 8 characters)")
+    anonymous_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Optional anonymous client ID for first-party attribution",
+    )
+    attribution: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional first-touch attribution snapshot",
+    )
+    experiment_variant: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Optional active experiment variant at signup",
+    )
 
 
 class UserLoginRequest(BaseModel):
@@ -291,11 +311,21 @@ async def register(
             detail="Email already registered",
         )
 
+    settings = get_settings()
+    tracking_enabled = settings.acquisition_tracking_enabled
+    parsed_attribution = parse_signup_attribution(request.attribution) if tracking_enabled else None
+
     # Create new user
     user = User(
         email=request.email.lower(),
         hashed_password=hash_password(request.password),
         email_verified=False,  # Requires verification
+        signup_source=parsed_attribution.source if parsed_attribution else None,
+        signup_channel=parsed_attribution.channel if parsed_attribution else None,
+        signup_campaign=parsed_attribution.campaign if parsed_attribution else None,
+        signup_anonymous_id=request.anonymous_id if tracking_enabled else None,
+        signup_variant=request.experiment_variant if tracking_enabled else None,
+        signup_attribution=parsed_attribution.snapshot if parsed_attribution else None,
     )
     db.add(user)
 
@@ -313,13 +343,31 @@ async def register(
     # Audit log the account creation
     await audit_account_created(db, user.id, http_request, method="email")
 
+    if tracking_enabled:
+        event_data: dict[str, Any] = {"method": "email"}
+        if parsed_attribution and parsed_attribution.snapshot:
+            event_data["attribution"] = parsed_attribution.snapshot
+
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.REGISTER_SUCCESS,
+                anonymous_id=request.anonymous_id,
+                source=parsed_attribution.source if parsed_attribution else None,
+                channel=parsed_attribution.channel if parsed_attribution else None,
+                campaign=parsed_attribution.campaign if parsed_attribution else None,
+                experiment_variant=request.experiment_variant,
+                event_data=event_data,
+            )
+        )
+
     # Single commit for both user creation and audit log
     await db.commit()
 
     # Send verification email (fire and forget - don't fail registration if email fails)
     if is_email_enabled():
         token = create_email_verification_token(user.id, user.email)
-        verification_url = f"{get_settings().frontend_url}/verify-email?token={token}"
+        verification_url = f"{settings.frontend_url}/verify-email?token={token}"
         await send_verification_email(user.email, verification_url)
 
     # Return tokens

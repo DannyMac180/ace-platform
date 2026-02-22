@@ -20,7 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
 from ace_platform.core.stripe_config import get_tier_from_price_id
-from ace_platform.db.models import ProcessedWebhookEvent, SubscriptionStatus, User
+from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
+    ProcessedWebhookEvent,
+    SubscriptionStatus,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +309,25 @@ async def _handle_checkout_completed(
                 logger.warning(f"Failed to fetch subscription for trial_ends_at: {e}")
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
+
+    if is_trial:
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.TRIAL_STARTED,
+                anonymous_id=user.signup_anonymous_id,
+                source=user.signup_source,
+                channel=user.signup_channel,
+                campaign=user.signup_campaign,
+                experiment_variant=user.signup_variant,
+                event_data={
+                    "source": "stripe_webhook",
+                    "stripe_event_type": event.type,
+                    "stripe_subscription_id": subscription_id,
+                },
+            )
+        )
+
     await db.commit()
 
     logger.info(f"Updated user {user.id} with subscription {subscription_id}")

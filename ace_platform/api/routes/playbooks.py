@@ -31,6 +31,7 @@ from ace_platform.api.auth import (
     require_paid_access,
 )
 from ace_platform.api.deps import get_db
+from ace_platform.config import get_settings
 from ace_platform.core.limits import (
     get_effective_tier_for_limits,
     get_tier_limits,
@@ -47,6 +48,8 @@ from ace_platform.core.validation import (
     MAX_TASK_DESCRIPTION_SIZE,
 )
 from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
     EvolutionJob,
     EvolutionJobStatus,
     Outcome,
@@ -365,15 +368,16 @@ async def create_playbook(
     # Check max_playbooks limit using effective tier (trial users get FREE limits)
     effective_tier = get_effective_tier_for_limits(current_user)
     limits = get_tier_limits(effective_tier)
+    settings = get_settings()
+
+    # Count existing playbooks once so we can enforce limits and emit first-playbook events.
+    count_query = select(func.count()).select_from(
+        select(Playbook).where(Playbook.user_id == current_user.id).subquery()
+    )
+    existing_playbook_count = await db.scalar(count_query) or 0
 
     if limits.max_playbooks is not None:
-        # Count existing playbooks
-        count_query = select(func.count()).select_from(
-            select(Playbook).where(Playbook.user_id == current_user.id).subquery()
-        )
-        current_count = await db.scalar(count_query) or 0
-
-        if current_count >= limits.max_playbooks:
+        if existing_playbook_count >= limits.max_playbooks:
             if is_user_trialing(current_user):
                 raise SubscriptionError(
                     f"You've reached the maximum of {limits.max_playbooks} playbook(s) "
@@ -420,6 +424,20 @@ async def create_playbook(
         playbook,
         content=data.initial_content if data.initial_content else None,
     )
+
+    if settings.acquisition_tracking_enabled and existing_playbook_count == 0:
+        db.add(
+            AcquisitionEvent(
+                user_id=current_user.id,
+                event_type=AcquisitionEventType.FIRST_PLAYBOOK_CREATED,
+                anonymous_id=current_user.signup_anonymous_id,
+                source=current_user.signup_source,
+                channel=current_user.signup_channel,
+                campaign=current_user.signup_campaign,
+                experiment_variant=current_user.signup_variant,
+                event_data={"playbook_id": str(playbook.id)},
+            )
+        )
 
     await db.commit()
     # Refresh only the playbook's scalar attributes (not relationships)

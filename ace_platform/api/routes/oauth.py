@@ -16,7 +16,7 @@ The frontend should:
 
 import logging
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -31,6 +31,10 @@ from ace_platform.api.middleware import (
     validate_csrf_token_value,
 )
 from ace_platform.config import get_settings
+from ace_platform.core.acquisition import (
+    attribution_from_query_params,
+    parse_signup_attribution,
+)
 from ace_platform.core.audit import (
     audit_oauth_account_unlinked,
     audit_oauth_login_failure,
@@ -48,7 +52,7 @@ from ace_platform.core.oauth import (
 from ace_platform.core.oauth_service import OAuthService
 from ace_platform.core.rate_limit import RateLimitOAuth
 from ace_platform.core.security import create_access_token, create_refresh_token
-from ace_platform.db.models import OAuthProvider
+from ace_platform.db.models import AcquisitionEvent, AcquisitionEventType, OAuthProvider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth/oauth", tags=["OAuth"])
@@ -115,6 +119,34 @@ def _validate_oauth_csrf_token(request: Request, csrf_token: str | None) -> None
     )
 
 
+_GOOGLE_SIGNUP_CTX_KEY = "oauth_signup_context_google"
+_GITHUB_SIGNUP_CTX_KEY = "oauth_signup_context_github"
+
+
+def _store_oauth_signup_context(
+    request: Request,
+    *,
+    provider: OAuthProvider,
+    anonymous_id: str | None,
+    experiment_variant: str | None,
+    attribution: dict[str, str] | None,
+) -> None:
+    """Persist signup attribution context through OAuth redirect flow."""
+    key = _GOOGLE_SIGNUP_CTX_KEY if provider == OAuthProvider.GOOGLE else _GITHUB_SIGNUP_CTX_KEY
+    request.session[key] = {
+        "anonymous_id": anonymous_id,
+        "experiment_variant": experiment_variant,
+        "attribution": attribution,
+    }
+
+
+def _pop_oauth_signup_context(request: Request, provider: OAuthProvider) -> dict[str, Any]:
+    """Pop and return OAuth signup attribution context for a provider."""
+    key = _GOOGLE_SIGNUP_CTX_KEY if provider == OAuthProvider.GOOGLE else _GITHUB_SIGNUP_CTX_KEY
+    value = request.session.pop(key, None)
+    return value if isinstance(value, dict) else {}
+
+
 @router.get("/csrf-token", response_model=CSRFTokenResponse)
 async def get_csrf_token(request: Request) -> CSRFTokenResponse:
     """Get a CSRF token for OAuth login.
@@ -159,6 +191,22 @@ async def google_login(
     request: Request,
     _: RateLimitOAuth,
     csrf_token: Annotated[str | None, Query(description="CSRF token from /csrf-token")] = None,
+    anonymous_id: Annotated[str | None, Query(max_length=128)] = None,
+    experiment_variant: Annotated[str | None, Query(max_length=100)] = None,
+    exp_trial_disclosure: Annotated[str | None, Query(max_length=100)] = None,
+    src: Annotated[str | None, Query(max_length=64)] = None,
+    source: Annotated[str | None, Query(max_length=64)] = None,
+    channel: Annotated[str | None, Query(max_length=64)] = None,
+    campaign: Annotated[str | None, Query(max_length=255)] = None,
+    aid: Annotated[str | None, Query(max_length=128)] = None,
+    referrer_host: Annotated[str | None, Query(max_length=255)] = None,
+    landing_path: Annotated[str | None, Query(max_length=512)] = None,
+    device_type: Annotated[str | None, Query(max_length=64)] = None,
+    utm_source: Annotated[str | None, Query(max_length=255)] = None,
+    utm_medium: Annotated[str | None, Query(max_length=255)] = None,
+    utm_campaign: Annotated[str | None, Query(max_length=255)] = None,
+    utm_term: Annotated[str | None, Query(max_length=255)] = None,
+    utm_content: Annotated[str | None, Query(max_length=255)] = None,
 ):
     """Initiate Google OAuth login flow.
 
@@ -172,6 +220,14 @@ async def google_login(
 
     # Validate CSRF token
     _validate_oauth_csrf_token(request, csrf_token)
+
+    _store_oauth_signup_context(
+        request,
+        provider=OAuthProvider.GOOGLE,
+        anonymous_id=anonymous_id,
+        experiment_variant=experiment_variant or exp_trial_disclosure,
+        attribution=attribution_from_query_params(request.query_params),
+    )
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/google/callback"
     return await oauth.google.authorize_redirect(request, redirect_uri)
@@ -239,6 +295,38 @@ async def google_callback(
         refresh_token=token.get("refresh_token"),
         token_expires_at=None,  # Google tokens handled differently
     )
+    signup_context = _pop_oauth_signup_context(request, OAuthProvider.GOOGLE)
+    tracking_enabled = settings.acquisition_tracking_enabled
+
+    if tracking_enabled and is_new:
+        anonymous_id = signup_context.get("anonymous_id")
+        experiment_variant = signup_context.get("experiment_variant")
+        attribution = signup_context.get("attribution")
+        parsed_attribution = parse_signup_attribution(attribution)
+
+        user.signup_source = parsed_attribution.source
+        user.signup_channel = parsed_attribution.channel
+        user.signup_campaign = parsed_attribution.campaign
+        user.signup_anonymous_id = anonymous_id
+        user.signup_variant = experiment_variant
+        user.signup_attribution = parsed_attribution.snapshot
+
+        event_data: dict[str, Any] = {"method": "oauth", "provider": "google"}
+        if parsed_attribution.snapshot:
+            event_data["attribution"] = parsed_attribution.snapshot
+
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.REGISTER_SUCCESS,
+                anonymous_id=anonymous_id,
+                source=parsed_attribution.source,
+                channel=parsed_attribution.channel,
+                campaign=parsed_attribution.campaign,
+                experiment_variant=experiment_variant,
+                event_data=event_data,
+            )
+        )
 
     if not user.is_active:
         await audit_oauth_login_failure(
@@ -288,6 +376,22 @@ async def github_login(
     request: Request,
     _: RateLimitOAuth,
     csrf_token: Annotated[str | None, Query(description="CSRF token from /csrf-token")] = None,
+    anonymous_id: Annotated[str | None, Query(max_length=128)] = None,
+    experiment_variant: Annotated[str | None, Query(max_length=100)] = None,
+    exp_trial_disclosure: Annotated[str | None, Query(max_length=100)] = None,
+    src: Annotated[str | None, Query(max_length=64)] = None,
+    source: Annotated[str | None, Query(max_length=64)] = None,
+    channel: Annotated[str | None, Query(max_length=64)] = None,
+    campaign: Annotated[str | None, Query(max_length=255)] = None,
+    aid: Annotated[str | None, Query(max_length=128)] = None,
+    referrer_host: Annotated[str | None, Query(max_length=255)] = None,
+    landing_path: Annotated[str | None, Query(max_length=512)] = None,
+    device_type: Annotated[str | None, Query(max_length=64)] = None,
+    utm_source: Annotated[str | None, Query(max_length=255)] = None,
+    utm_medium: Annotated[str | None, Query(max_length=255)] = None,
+    utm_campaign: Annotated[str | None, Query(max_length=255)] = None,
+    utm_term: Annotated[str | None, Query(max_length=255)] = None,
+    utm_content: Annotated[str | None, Query(max_length=255)] = None,
 ):
     """Initiate GitHub OAuth login flow.
 
@@ -301,6 +405,14 @@ async def github_login(
 
     # Validate CSRF token
     _validate_oauth_csrf_token(request, csrf_token)
+
+    _store_oauth_signup_context(
+        request,
+        provider=OAuthProvider.GITHUB,
+        anonymous_id=anonymous_id,
+        experiment_variant=experiment_variant or exp_trial_disclosure,
+        attribution=attribution_from_query_params(request.query_params),
+    )
 
     redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/github/callback"
     return await oauth.github.authorize_redirect(request, redirect_uri)
@@ -387,6 +499,38 @@ async def github_callback(
         access_token=token.get("access_token"),
         refresh_token=token.get("refresh_token"),
     )
+    signup_context = _pop_oauth_signup_context(request, OAuthProvider.GITHUB)
+    tracking_enabled = settings.acquisition_tracking_enabled
+
+    if tracking_enabled and is_new:
+        anonymous_id = signup_context.get("anonymous_id")
+        experiment_variant = signup_context.get("experiment_variant")
+        attribution = signup_context.get("attribution")
+        parsed_attribution = parse_signup_attribution(attribution)
+
+        user.signup_source = parsed_attribution.source
+        user.signup_channel = parsed_attribution.channel
+        user.signup_campaign = parsed_attribution.campaign
+        user.signup_anonymous_id = anonymous_id
+        user.signup_variant = experiment_variant
+        user.signup_attribution = parsed_attribution.snapshot
+
+        event_data: dict[str, Any] = {"method": "oauth", "provider": "github"}
+        if parsed_attribution.snapshot:
+            event_data["attribution"] = parsed_attribution.snapshot
+
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.REGISTER_SUCCESS,
+                anonymous_id=anonymous_id,
+                source=parsed_attribution.source,
+                channel=parsed_attribution.channel,
+                campaign=parsed_attribution.campaign,
+                experiment_variant=experiment_variant,
+                event_data=event_data,
+            )
+        )
 
     if not user.is_active:
         await audit_oauth_login_failure(
