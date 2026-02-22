@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useEffect, useState, type FormEvent } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { AxiosError } from 'axios';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
@@ -11,7 +11,9 @@ import styles from './AuthPage.module.css';
 type AuthMode = 'login' | 'register';
 
 export function AuthPage() {
-  const [mode, setMode] = useState<AuthMode>('login');
+  const location = useLocation();
+  const isRegisterPath = location.pathname === '/register';
+  const [mode, setMode] = useState<AuthMode>(isRegisterPath ? 'register' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -20,6 +22,11 @@ export function AuthPage() {
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setMode(isRegisterPath ? 'register' : 'login');
+    setError('');
+  }, [isRegisterPath]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -60,8 +67,10 @@ export function AuthPage() {
   };
 
   const toggleMode = () => {
-    setMode(mode === 'login' ? 'register' : 'login');
+    const nextMode: AuthMode = mode === 'login' ? 'register' : 'login';
+    setMode(nextMode);
     setError('');
+    navigate(nextMode === 'register' ? '/register' : '/login');
   };
 
   return (
