@@ -1,0 +1,424 @@
+{
+  "id": "ace-platform-tour",
+  "title": "ACE Platform Architecture Tour",
+  "description": "A guided walkthrough of the ACE (Autonomous Capability Enhancement) platform — a hosted 'Playbooks as a Service' system built on a three-agent architecture with FastAPI, MCP, Celery workers, and a React dashboard.",
+  "version": "1.0.0",
+  "audience": "New Developers & Contributors",
+  "prerequisites": [
+    "Basic understanding of Python and TypeScript",
+    "Familiarity with REST APIs and async processing"
+  ],
+  "steps": [
+    {
+      "id": "step-1-overview",
+      "title": "Project Overview",
+      "description": "Welcome to the ACE Platform! This is a hosted 'Playbooks as a Service' system that uses three AI agents (Generator, Reflector, Curator) to create self-improving instructions. The codebase is organized into four main areas: ace_core (the AI algorithm), ace_platform (the backend services), web (the React dashboard), and tests (comprehensive test suite). Configuration lives at the root with Docker, Fly.io deployment, and Alembic migrations.",
+      "estimatedTime": 60,
+      "focusDirectory": "",
+      "highlightLayers": [
+        {
+          "id": "core-algorithm",
+          "name": "ACE Core Algorithm",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "ace_core", "type": "directory" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "platform-backend",
+          "name": "Platform Backend",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "ace_platform", "type": "directory" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "frontend-dashboard",
+          "name": "Frontend Dashboard",
+          "color": "#10b981",
+          "items": [
+            { "path": "web", "type": "directory" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "test-suite",
+          "name": "Test Suite",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "tests", "type": "directory" }
+          ],
+          "opacity": 0.6,
+          "renderStrategy": "border"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "explore",
+          "description": "Explore the top-level directories to get a sense of the project layout"
+        }
+      ]
+    },
+    {
+      "id": "step-2-ace-core",
+      "title": "ACE Core: The Three-Agent System",
+      "description": "The heart of ACE is a three-agent architecture for self-improving AI instructions:\n\n- **Generator** (generator.py): Produces reasoning trajectories for new tasks, surfacing strategies and pitfalls.\n- **Reflector** (reflector.py): Analyzes execution outcomes and extracts insights with helpful/harmful counters.\n- **Curator** (curator.py): Merges insights into structured playbook delta updates with de-duplication.\n\nThe orchestration happens in ace.py, which coordinates all three agents. The finance/ directory contains a domain-specific implementation for testing the ACE algorithm on financial NER tasks.",
+      "estimatedTime": 120,
+      "focusDirectory": "ace_core",
+      "highlightLayers": [
+        {
+          "id": "three-agents",
+          "name": "Three Core Agents",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "ace_core/ace/core/generator.py", "type": "file" },
+            { "path": "ace_core/ace/core/reflector.py", "type": "file" },
+            { "path": "ace_core/ace/core/curator.py", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "orchestration",
+          "name": "Orchestration",
+          "color": "#ec4899",
+          "items": [
+            { "path": "ace_core/ace/ace.py", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click on ace.py to see how the three agents are orchestrated",
+          "target": "ace_core/ace/ace.py"
+        }
+      ]
+    },
+    {
+      "id": "step-3-api-layer",
+      "title": "Platform API: FastAPI Backend",
+      "description": "The API layer is built with FastAPI and serves as the primary interface for the dashboard and external clients. Key routes include:\n\n- **auth.py**: Login, signup, OAuth (Google/GitHub), password reset, email verification\n- **playbooks.py**: Full CRUD for playbooks with versioning and outcome recording\n- **evolutions.py**: Trigger evolution jobs and check status\n- **api_keys.py**: Create and manage API keys for MCP clients\n- **billing.py**: Stripe integration (feature-flagged)\n\nThe main.py file initializes the FastAPI app with middleware for CORS, rate limiting, and structured logging.",
+      "estimatedTime": 120,
+      "focusDirectory": "ace_platform/api",
+      "highlightLayers": [
+        {
+          "id": "api-entry",
+          "name": "API Entry Point",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "ace_platform/api/main.py", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "api-routes",
+          "name": "API Routes",
+          "color": "#06b6d4",
+          "items": [
+            { "path": "ace_platform/api/routes", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over the routes directory to see all API endpoints",
+          "target": "ace_platform/api/routes"
+        }
+      ]
+    },
+    {
+      "id": "step-4-mcp-server",
+      "title": "MCP Server: AI Tool Integration",
+      "description": "The MCP (Model Context Protocol) server exposes ACE capabilities as tools that AI assistants like Claude can call directly. It provides five core tools:\n\n1. **list_playbooks()** — Browse available playbooks with semantic search\n2. **get_playbook()** — Retrieve full playbook content\n3. **create_playbook()** — Create new playbooks\n4. **report_outcome()** — Record task execution results\n5. **trigger_evolution()** — Kick off the three-agent evolution process\n\nThe server is mounted within the FastAPI app at /mcp and also supports standalone stdio transport for Claude Desktop.",
+      "estimatedTime": 90,
+      "focusDirectory": "ace_platform/mcp",
+      "highlightLayers": [
+        {
+          "id": "mcp-files",
+          "name": "MCP Server Files",
+          "color": "#f97316",
+          "items": [
+            { "path": "ace_platform/mcp/server.py", "type": "file" },
+            { "path": "ace_platform/mcp/tools.py", "type": "file" },
+            { "path": "ace_platform/mcp/auth.py", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click on server.py to see the MCP tool definitions",
+          "target": "ace_platform/mcp/server.py"
+        }
+      ]
+    },
+    {
+      "id": "step-5-core-services",
+      "title": "Core Services: Business Logic",
+      "description": "The core/ directory contains the business logic that powers the platform. Key services include:\n\n- **playbooks.py**: PlaybookService — CRUD, versioning, and outcome management\n- **evolution.py**: EvolutionService — wraps the ace_core three-agent system\n- **auth.py / oauth_service.py**: JWT authentication and Google/GitHub OAuth\n- **api_keys.py**: API key generation with bcrypt hashing and scoped permissions\n- **llm_proxy.py**: MeteredLLMClient — OpenAI wrapper with usage tracking\n- **metering.py**: Token counting and cost calculation\n- **billing.py**: Stripe customer/subscription management\n- **config.py**: Pydantic Settings for all environment variables",
+      "estimatedTime": 120,
+      "focusDirectory": "ace_platform/core",
+      "highlightLayers": [
+        {
+          "id": "playbook-service",
+          "name": "Playbook & Evolution",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "ace_platform/core/playbooks.py", "type": "file" },
+            { "path": "ace_platform/core/evolution.py", "type": "file" },
+            { "path": "ace_platform/core/evolution_jobs.py", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "auth-services",
+          "name": "Auth & Security",
+          "color": "#ef4444",
+          "items": [
+            { "path": "ace_platform/core/auth.py", "type": "file" },
+            { "path": "ace_platform/core/oauth_service.py", "type": "file" },
+            { "path": "ace_platform/core/api_keys.py", "type": "file" },
+            { "path": "ace_platform/core/rate_limit.py", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "fill"
+        },
+        {
+          "id": "metering-billing",
+          "name": "Metering & Billing",
+          "color": "#10b981",
+          "items": [
+            { "path": "ace_platform/core/metering.py", "type": "file" },
+            { "path": "ace_platform/core/llm_proxy.py", "type": "file" },
+            { "path": "ace_platform/core/billing.py", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click playbooks.py to see the central PlaybookService",
+          "target": "ace_platform/core/playbooks.py"
+        }
+      ]
+    },
+    {
+      "id": "step-6-database-workers",
+      "title": "Database & Background Workers",
+      "description": "The data layer uses PostgreSQL with SQLAlchemy ORM models (async via asyncpg for the API, sync via psycopg2 for workers). Key models: User, Playbook, PlaybookVersion, Outcome, EvolutionJob, UsageRecord, ApiKey.\n\nBackground processing uses Celery with Redis as the broker:\n- **evolution_task.py**: Runs the three-agent evolution pipeline asynchronously\n- **auto_evolution.py**: Triggers evolution automatically when 5+ outcomes accumulate\n- **celery_app.py**: Task registry and Redis broker configuration\n\nConcurrency is controlled via a UNIQUE index on (playbook_id) WHERE status IN ('queued', 'running') and SELECT FOR UPDATE row-level locking.",
+      "estimatedTime": 120,
+      "focusDirectory": "ace_platform",
+      "highlightLayers": [
+        {
+          "id": "database-layer",
+          "name": "Database Layer",
+          "color": "#ef4444",
+          "items": [
+            { "path": "ace_platform/db", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "workers-layer",
+          "name": "Background Workers",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "ace_platform/workers", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "hover-directory",
+          "description": "Hover over the db directory to see ORM models and migrations",
+          "target": "ace_platform/db"
+        }
+      ]
+    },
+    {
+      "id": "step-7-frontend",
+      "title": "Frontend: React Dashboard",
+      "description": "The web dashboard is built with React 19, TypeScript, and Vite. It provides a full-featured UI for managing playbooks, viewing evolution history, and monitoring usage.\n\nKey areas in src/:\n- **pages/**: 23+ routes including Dashboard, PlaybookDetail, Auth, Admin, Billing, Settings\n- **components/**: Reusable UI (PlaybookRenderer, OAuthButtons, SubscriptionGate, Layout)\n- **contexts/**: React Context for auth state and theming\n- **lib/**: API client (Axios), custom hooks, and utility functions\n\nThe app uses React Router for navigation, TanStack Query for server state, and Sentry for error tracking.",
+      "estimatedTime": 90,
+      "focusDirectory": "web/src",
+      "highlightLayers": [
+        {
+          "id": "pages",
+          "name": "Page Components",
+          "color": "#10b981",
+          "items": [
+            { "path": "web/src/pages", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "shared-components",
+          "name": "Shared Components",
+          "color": "#06b6d4",
+          "items": [
+            { "path": "web/src/components", "type": "directory" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "frontend-entry",
+          "name": "App Entry Points",
+          "color": "#f97316",
+          "items": [
+            { "path": "web/src/main.tsx", "type": "file" },
+            { "path": "web/src/App.tsx", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click App.tsx to see the route definitions",
+          "target": "web/src/App.tsx"
+        }
+      ]
+    },
+    {
+      "id": "step-8-testing",
+      "title": "Testing & Quality",
+      "description": "The project has a comprehensive test suite with 54+ test files covering every layer. Notable tests:\n\n- **test_mcp_server.py** (97KB): Exhaustive MCP tool testing\n- **test_e2e_full_flow.py** (27KB): End-to-end user journey from signup to evolution\n- **test_playbook_routes.py** (36KB): Playbook CRUD and versioning\n- **test_e2e_billing_flow.py** (26KB): Complete Stripe billing lifecycle\n\nTests run with pytest. CI/CD is handled by GitHub Actions — push to main auto-deploys to staging, production requires manual trigger.",
+      "estimatedTime": 60,
+      "focusDirectory": "tests",
+      "highlightLayers": [
+        {
+          "id": "key-tests",
+          "name": "Key Test Files",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "tests/test_mcp_server.py", "type": "file" },
+            { "path": "tests/test_e2e_full_flow.py", "type": "file" },
+            { "path": "tests/test_playbook_routes.py", "type": "file" },
+            { "path": "tests/conftest.py", "type": "file" }
+          ],
+          "opacity": 0.8,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "click-file",
+          "description": "Click conftest.py to see the shared test fixtures",
+          "target": "tests/conftest.py"
+        }
+      ]
+    },
+    {
+      "id": "step-9-full-picture",
+      "title": "The Full Picture",
+      "description": "Here's how it all connects:\n\n1. **Users** interact via the React dashboard (web/) or AI assistants via the MCP server\n2. **API requests** flow through FastAPI routes → core services → PostgreSQL\n3. **MCP tool calls** (list, get, create playbooks, report outcomes) are authenticated via API keys\n4. **Outcomes accumulate** — when 5+ outcomes exist, Celery auto-triggers evolution\n5. **Evolution** runs the three-agent pipeline (Generator → Reflector → Curator) asynchronously\n6. **New playbook versions** are created with the merged insights, improving future AI performance\n\nDeployment: Docker Compose locally, Fly.io in production with separate staging/production environments. CI/CD via GitHub Actions.",
+      "estimatedTime": 60,
+      "focusDirectory": "",
+      "highlightLayers": [
+        {
+          "id": "ai-agents",
+          "name": "AI Agents (ACE Core)",
+          "color": "#8b5cf6",
+          "items": [
+            { "path": "ace_core", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "backend-services",
+          "name": "Backend Services",
+          "color": "#3b82f6",
+          "items": [
+            { "path": "ace_platform", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "frontend-app",
+          "name": "Frontend App",
+          "color": "#10b981",
+          "items": [
+            { "path": "web", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "quality-assurance",
+          "name": "Tests & Docs",
+          "color": "#f59e0b",
+          "items": [
+            { "path": "tests", "type": "directory" },
+            { "path": "docs", "type": "directory" }
+          ],
+          "opacity": 0.5,
+          "renderStrategy": "border"
+        },
+        {
+          "id": "deployment-config",
+          "name": "Deployment & Config",
+          "color": "#ef4444",
+          "items": [
+            { "path": "Dockerfile", "type": "file" },
+            { "path": "docker-compose.yml", "type": "file" },
+            { "path": "fly.toml", "type": "file" },
+            { "path": "pyproject.toml", "type": "file" }
+          ],
+          "opacity": 0.7,
+          "renderStrategy": "fill"
+        }
+      ],
+      "colorMode": "fileTypes",
+      "interactiveActions": [
+        {
+          "type": "explore",
+          "description": "Explore freely — you now know the full architecture!"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "author": "ACE Platform Team",
+    "createdAt": "2026-03-15",
+    "tags": [
+      "onboarding",
+      "architecture",
+      "ace",
+      "playbooks",
+      "mcp"
+    ]
+  }
+}
