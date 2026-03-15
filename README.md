@@ -20,6 +20,8 @@
   <a href="https://docs.aceagent.io">Docs</a>
   ·
   <a href="docs/SELF_HOSTED_DEPLOYMENT.md">Self-Host Guide</a>
+  ·
+  <a href="https://buy.stripe.com/5kQ4gz3b460X8zsh1g8so00">Support ACE Open-Source</a>
 </p>
 
 <p align="center">
