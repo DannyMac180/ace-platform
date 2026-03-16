@@ -155,6 +155,7 @@ More deployment detail:
 - [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md)
 - [Environment variable reference](docs/ENVIRONMENT_VARIABLES.md)
 - [Architecture overview](docs/ARCHITECTURE.md)
+- [Next iteration working stream](docs/next_iteration_working_stream.md)
 
 ## Required Environment Variables
 
@@ -230,6 +231,8 @@ Dan is focused on making AI systems more durable, compounding, and useful in rea
 
 - [ACE docs](https://docs.aceagent.io)
 - [API reference](docs/API_REFERENCE.md)
+- [Next iteration working stream](docs/next_iteration_working_stream.md)
+- [Changelog](CHANGELOG.md)
 - [Troubleshooting guide](docs/TROUBLESHOOTING.md)
 - [ACE core README](ace_core/README.md)
 - [Apache 2.0 license](LICENSE.txt)
