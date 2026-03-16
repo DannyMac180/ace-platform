@@ -106,6 +106,8 @@ async def _revalidate_api_key_after_disconnect(
         if not user or not user.is_active:
             return None
 
+        db.expunge(key_record)
+        db.expunge(user)
         return key_record, user
 
 

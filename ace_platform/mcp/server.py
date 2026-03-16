@@ -673,9 +673,9 @@ def _cleanup_request_db_session(func):
     """Release request-scoped MCP DB sessions after each tool invocation."""
 
     @wraps(func)
-    async def wrapper(ctx: Context, *args, **kwargs):
+    async def wrapper(*args, **kwargs):
         try:
-            return await func(ctx, *args, **kwargs)
+            return await func(*args, **kwargs)
         finally:
             request_db = _request_db_session.get()
             if request_db is not None:
