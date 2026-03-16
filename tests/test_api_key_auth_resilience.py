@@ -78,10 +78,15 @@ class TestAuthenticateApiKeyResilience:
         db.rollback = AsyncMock()
         db.get = AsyncMock()
         db.expunge_all = MagicMock()
+
+        def build_recovery_session(original_db):
+            assert original_db is db
+            return _AsyncSessionContextManager(recovery_db)
+
         monkeypatch.setattr(
             api_key_service,
-            "AsyncSessionLocal",
-            lambda: _AsyncSessionContextManager(recovery_db),
+            "_build_revalidation_session",
+            build_recovery_session,
         )
 
         authenticated_key, authenticated_user = await authenticate_api_key_async(db, full_key)
@@ -116,10 +121,15 @@ class TestAuthenticateApiKeyResilience:
         db.rollback = AsyncMock()
         db.get = AsyncMock(return_value=user)
         db.expunge_all = MagicMock()
+
+        def build_recovery_session(original_db):
+            assert original_db is db
+            return _AsyncSessionContextManager(recovery_db)
+
         monkeypatch.setattr(
             api_key_service,
-            "AsyncSessionLocal",
-            lambda: _AsyncSessionContextManager(recovery_db),
+            "_build_revalidation_session",
+            build_recovery_session,
         )
 
         auth_result = await authenticate_api_key_async(db, full_key)

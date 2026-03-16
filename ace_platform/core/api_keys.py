@@ -10,6 +10,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -18,7 +19,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from ace_platform.db.models import ApiKey, User
-from ace_platform.db.session import AsyncSessionLocal
 
 # API key format: ace_<random_32_chars>
 API_KEY_PREFIX = "ace_"
@@ -93,21 +93,39 @@ async def _get_active_api_key_record(
     return result.scalar_one_or_none()
 
 
+def _build_revalidation_session(db: AsyncSession) -> AsyncSession:
+    """Create a fresh session that preserves the caller's bind configuration."""
+    session_kwargs: dict[str, Any] = {
+        "sync_session_class": db.sync_session_class,
+        "autoflush": db.sync_session.autoflush,
+        "expire_on_commit": db.sync_session.expire_on_commit,
+        "info": dict(db.info),
+    }
+    bind = getattr(db, "bind", None)
+    binds = getattr(db, "binds", None)
+    if binds is not None:
+        session_kwargs["binds"] = binds
+    else:
+        session_kwargs["bind"] = bind
+    return type(db)(**session_kwargs)
+
+
 async def _revalidate_api_key_after_disconnect(
+    db: AsyncSession,
     hashed_key: str,
 ) -> tuple[ApiKey, User] | None:
     """Reload auth state using a fresh session after the original one is invalidated."""
-    async with AsyncSessionLocal() as db:
-        key_record = await _get_active_api_key_record(db, hashed_key)
+    async with _build_revalidation_session(db) as recovery_db:
+        key_record = await _get_active_api_key_record(recovery_db, hashed_key)
         if not key_record:
             return None
 
-        user = await db.get(User, key_record.user_id)
+        user = await recovery_db.get(User, key_record.user_id)
         if not user or not user.is_active:
             return None
 
-        db.expunge(key_record)
-        db.expunge(user)
+        recovery_db.expunge(key_record)
+        recovery_db.expunge(user)
         return key_record, user
 
 
@@ -308,7 +326,7 @@ async def authenticate_api_key_async(
         # first so callers do not trip async lazy loads on stale ORM instances.
         db.expunge_all()
         await db.rollback()
-        refreshed_auth = await _revalidate_api_key_after_disconnect(hashed)
+        refreshed_auth = await _revalidate_api_key_after_disconnect(db, hashed)
         if not refreshed_auth:
             return None
         return refreshed_auth
