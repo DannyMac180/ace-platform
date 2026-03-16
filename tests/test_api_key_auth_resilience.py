@@ -77,7 +77,7 @@ class TestAuthenticateApiKeyResilience:
         )
         db.rollback = AsyncMock()
         db.get = AsyncMock()
-        db.expunge = MagicMock()
+        db.expunge_all = MagicMock()
         monkeypatch.setattr(
             api_key_service,
             "AsyncSessionLocal",
@@ -91,7 +91,7 @@ class TestAuthenticateApiKeyResilience:
         assert db.execute.await_count == 1
         db.rollback.assert_awaited_once()
         db.get.assert_not_awaited()
-        db.expunge.assert_called_once_with(initial_key)
+        db.expunge_all.assert_called_once_with()
         recovery_db.execute.assert_awaited_once()
         recovery_db.get.assert_awaited_once_with(User, refreshed_key.user_id)
 
@@ -115,7 +115,7 @@ class TestAuthenticateApiKeyResilience:
         )
         db.rollback = AsyncMock()
         db.get = AsyncMock(return_value=user)
-        db.expunge = MagicMock()
+        db.expunge_all = MagicMock()
         monkeypatch.setattr(
             api_key_service,
             "AsyncSessionLocal",
@@ -128,7 +128,7 @@ class TestAuthenticateApiKeyResilience:
         assert db.execute.await_count == 1
         db.rollback.assert_awaited_once()
         db.get.assert_not_awaited()
-        db.expunge.assert_called_once_with(initial_key)
+        db.expunge_all.assert_called_once_with()
         recovery_db.execute.assert_awaited_once()
         recovery_db.get.assert_not_awaited()
 
