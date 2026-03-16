@@ -304,6 +304,7 @@ async def authenticate_api_key_async(
             "Skipping api key last_used_at update after transient database disconnect",
             exc_info=exc,
         )
+        db.expunge(key_record)
         await db.rollback()
         refreshed_auth = await _revalidate_api_key_after_disconnect(hashed)
         if not refreshed_auth:
