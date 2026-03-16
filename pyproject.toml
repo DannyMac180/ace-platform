@@ -49,6 +49,7 @@ dependencies = [
 
     # Templates
     "jinja2>=3.1.0",
+    "PyYAML>=6.0",
 
     # HTTP client
     "httpx>=0.26.0",
@@ -65,6 +66,9 @@ dependencies = [
     # Email
     "resend>=2.0.0",
 ]
+
+[project.scripts]
+symphony = "ace_platform.symphony.cli:main"
 
 [project.optional-dependencies]
 dev = [

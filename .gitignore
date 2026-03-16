@@ -47,6 +47,8 @@ ENV/
 results/
 logs/
 *.log
+.symphony-workspaces/
+WORKFLOW.local.md
 
 # Jupyter
 .ipynb_checkpoints/
