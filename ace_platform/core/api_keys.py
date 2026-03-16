@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from ace_platform.db.models import ApiKey, User
+from ace_platform.db.session import AsyncSessionLocal
 
 # API key format: ace_<random_32_chars>
 API_KEY_PREFIX = "ace_"
@@ -90,6 +91,22 @@ async def _get_active_api_key_record(
         )
     )
     return result.scalar_one_or_none()
+
+
+async def _revalidate_api_key_after_disconnect(
+    hashed_key: str,
+) -> tuple[ApiKey, User] | None:
+    """Reload auth state using a fresh session after the original one is invalidated."""
+    async with AsyncSessionLocal() as db:
+        key_record = await _get_active_api_key_record(db, hashed_key)
+        if not key_record:
+            return None
+
+        user = await db.get(User, key_record.user_id)
+        if not user or not user.is_active:
+            return None
+
+        return key_record, user
 
 
 def _is_connection_drop_during_flush(exc: DBAPIError) -> bool:
@@ -286,9 +303,10 @@ async def authenticate_api_key_async(
             exc_info=exc,
         )
         await db.rollback()
-        key_record = await _get_active_api_key_record(db, hashed)
-        if not key_record:
+        refreshed_auth = await _revalidate_api_key_after_disconnect(hashed)
+        if not refreshed_auth:
             return None
+        return refreshed_auth
 
     user = await db.get(User, key_record.user_id)
     if not user or not user.is_active:

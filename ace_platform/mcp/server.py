@@ -25,6 +25,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
+from functools import wraps
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -668,6 +669,22 @@ def get_db(ctx: Context) -> AsyncSession:
     return ctx.request_context.lifespan_context.db
 
 
+def _cleanup_request_db_session(func):
+    """Release request-scoped MCP DB sessions after each tool invocation."""
+
+    @wraps(func)
+    async def wrapper(ctx: Context, *args, **kwargs):
+        try:
+            return await func(ctx, *args, **kwargs)
+        finally:
+            request_db = _request_db_session.get()
+            if request_db is not None:
+                await request_db.rollback()
+                await request_db.close()
+
+    return wrapper
+
+
 def get_api_key(api_key_param: str | None = None) -> str | None:
     """Get API key from parameter, HTTP header, or environment variable.
 
@@ -772,6 +789,7 @@ async def _check_mcp_rate_limit(action: str, identifier: str, tool_name: str) ->
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def get_playbook(
     playbook_id: Annotated[str, "UUID of the playbook to retrieve"],
     ctx: Context,
@@ -920,6 +938,7 @@ def _extract_section(content: str, section_name: str) -> str:
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def list_playbooks(
     ctx: Context,
     api_key: Annotated[
@@ -1023,6 +1042,7 @@ async def list_playbooks(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def find_playbook(
     task_description: Annotated[str, "Task to match to the most relevant playbook"],
     ctx: Context,
@@ -1129,6 +1149,7 @@ async def find_playbook(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def create_playbook(
     name: Annotated[str, "Name for the playbook (max 255 chars)"],
     ctx: Context,
@@ -1306,6 +1327,7 @@ async def create_playbook(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def create_version(
     playbook_id: Annotated[str, "UUID of the playbook to create a version for"],
     content: Annotated[str, "New version content in markdown (max 100KB)"],
@@ -1476,6 +1498,7 @@ async def create_version(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def record_outcome(
     playbook_id: Annotated[str, "UUID of the playbook this outcome is for"],
     task_description: Annotated[str, "Description of the task that was attempted"],
@@ -1574,6 +1597,7 @@ async def record_outcome(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def get_evolution_status(
     job_id: Annotated[str, "UUID of the evolution job to check"],
     ctx: Context,
@@ -1679,6 +1703,7 @@ async def get_evolution_status(
 
 
 @mcp.tool()
+@_cleanup_request_db_session
 async def trigger_evolution(
     playbook_id: Annotated[str, "UUID of the playbook to evolve"],
     ctx: Context,

@@ -1257,6 +1257,33 @@ class TestRequestDBSessionMiddleware:
         assert mcp_server._request_db_session.get() is None
 
 
+class TestRequestScopedToolDBCleanup:
+    """Tests for per-tool cleanup of request-scoped MCP DB sessions."""
+
+    @pytest.mark.asyncio
+    async def test_cleanup_wrapper_releases_request_db_session_after_tool_call(self):
+        """Mounted MCP tool calls should release the request-scoped session immediately."""
+        from ace_platform.mcp import server as mcp_server
+
+        request_db = AsyncMock()
+        request_db.rollback = AsyncMock()
+        request_db.close = AsyncMock()
+
+        @mcp_server._cleanup_request_db_session
+        async def dummy_tool(ctx):
+            return "ok"
+
+        token = mcp_server._request_db_session.set(request_db)
+        try:
+            result = await dummy_tool(MagicMock())
+        finally:
+            mcp_server._request_db_session.reset(token)
+
+        assert result == "ok"
+        request_db.rollback.assert_awaited_once()
+        request_db.close.assert_awaited_once()
+
+
 class TestGetApiKeyWithHeaders:
     """Tests for get_api_key integration with HeaderAuthMiddleware."""
 
