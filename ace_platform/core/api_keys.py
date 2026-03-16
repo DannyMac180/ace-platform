@@ -10,6 +10,7 @@ import logging
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -90,6 +91,42 @@ async def _get_active_api_key_record(
         )
     )
     return result.scalar_one_or_none()
+
+
+def _build_revalidation_session(db: AsyncSession) -> AsyncSession:
+    """Create a fresh session that preserves the caller's bind configuration."""
+    session_kwargs: dict[str, Any] = {
+        "sync_session_class": db.sync_session_class,
+        "autoflush": db.sync_session.autoflush,
+        "expire_on_commit": db.sync_session.expire_on_commit,
+        "info": dict(db.info),
+    }
+    bind = getattr(db, "bind", None)
+    binds = getattr(db, "binds", None)
+    if binds is not None:
+        session_kwargs["binds"] = binds
+    else:
+        session_kwargs["bind"] = bind
+    return type(db)(**session_kwargs)
+
+
+async def _revalidate_api_key_after_disconnect(
+    db: AsyncSession,
+    hashed_key: str,
+) -> tuple[ApiKey, User] | None:
+    """Reload auth state using a fresh session after the original one is invalidated."""
+    async with _build_revalidation_session(db) as recovery_db:
+        key_record = await _get_active_api_key_record(recovery_db, hashed_key)
+        if not key_record:
+            return None
+
+        user = await recovery_db.get(User, key_record.user_id)
+        if not user or not user.is_active:
+            return None
+
+        recovery_db.expunge(key_record)
+        recovery_db.expunge(user)
+        return key_record, user
 
 
 def _is_connection_drop_during_flush(exc: DBAPIError) -> bool:
@@ -285,10 +322,14 @@ async def authenticate_api_key_async(
             "Skipping api key last_used_at update after transient database disconnect",
             exc_info=exc,
         )
+        # Rollback expires objects in the current session; clear the identity map
+        # first so callers do not trip async lazy loads on stale ORM instances.
+        db.expunge_all()
         await db.rollback()
-        key_record = await _get_active_api_key_record(db, hashed)
-        if not key_record:
+        refreshed_auth = await _revalidate_api_key_after_disconnect(db, hashed)
+        if not refreshed_auth:
             return None
+        return refreshed_auth
 
     user = await db.get(User, key_record.user_id)
     if not user or not user.is_active:
