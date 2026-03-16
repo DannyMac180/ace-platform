@@ -1,4 +1,4 @@
-"""Module entrypoint for `python -m ace_platform.symphony`."""
+"""Module entrypoint for the vendored Symphony Elixir launcher."""
 
 from __future__ import annotations
 

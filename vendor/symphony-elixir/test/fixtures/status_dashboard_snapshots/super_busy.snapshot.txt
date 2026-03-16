@@ -1,0 +1,19 @@
+\e[1m╭─ SYMPHONY STATUS\e[0m
+\e[1m│ Agents: \e[0m\e[32m2\e[0m\e[90m/\e[0m\e[90m10\e[0m
+\e[1m│ Throughput: \e[0m\e[36m1,842 tps\e[0m
+\e[1m│ Runtime: \e[0m\e[35m72m 1s\e[0m
+\e[1m│ Tokens: \e[0m\e[33min 250,000\e[0m\e[90m | \e[0m\e[33mout 18,500\e[0m\e[90m | \e[0m\e[33mtotal 268,500\e[0m
+\e[1m│ Rate Limits: \e[0m\e[33mgpt-5\e[0m\e[90m | \e[0m\e[36mprimary 12,345/20,000 reset 30s\e[0m\e[90m | \e[0m\e[36msecondary 45/60 reset 12s\e[0m\e[90m | \e[0m\e[32mcredits 9876.50\e[0m
+\e[1m│ Project: \e[0m\e[36mhttps://linear.app/project/project/issues\e[0m
+\e[1m│ Next refresh: \e[0m\e[90mn/a\e[0m
+\e[1m├─ Running\e[0m
+│
+│   \e[90mID       STAGE          PID      AGE / TURN   TOKENS     SESSION        EVENT                                  \e[0m
+│   \e[90m───────────────────────────────────────────────────────────────────────────────────────────────────────────────\e[0m
+│ \e[35m●\e[0m \e[36mMT-101  \e[0m \e[35mrunning       \e[0m \e[33m4242    \e[0m \e[35m13m 5s / 11 \e[0m \e[33m   120,450\e[0m \e[36mthre...567890 \e[0m \e[35mturn completed (completed)             \e[0m
+│ \e[32m●\e[0m \e[36mMT-102  \e[0m \e[32mrunning       \e[0m \e[33m5252    \e[0m \e[35m6m 52s / 4  \e[0m \e[33m    89,200\e[0m \e[36mthre...567890 \e[0m \e[32mmix test --cover                       \e[0m
+│
+\e[1m├─ Backoff queue\e[0m
+│
+│  \e[90mNo queued retries\e[0m
+╰─

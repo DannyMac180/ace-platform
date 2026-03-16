@@ -81,6 +81,30 @@ Helpful links:
 
 You can run ACE on your own infrastructure with Docker Compose or a hybrid local-dev setup.
 
+## Symphony
+
+This repo now vendors the official OpenAI Elixir Symphony implementation under `vendor/symphony-elixir/`.
+Use the existing `symphony` command as a thin launcher for that runtime.
+
+Prerequisites:
+
+- `LINEAR_API_KEY` set in your shell
+- `codex` available in your `PATH`
+- [`mise`](https://mise.jdx.dev/) installed for the Elixir/Erlang toolchain
+
+Local setup:
+
+```bash
+source venv/bin/activate && pip install -e .
+source venv/bin/activate && symphony setup
+source venv/bin/activate && symphony \
+  --i-understand-that-this-will-be-running-without-the-usual-guardrails \
+  WORKFLOW.md
+```
+
+The checked-in [WORKFLOW.md](WORKFLOW.md) is configured for the `ace-platform` Linear project and
+creates a fresh workspace clone of `DannyMac180/ace-platform` with its own Python virtualenv.
+
 ### Fastest Full-Stack Docker Setup
 
 ```bash

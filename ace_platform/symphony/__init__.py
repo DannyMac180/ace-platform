@@ -1,4 +1,4 @@
-"""Symphony issue-orchestration runtime."""
+"""Symphony launcher for the vendored OpenAI Elixir implementation."""
 
 from ace_platform.symphony.cli import main
 

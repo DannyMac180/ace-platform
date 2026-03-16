@@ -1,0 +1,21 @@
+\e[1m╭─ SYMPHONY STATUS\e[0m
+\e[1m│ Agents: \e[0m\e[32m1\e[0m\e[90m/\e[0m\e[90m10\e[0m
+\e[1m│ Throughput: \e[0m\e[36m15 tps\e[0m
+\e[1m│ Runtime: \e[0m\e[35m45m 0s\e[0m
+\e[1m│ Tokens: \e[0m\e[33min 18,000\e[0m\e[90m | \e[0m\e[33mout 2,200\e[0m\e[90m | \e[0m\e[33mtotal 20,200\e[0m
+\e[1m│ Rate Limits: \e[0m\e[33mgpt-5\e[0m\e[90m | \e[0m\e[36mprimary 0/20,000 reset 95s\e[0m\e[90m | \e[0m\e[36msecondary 0/60 reset 45s\e[0m\e[90m | \e[0m\e[32mcredits none\e[0m
+\e[1m│ Project: \e[0m\e[36mhttps://linear.app/project/project/issues\e[0m
+\e[1m│ Next refresh: \e[0m\e[90mn/a\e[0m
+\e[1m├─ Running\e[0m
+│
+│   \e[90mID       STAGE          PID      AGE / TURN   TOKENS     SESSION        EVENT                                  \e[0m
+│   \e[90m───────────────────────────────────────────────────────────────────────────────────────────────────────────────\e[0m
+│ \e[34m●\e[0m \e[36mMT-638  \e[0m \e[34mretrying      \e[0m \e[33m4242    \e[0m \e[35m20m 25s / 7 \e[0m \e[33m    14,200\e[0m \e[36mthre...567890 \e[0m \e[34magent message streaming: waiting on ...\e[0m
+│
+\e[1m├─ Backoff queue\e[0m
+│
+│  \e[33m↻\e[0m \e[31mMT-450\e[0m \e[33mattempt=4\e[0m\e[2m in \e[0m\e[36m1.250s\e[0m \e[2merror=rate limit exhausted\e[0m
+│  \e[33m↻\e[0m \e[31mMT-451\e[0m \e[33mattempt=2\e[0m\e[2m in \e[0m\e[36m3.900s\e[0m \e[2merror=retrying after API timeout with jitter\e[0m
+│  \e[33m↻\e[0m \e[31mMT-452\e[0m \e[33mattempt=6\e[0m\e[2m in \e[0m\e[36m8.100s\e[0m \e[2merror=worker crashed restarting cleanly\e[0m
+│  \e[33m↻\e[0m \e[31mMT-453\e[0m \e[33mattempt=1\e[0m\e[2m in \e[0m\e[36m11.000s\e[0m \e[2merror=fourth queued retry should also render after removing the top-three limit\e[0m
+╰─
