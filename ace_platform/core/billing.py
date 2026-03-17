@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
 from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.rollouts import is_plan_available_for_user
 from ace_platform.core.stripe_config import (
     BillingInterval,
     get_price_id_for_tier,
@@ -140,6 +141,12 @@ async def create_checkout_session(
         return CheckoutSessionResult(
             success=False,
             error="Free tier does not require checkout. Use the free tier directly.",
+        )
+
+    if not is_plan_available_for_user(user, tier):
+        return CheckoutSessionResult(
+            success=False,
+            error=f"The {tier.value} plan is not available for this account yet.",
         )
 
     if tier == SubscriptionTier.ENTERPRISE:

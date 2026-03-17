@@ -33,8 +33,10 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ace_core.contracts import Feature
 from ace_platform.core.api_keys import authenticate_api_key_async, check_scope
 from ace_platform.core.limits import SubscriptionTier, get_tier_limits
+from ace_platform.core.rollouts import is_capability_enabled_for_user
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -637,6 +639,23 @@ def require_feature(feature: str):
         return user
 
     return feature_checker
+
+
+def require_capability(feature: Feature):
+    """Create a dependency that requires a rollout-aware capability."""
+
+    async def capability_checker(
+        user: Annotated[User, Depends(require_active_subscription)],
+    ) -> User:
+        """Check that the requested capability is enabled for the current user."""
+        if not is_capability_enabled_for_user(user, feature):
+            raise SubscriptionError(
+                f"This capability is not enabled for your account yet: {feature.replace('_', ' ')}.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+        return user
+
+    return capability_checker
 
 
 # Type aliases for subscription-based auth

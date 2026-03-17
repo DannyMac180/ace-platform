@@ -24,6 +24,11 @@ from ace_platform.core.limits import (
     get_tier_limits,
     get_user_usage_status,
 )
+from ace_platform.core.rollouts import (
+    get_available_plans,
+    get_user_capabilities,
+    is_plan_available_for_user,
+)
 from ace_platform.core.stripe_config import BillingInterval
 from ace_platform.db.models import User
 
@@ -56,6 +61,8 @@ class SubscriptionResponse(BaseModel):
     limits: TierLimitsResponse
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
+    available_plans: dict[str, bool] = Field(default_factory=dict)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
 
 
 class UsageResponse(BaseModel):
@@ -153,23 +160,17 @@ def _get_user_period_end(user: User) -> datetime:
     return user.subscription_current_period_end or _get_current_period_end()
 
 
-# Route handlers
-
-
-@router.get("/subscription", response_model=SubscriptionResponse)
-async def get_subscription(
-    current_user: CurrentUser,
+def _build_subscription_response(
+    current_user: User,
+    tier: SubscriptionTier,
+    *,
+    status_value: str | None = None,
 ) -> SubscriptionResponse:
-    """Get current subscription information.
-
-    Returns the user's subscription tier, status, and limits.
-    """
-    tier = _get_user_tier(current_user)
+    """Build a subscription response with rollout-aware availability metadata."""
     limits = get_tier_limits(tier)
-
     return SubscriptionResponse(
         tier=tier,
-        status=current_user.subscription_status.value,
+        status=status_value or current_user.subscription_status.value,
         current_period_start=get_billing_period_start(),
         current_period_end=_get_user_period_end(current_user),
         limits=TierLimitsResponse(
@@ -184,7 +185,24 @@ async def get_subscription(
         ),
         stripe_customer_id=current_user.stripe_customer_id,
         stripe_subscription_id=current_user.stripe_subscription_id,
+        available_plans=get_available_plans(current_user),
+        capabilities=get_user_capabilities(current_user),
     )
+
+
+# Route handlers
+
+
+@router.get("/subscription", response_model=SubscriptionResponse)
+async def get_subscription(
+    current_user: CurrentUser,
+) -> SubscriptionResponse:
+    """Get current subscription information.
+
+    Returns the user's subscription tier, status, and limits.
+    """
+    tier = _get_user_tier(current_user)
+    return _build_subscription_response(current_user, tier)
 
 
 @router.get("/usage", response_model=UsageResponse)
@@ -229,28 +247,21 @@ async def subscribe(
     """
     from ace_platform.core.billing import create_checkout_session
 
+    if not is_plan_available_for_user(current_user, request.tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"The {request.tier.value} plan is not available for this account yet.",
+        )
+
     # Handle free tier subscription
     if request.tier == SubscriptionTier.FREE:
-        limits = get_tier_limits(SubscriptionTier.FREE)
         return SubscribeResponse(
             success=True,
             message="You are now on the Free plan",
-            subscription=SubscriptionResponse(
-                tier=SubscriptionTier.FREE,
-                status="active",
-                current_period_start=get_billing_period_start(),
-                current_period_end=_get_current_period_end(),
-                limits=TierLimitsResponse(
-                    monthly_requests=limits.monthly_evolution_runs,
-                    monthly_tokens=None,
-                    monthly_cost_usd=limits.monthly_cost_limit_usd,
-                    max_playbooks=limits.max_playbooks,
-                    max_evolutions_per_day=None,
-                    can_use_premium_models=limits.can_use_premium_models,
-                    can_export_data=limits.can_export_data,
-                    priority_support=limits.priority_support,
-                ),
-                stripe_customer_id=current_user.stripe_customer_id,
+            subscription=_build_subscription_response(
+                current_user,
+                SubscriptionTier.FREE,
+                status_value="active",
             ),
         )
 

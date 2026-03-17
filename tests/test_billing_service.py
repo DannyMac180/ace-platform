@@ -146,6 +146,23 @@ class TestCreateCheckoutSession:
         assert "custom pricing" in result.error.lower()
 
     @pytest.mark.asyncio
+    @patch("ace_platform.core.billing.is_plan_available_for_user")
+    async def test_rollout_unavailable_plan_returns_error(self, mock_is_plan_available):
+        """Checkout is blocked when a plan is not rolled out for the user."""
+        mock_is_plan_available.return_value = False
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+
+        result = await create_checkout_session(
+            db=mock_db,
+            user=mock_user,
+            tier=SubscriptionTier.STARTER,
+        )
+
+        assert result.success is False
+        assert "not available" in result.error.lower()
+
+    @pytest.mark.asyncio
     @patch("ace_platform.core.billing.is_stripe_configured")
     async def test_stripe_not_configured(self, mock_configured):
         """Test returns error when Stripe not configured."""
