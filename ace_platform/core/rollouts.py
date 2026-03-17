@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, get_args
 
 from ace_core.contracts import Feature
-
 from ace_platform.config import Settings, get_settings
 from ace_platform.core.limits import SubscriptionTier
 
