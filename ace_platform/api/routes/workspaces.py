@@ -121,7 +121,9 @@ def _to_response(snapshot: WorkspaceEntitlementsSnapshot) -> WorkspaceEntitlemen
     )
 
 
-@router.get("/v1/workspaces/{workspace_id}/entitlements", response_model=WorkspaceEntitlementsResponse)
+@router.get(
+    "/v1/workspaces/{workspace_id}/entitlements", response_model=WorkspaceEntitlementsResponse
+)
 @router.get(
     "/workspaces/{workspace_id}/entitlements",
     response_model=WorkspaceEntitlementsResponse,
