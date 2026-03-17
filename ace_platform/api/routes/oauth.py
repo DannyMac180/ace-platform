@@ -52,6 +52,7 @@ from ace_platform.core.oauth import (
 from ace_platform.core.oauth_service import OAuthService
 from ace_platform.core.rate_limit import RateLimitOAuth
 from ace_platform.core.security import create_access_token, create_refresh_token
+from ace_platform.core.workspaces import bootstrap_workspace_for_user
 from ace_platform.db.models import AcquisitionEvent, AcquisitionEventType, OAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -335,6 +336,8 @@ async def google_callback(
         await db.commit()
         return _oauth_error_redirect("Account is disabled")
 
+    await bootstrap_workspace_for_user(db, user)
+
     # Check if this is a new IP BEFORE logging (to avoid race condition)
     # Only for existing users (not new signups)
     should_send_alert = False
@@ -538,6 +541,8 @@ async def github_callback(
         )
         await db.commit()
         return _oauth_error_redirect("Account is disabled")
+
+    await bootstrap_workspace_for_user(db, user)
 
     # Check if this is a new IP BEFORE logging (to avoid race condition)
     # Only for existing users (not new signups)

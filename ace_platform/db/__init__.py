@@ -16,6 +16,11 @@ from ace_platform.db.models import (
     PlaybookVersion,
     UsageRecord,
     User,
+    Workspace,
+    WorkspaceDeploymentMode,
+    WorkspaceMembership,
+    WorkspacePlan,
+    WorkspaceRole,
 )
 from ace_platform.db.session import (
     AsyncSessionLocal,
@@ -35,6 +40,8 @@ __all__ = [
     "Base",
     # Models
     "User",
+    "Workspace",
+    "WorkspaceMembership",
     "Playbook",
     "PlaybookVersion",
     "Outcome",
@@ -46,6 +53,9 @@ __all__ = [
     "PlaybookSource",
     "OutcomeStatus",
     "EvolutionJobStatus",
+    "WorkspacePlan",
+    "WorkspaceDeploymentMode",
+    "WorkspaceRole",
     # Session factories
     "AsyncSessionLocal",
     "SyncSessionLocal",

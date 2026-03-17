@@ -41,6 +41,7 @@ from ace_platform.core.security import (
     decode_access_token,
 )
 from ace_platform.core.sentry_context import set_user_context
+from ace_platform.core.workspaces import bootstrap_workspace_for_user
 from ace_platform.db.models import ApiKey, SubscriptionStatus, User
 
 from .deps import get_db
@@ -149,6 +150,7 @@ async def get_optional_auth(
         raise AuthenticationError("Invalid or revoked API key")
 
     api_key_record, user = result
+    await bootstrap_workspace_for_user(db, user)
 
     # Set Sentry user context for error tracking
     set_user_context(user_id=str(user.id), email=user.email)
@@ -314,6 +316,8 @@ async def get_optional_user(
 
     if not user.is_active:
         raise AuthenticationError("User account is disabled")
+
+    await bootstrap_workspace_for_user(db, user)
 
     # Set Sentry user context for error tracking
     set_user_context(user_id=str(user.id), email=user.email)

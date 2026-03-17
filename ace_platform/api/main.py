@@ -404,6 +404,7 @@ def _register_routes(app: FastAPI) -> None:
         playbooks_router,
         support_router,
         usage_router,
+        workspaces_router,
     )
 
     # Include API routers
@@ -413,6 +414,7 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(admin_router)
     app.include_router(oauth_router)
     app.include_router(billing_router)
+    app.include_router(workspaces_router)
     app.include_router(playbooks_router)
     app.include_router(usage_router)
     app.include_router(evolutions_router)
