@@ -11,15 +11,19 @@ These tests verify:
 """
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import status
+from fastapi import FastAPI, status
 from fastapi.testclient import TestClient
 
+from ace_platform.api.auth import require_paid_access
+from ace_platform.api.deps import get_db
 from ace_platform.api.routes.playbooks import (
     PaginatedPlaybookResponse,
     PlaybookCreate,
+    PlaybookImportLimitError,
     PlaybookListItem,
     PlaybookResponse,
     PlaybookUpdate,
@@ -85,6 +89,8 @@ class TestPlaybookRoutesIntegration:
         routes = [route.path for route in app.routes]
         assert "/playbooks" in routes
         assert "/playbooks/{playbook_id}" in routes
+        assert "/playbooks/export" in routes
+        assert "/playbooks/import" in routes
 
     def test_list_playbooks_requires_auth(self, client):
         """Test that listing playbooks requires authentication."""
@@ -120,6 +126,16 @@ class TestPlaybookRoutesIntegration:
         response = client.delete(f"/playbooks/{playbook_id}")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+    def test_export_playbooks_requires_auth(self, client):
+        """Test that exporting playbooks requires authentication."""
+        response = client.get("/playbooks/export")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_import_playbooks_requires_auth(self, client):
+        """Test that importing playbooks requires authentication."""
+        response = client.post("/playbooks/import", json={"playbooks": []})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
     def test_create_playbook_validation_empty_name(self, client):
         """Test that empty name is rejected."""
         # First need to mock auth - but 401 comes before validation
@@ -150,6 +166,88 @@ class TestPlaybookRoutesIntegration:
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             status.HTTP_401_UNAUTHORIZED,
         ]
+
+
+class TestPortableImportRoutes:
+    """Focused tests for portable playbook import responses."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a minimal app with the playbook router and dependency overrides."""
+        from ace_platform.api.routes.playbooks import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        async def override_db():
+            yield object()
+
+        async def override_paid_access():
+            return SimpleNamespace(id=uuid4())
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[require_paid_access] = override_paid_access
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_import_limit_error_returns_payment_required(self, monkeypatch, client):
+        """Test that plan limit failures are surfaced as 402 responses."""
+
+        async def fail_import(*_args, **_kwargs):
+            raise PlaybookImportLimitError("limit reached")
+
+        monkeypatch.setattr(
+            "ace_platform.api.routes.playbooks.ingest_portable_playbook_bundle",
+            fail_import,
+        )
+
+        response = client.post("/playbooks/import", json={"playbooks": []})
+
+        assert response.status_code == status.HTTP_402_PAYMENT_REQUIRED
+        assert response.json()["detail"] == "limit reached"
+
+    def test_import_validation_rejects_overlong_playbook_name(self, client):
+        """Test that portable schema validation rejects DB-invalid playbook names."""
+        response = client.post(
+            "/playbooks/import",
+            json={
+                "playbooks": [
+                    {
+                        "name": "x" * 256,
+                        "versions": [],
+                        "traces": [],
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    def test_import_validation_rejects_overlong_version_content(self, client):
+        """Test that portable schema validation rejects oversized imported content."""
+        response = client.post(
+            "/playbooks/import",
+            json={
+                "playbooks": [
+                    {
+                        "name": "portable",
+                        "versions": [
+                            {
+                                "version_number": 1,
+                                "content": "x" * 102_401,
+                            }
+                        ],
+                        "traces": [],
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class TestPaginatedResponse:
