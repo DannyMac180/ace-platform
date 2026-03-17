@@ -152,6 +152,31 @@ class TestRequireActiveSubscription:
 class TestRequirePaidAccess:
     """Tests for require_paid_access dependency."""
 
+    def test_shared_helper_allows_paid_user(self):
+        """Shared entitlement helper should allow active paid subscriptions."""
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is True
+        assert decision.detail is None
+
+    def test_shared_helper_rejects_free_user(self):
+        """Shared entitlement helper should reject free access with 402."""
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is False
+        assert decision.status_code == PAYMENT_REQUIRED_STATUS
+        assert "subscribe" in decision.detail.lower()
+
     @pytest.mark.asyncio
     async def test_admin_bypasses_paid_access(self):
         """Admin users bypass all paid access checks."""
