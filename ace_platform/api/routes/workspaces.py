@@ -62,14 +62,26 @@ class WorkspaceEntitlementsResponse(BaseModel):
     plan: Literal["personal", "team", "enterprise"]
     deployment_mode: Literal["cloud"]
     seat_limit: int | None
+    enabled_features: list[str]
+    access: WorkspaceAccessResponse
     entitlements: WorkspaceFeatureAccessResponse
     usage_limits: WorkspaceUsageLimitsResponse
 
 
-def _validate_workspace_access(current_user, workspace_id: str) -> None:
-    """Allow access to the caller's workspace id and a `me` alias only."""
+class WorkspaceAccessResponse(BaseModel):
+    """API response model for subscription-derived access state."""
 
-    if workspace_id in {"me", get_workspace_id(current_user)}:
+    subscription_tier: str
+    subscription_status: str
+    effective_tier: str
+    has_feature_access: bool
+    is_trialing: bool
+
+
+def _validate_workspace_access(current_user, workspace_id: str) -> None:
+    """Allow access to the caller's workspace id and supported aliases only."""
+
+    if workspace_id in {"personal", "me", get_workspace_id(current_user)}:
         return
 
     try:
@@ -94,6 +106,14 @@ def _to_response(snapshot: WorkspaceEntitlementsSnapshot) -> WorkspaceEntitlemen
         plan=snapshot.plan,
         deployment_mode=snapshot.deployment_mode,
         seat_limit=snapshot.seat_limit,
+        enabled_features=list(snapshot.enabled_features),
+        access=WorkspaceAccessResponse(
+            subscription_tier=snapshot.access.subscription_tier.value,
+            subscription_status=snapshot.access.subscription_status.value,
+            effective_tier=snapshot.access.effective_tier.value,
+            has_feature_access=snapshot.access.has_feature_access,
+            is_trialing=snapshot.access.is_trialing,
+        ),
         entitlements=WorkspaceFeatureAccessResponse(
             cloud_sync=snapshot.entitlements.cloud_sync,
             hosted_backups=snapshot.entitlements.hosted_backups,
