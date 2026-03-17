@@ -41,8 +41,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
+from ace_platform.core.authorization import check_paid_access
 from ace_platform.core.limits import (
-    SubscriptionTier,
     get_effective_tier_for_limits,
     is_user_trialing,
 )
@@ -71,7 +71,6 @@ from ace_platform.db.models import (
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
-    SubscriptionStatus,
     User,
 )
 from ace_platform.db.session import AsyncSessionLocal, close_async_db
@@ -712,35 +711,11 @@ def get_api_key(api_key_param: str | None = None) -> str | None:
     return os.environ.get("ACE_API_KEY")
 
 
-def _get_user_tier(user: User) -> SubscriptionTier:
-    if not user.subscription_tier:
-        return SubscriptionTier.FREE
-    try:
-        return SubscriptionTier(user.subscription_tier)
-    except ValueError:
-        return SubscriptionTier.FREE
-
-
 def _require_paid_access(user: User) -> str | None:
-    if user.is_admin:
+    decision = check_paid_access(user)
+    if decision.allowed:
         return None
-
-    user_tier = _get_user_tier(user)
-
-    if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:
-        return None
-
-    if user.subscription_status == SubscriptionStatus.NONE or user_tier == SubscriptionTier.FREE:
-        return "Error: Start your free trial or subscribe to continue."
-
-    if user.subscription_status == SubscriptionStatus.PAST_DUE:
-        return "Error: Your subscription payment is past due. Please update your payment method."
-    if user.subscription_status == SubscriptionStatus.CANCELED:
-        return "Error: Your subscription has been canceled. Please resubscribe to continue."
-    if user.subscription_status == SubscriptionStatus.UNPAID:
-        return "Error: Your subscription is unpaid. Please update your payment method."
-
-    return "Error: Subscription required."
+    return f"Error: {decision.detail or 'Subscription required.'}"
 
 
 def _format_rate_limit_window(window_seconds: int) -> str:

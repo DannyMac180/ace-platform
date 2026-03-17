@@ -34,14 +34,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.core.api_keys import authenticate_api_key_async, check_scope
-from ace_platform.core.limits import SubscriptionTier, get_tier_limits
+from ace_platform.core.authorization import (
+    check_active_subscription,
+    check_feature_access,
+    check_minimum_tier,
+    check_paid_access,
+)
+from ace_platform.core.authorization import (
+    get_user_tier as get_authorized_user_tier,
+)
+from ace_platform.core.limits import SubscriptionTier
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
     decode_access_token,
 )
 from ace_platform.core.sentry_context import set_user_context
-from ace_platform.db.models import ApiKey, SubscriptionStatus, User
+from ace_platform.db.models import ApiKey, User
 
 from .deps import get_db
 
@@ -427,20 +436,8 @@ class SubscriptionError(HTTPException):
 
 
 def get_user_tier(user: User) -> SubscriptionTier:
-    """Get the subscription tier for a user.
-
-    Args:
-        user: The user to check.
-
-    Returns:
-        The user's subscription tier, defaulting to FREE.
-    """
-    if not user.subscription_tier:
-        return SubscriptionTier.FREE
-    try:
-        return SubscriptionTier(user.subscription_tier)
-    except ValueError:
-        return SubscriptionTier.FREE
+    """Backwards-compatible API wrapper for the shared tier helper."""
+    return get_authorized_user_tier(user)
 
 
 async def require_active_subscription(
@@ -464,37 +461,9 @@ async def require_active_subscription(
     Raises:
         SubscriptionError: If subscription is in a bad state.
     """
-    # Admin users bypass all subscription checks
-    if user.is_admin:
-        return user
-
-    # Free tier (NONE) is always allowed
-    if user.subscription_status == SubscriptionStatus.NONE:
-        return user
-
-    # Active subscriptions are allowed
-    if user.subscription_status == SubscriptionStatus.ACTIVE:
-        return user
-
-    # All other statuses require action
-    if user.subscription_status == SubscriptionStatus.PAST_DUE:
-        raise SubscriptionError(
-            "Your subscription payment is past due. Please update your payment method.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-    elif user.subscription_status == SubscriptionStatus.CANCELED:
-        raise SubscriptionError(
-            "Your subscription has been canceled. Please resubscribe to continue.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-    elif user.subscription_status == SubscriptionStatus.UNPAID:
-        raise SubscriptionError(
-            "Your subscription is unpaid. Please update your payment method.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-    else:
-        raise SubscriptionError("Invalid subscription status")
-
+    decision = check_active_subscription(user)
+    if not decision.allowed:
+        raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
     return user
 
 
@@ -509,43 +478,10 @@ async def require_paid_access(
 
     It returns 402 Payment Required for all non-eligible states.
     """
-    # Admin users bypass all subscription checks
-    if user.is_admin:
-        return user
-
-    user_tier = get_user_tier(user)
-
-    if user.subscription_status == SubscriptionStatus.ACTIVE and user_tier != SubscriptionTier.FREE:
-        return user
-
-    # Unsubscribed / missing tier / invalid tier
-    if user.subscription_status == SubscriptionStatus.NONE or user_tier == SubscriptionTier.FREE:
-        raise SubscriptionError(
-            "Start your free trial or subscribe to continue.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-
-    # All other statuses require action
-    if user.subscription_status == SubscriptionStatus.PAST_DUE:
-        raise SubscriptionError(
-            "Your subscription payment is past due. Please update your payment method.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-    elif user.subscription_status == SubscriptionStatus.CANCELED:
-        raise SubscriptionError(
-            "Your subscription has been canceled. Please resubscribe to continue.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-    elif user.subscription_status == SubscriptionStatus.UNPAID:
-        raise SubscriptionError(
-            "Your subscription is unpaid. Please update your payment method.",
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-        )
-
-    raise SubscriptionError(
-        "Invalid subscription status",
-        status_code=status.HTTP_402_PAYMENT_REQUIRED,
-    )
+    decision = check_paid_access(user)
+    if not decision.allowed:
+        raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
+    return user
 
 
 async def require_verified_paid_user(
@@ -573,29 +509,13 @@ def require_tier(minimum_tier: SubscriptionTier):
         async def premium_feature(user: User = Depends(require_tier(SubscriptionTier.STARTER))):
             ...
     """
-    tier_order = [
-        SubscriptionTier.FREE,
-        SubscriptionTier.STARTER,
-        SubscriptionTier.PRO,
-        SubscriptionTier.ULTRA,
-        SubscriptionTier.ENTERPRISE,
-    ]
-
     async def tier_checker(
         user: Annotated[User, Depends(require_active_subscription)],
     ) -> User:
         """Check that the user has at least the minimum required tier."""
-        user_tier = get_user_tier(user)
-
-        user_tier_index = tier_order.index(user_tier)
-        min_tier_index = tier_order.index(minimum_tier)
-
-        if user_tier_index < min_tier_index:
-            raise SubscriptionError(
-                f"This feature requires a {minimum_tier.value} subscription or higher. "
-                f"Your current tier is {user_tier.value}.",
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            )
+        decision = check_minimum_tier(user, minimum_tier)
+        if not decision.allowed:
+            raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
         return user
 
     return tier_checker
@@ -625,15 +545,9 @@ def require_feature(feature: str):
         user: Annotated[User, Depends(require_active_subscription)],
     ) -> User:
         """Check that the user's tier has the required feature."""
-        user_tier = get_user_tier(user)
-        limits = get_tier_limits(user_tier)
-
-        if not getattr(limits, feature, False):
-            raise SubscriptionError(
-                f"This feature requires an upgraded subscription. "
-                f"Your current tier ({user_tier.value}) does not include {feature.replace('_', ' ')}.",
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            )
+        decision = check_feature_access(user, feature)
+        if not decision.allowed:
+            raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
         return user
 
     return feature_checker
