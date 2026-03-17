@@ -30,6 +30,7 @@ from ace_core.portability import PortablePlaybookBundle, bundle_to_json
 from ace_platform.api.auth import (
     AuthorizationError,
     SubscriptionError,
+    require_feature,
     require_paid_access,
 )
 from ace_platform.api.deps import get_db
@@ -314,6 +315,8 @@ class EvolutionStatusResponse(BaseModel):
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 PaidUser = Annotated[User, Depends(require_paid_access)]
+require_export_access = require_feature("can_export_data")
+ExportUser = Annotated[User, Depends(require_export_access)]
 
 
 # Route handlers
@@ -384,7 +387,7 @@ async def list_playbooks(
 async def export_playbooks_bundle(
     request: Request,
     db: DbSession,
-    current_user: PaidUser,
+    current_user: ExportUser,
 ) -> Response:
     """Export the caller's playbooks and traces as a portable bundle."""
 

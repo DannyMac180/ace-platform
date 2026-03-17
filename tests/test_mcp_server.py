@@ -1349,6 +1349,36 @@ class TestRequirePaidAccess:
         assert "Start your free trial" in error
 
 
+class TestPremiumToolProtection:
+    """Tests that MCP premium tools enforce the shared paid-access gate."""
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_rejects_free_user(self, monkeypatch):
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="free@example.com",
+            hashed_password="hashed",
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = _MockDB([])
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert result == "Error: Start your free trial or subscribe to continue."
+
+
 class TestExtractSection:
     """Tests for _extract_section helper function."""
 
