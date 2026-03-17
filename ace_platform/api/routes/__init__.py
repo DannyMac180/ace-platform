@@ -20,6 +20,7 @@ from .oauth import router as oauth_router
 from .playbooks import router as playbooks_router
 from .support import router as support_router
 from .usage import router as usage_router
+from .workspaces import router as workspaces_router
 
 __all__ = [
     "account_router",
@@ -32,4 +33,5 @@ __all__ = [
     "playbooks_router",
     "support_router",
     "usage_router",
+    "workspaces_router",
 ]
