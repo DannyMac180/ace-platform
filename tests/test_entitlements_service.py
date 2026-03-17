@@ -158,8 +158,12 @@ def test_workspace_entitlements_forbidden_for_other_workspace():
     app.dependency_overrides[require_user] = lambda: user
     app.dependency_overrides[get_db] = override_get_db
 
-    client = TestClient(app)
-    response = client.get(f"/v1/workspaces/{uuid4()}/entitlements")
+    with patch(
+        "ace_platform.api.routes.workspaces.get_workspace_for_user",
+        new=AsyncMock(return_value=None),
+    ):
+        client = TestClient(app)
+        response = client.get(f"/v1/workspaces/{uuid4()}/entitlements")
 
     assert response.status_code == 403
     assert response.json()["error"]["message"] == "You do not have access to this workspace."

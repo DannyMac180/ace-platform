@@ -179,9 +179,9 @@ class TestWorkspaceRoutesIntegration:
         assert payload[0]["plan"] == "personal"
 
         membership_count = await async_session.scalar(
-            select(func.count()).select_from(WorkspaceMembership).where(
-                WorkspaceMembership.user_id == existing_user["user"].id
-            )
+            select(func.count())
+            .select_from(WorkspaceMembership)
+            .where(WorkspaceMembership.user_id == existing_user["user"].id)
         )
         assert membership_count == 1
 
