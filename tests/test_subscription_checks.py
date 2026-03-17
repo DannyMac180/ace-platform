@@ -12,6 +12,11 @@ from ace_platform.api.auth import (
     require_paid_access,
     require_tier,
 )
+from ace_platform.core.authorization import (
+    PAYMENT_REQUIRED_STATUS,
+    check_feature_access,
+    check_paid_access,
+)
 from ace_platform.core.limits import SubscriptionTier
 from ace_platform.db.models import SubscriptionStatus, User
 
@@ -147,6 +152,31 @@ class TestRequireActiveSubscription:
 class TestRequirePaidAccess:
     """Tests for require_paid_access dependency."""
 
+    def test_shared_helper_allows_paid_user(self):
+        """Shared entitlement helper should allow active paid subscriptions."""
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is True
+        assert decision.detail is None
+
+    def test_shared_helper_rejects_free_user(self):
+        """Shared entitlement helper should reject free access with 402."""
+        user = _make_user(
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is False
+        assert decision.status_code == PAYMENT_REQUIRED_STATUS
+        assert "subscribe" in decision.detail.lower()
+
     @pytest.mark.asyncio
     async def test_admin_bypasses_paid_access(self):
         """Admin users bypass all paid access checks."""
@@ -213,6 +243,51 @@ class TestRequirePaidAccess:
 
         assert exc_info.value.status_code == 402
         assert "past due" in exc_info.value.detail.lower()
+
+
+class TestSharedAuthorizationHelpers:
+    """Tests for shared entitlement authorization decisions."""
+
+    def test_check_paid_access_allows_active_paid_tier(self):
+        """Shared helper allows active paid users."""
+        user = _make_user(
+            is_admin=False,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is True
+        assert decision.detail is None
+
+    def test_check_paid_access_rejects_free_tier(self):
+        """Shared helper rejects users without paid access."""
+        user = _make_user(
+            is_admin=False,
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+
+        decision = check_paid_access(user)
+
+        assert decision.allowed is False
+        assert decision.status_code == PAYMENT_REQUIRED_STATUS
+        assert "subscribe" in decision.detail.lower()
+
+    def test_check_feature_access_rejects_missing_entitlement(self):
+        """Shared helper rejects feature access that the tier does not include."""
+        user = _make_user(
+            is_admin=False,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        decision = check_feature_access(user, "priority_support")
+
+        assert decision.allowed is False
+        assert decision.status_code == PAYMENT_REQUIRED_STATUS
+        assert "priority support" in decision.detail.lower()
 
 
 class TestRequireTier:

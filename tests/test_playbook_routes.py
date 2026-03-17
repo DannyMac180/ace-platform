@@ -15,10 +15,14 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from fastapi import FastAPI, status
+from fastapi import Depends, FastAPI, status
 from fastapi.testclient import TestClient
 
-from ace_platform.api.auth import require_paid_access
+from ace_platform.api.auth import (
+    SubscriptionError,
+    get_optional_user,
+    require_paid_access,
+)
 from ace_platform.api.deps import get_db
 from ace_platform.api.routes.playbooks import (
     PaginatedPlaybookResponse,
@@ -29,8 +33,9 @@ from ace_platform.api.routes.playbooks import (
     PlaybookUpdate,
     PlaybookVersionResponse,
     VersionCreate,
+    require_export_access,
 )
-from ace_platform.db.models import PlaybookSource, PlaybookStatus
+from ace_platform.db.models import PlaybookSource, PlaybookStatus, SubscriptionStatus
 
 
 class TestPlaybookSchemas:
@@ -168,6 +173,52 @@ class TestPlaybookRoutesIntegration:
         ]
 
 
+class TestPremiumRouteProtection:
+    """Tests that premium routes reject unauthorized users server-side."""
+
+    @pytest.fixture
+    def app(self):
+        app = FastAPI()
+
+        @app.get("/premium")
+        async def premium_route(_user=Depends(require_paid_access)):
+            return {"ok": True}
+
+        return app
+
+    def test_free_user_is_rejected(self, app):
+        async def override_optional_user():
+            return SimpleNamespace(
+                is_admin=False,
+                subscription_status=SubscriptionStatus.NONE,
+                subscription_tier=None,
+            )
+
+        app.dependency_overrides[get_optional_user] = override_optional_user
+        client = TestClient(app)
+
+        response = client.get("/premium")
+
+        assert response.status_code == status.HTTP_402_PAYMENT_REQUIRED
+        assert "subscribe" in response.json()["detail"].lower()
+
+    def test_paid_user_is_allowed(self, app):
+        async def override_optional_user():
+            return SimpleNamespace(
+                is_admin=False,
+                subscription_status=SubscriptionStatus.ACTIVE,
+                subscription_tier="starter",
+            )
+
+        app.dependency_overrides[get_optional_user] = override_optional_user
+        client = TestClient(app)
+
+        response = client.get("/premium")
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json() == {"ok": True}
+
+
 class TestPortableImportRoutes:
     """Focused tests for portable playbook import responses."""
 
@@ -248,6 +299,40 @@ class TestPortableImportRoutes:
         )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TestPlaybookExportAccessRoute:
+    """Focused tests for export entitlement routing."""
+
+    @pytest.fixture
+    def app(self):
+        """Create a minimal app with dependency overrides for export access."""
+        from ace_platform.api.routes.playbooks import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        async def override_db():
+            yield object()
+
+        async def deny_export_access():
+            raise SubscriptionError("export denied", status_code=status.HTTP_402_PAYMENT_REQUIRED)
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[require_export_access] = deny_export_access
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create a test client."""
+        return TestClient(app)
+
+    def test_export_requires_export_entitlement(self, client):
+        """Export route surfaces the feature gate at the HTTP boundary."""
+        response = client.get("/playbooks/export")
+
+        assert response.status_code == status.HTTP_402_PAYMENT_REQUIRED
+        assert response.json()["detail"] == "export denied"
 
 
 class TestPaginatedResponse:
