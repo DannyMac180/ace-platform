@@ -97,24 +97,32 @@ Local setup:
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
-cp WORKFLOW.example.md WORKFLOW.md
-# Edit WORKFLOW.md for your Linear project, workspace root, and repo clone URL
+cp WORKFLOW.example.md WORKFLOW.local.md
+# Edit WORKFLOW.local.md for your Linear project, workspace root, and repo clone URL
 ./scripts/run-symphony.sh
 ```
 
 Use [WORKFLOW.example.md](WORKFLOW.example.md) as the committed template for your local
-`WORKFLOW.md`. The real `WORKFLOW.md` is intentionally gitignored so each developer can point
-Symphony at their own Linear project, workspace root, and fork or clone URL.
+`WORKFLOW.local.md`. The local workflow files are intentionally gitignored so each developer can point
+Symphony at their own Linear project, workspace root, and fork or clone URL without losing those settings
+on pulls or merges. The launcher script builds a runtime workflow by combining the tracked
+`WORKFLOW.example.md` with your local frontmatter overrides, so shared workflow logic changes still
+flow through after a pull while machine-specific settings stay local.
 
 Notes:
 
 - `WORKFLOW.example.md` includes the fields you must customize before your first run.
+- Keep your machine-specific Symphony config in `WORKFLOW.local.md`, not by editing the tracked example.
+- `WORKFLOW.local.md` should be treated as local frontmatter overrides for the tracked example workflow.
+- The tracked example includes a `before_run` repair hook that normalizes partially initialized
+  workspaces before Codex starts, including nested `repo/` checkouts and checkout-free directories
+  that only contain a `venv`.
 - `scripts/run-symphony.sh` uses the repo-local `venv/bin/symphony` launcher directly instead of relying on shell activation.
 - The script starts the observability dashboard on `http://127.0.0.1:4000/`.
 - Override the dashboard port with `SYMPHONY_PORT=4001 ./scripts/run-symphony.sh` if needed.
 - Local open-source Symphony development currently expects a Linear project and `LINEAR_API_KEY`.
 - If you want Symphony-created branches or PRs to push to your fork, make sure the clone URL in
-  `WORKFLOW.md` and your local git auth are configured for that fork.
+  `WORKFLOW.local.md` and your local git auth are configured for that fork.
 
 ### Fastest Full-Stack Docker Setup
 

@@ -7,21 +7,22 @@ Utility scripts for development, testing, and operations.
 ### run-symphony.sh
 
 Start the vendored Symphony runtime with the repo-local virtualenv launcher and a local
-`WORKFLOW.md`.
+`WORKFLOW.local.md` layered on top of the tracked `WORKFLOW.example.md`.
 
 #### Prerequisites
 
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
-cp WORKFLOW.example.md WORKFLOW.md
+cp WORKFLOW.example.md WORKFLOW.local.md
 ```
 
-Before running, edit `WORKFLOW.md` to set:
+Before running, edit `WORKFLOW.local.md` to set:
 
 - your Linear `project_slug`
 - your preferred Symphony workspace root
-- the repo clone URL Symphony should use for ticket workspaces
+- the repo clone URL Symphony should use for ticket workspaces if you want to use a fork instead
+  of the default upstream clone URL in the example
 
 You also need:
 
@@ -36,6 +37,9 @@ You also need:
 ```
 
 The script starts the dashboard at `http://127.0.0.1:4000/` by default.
+
+The tracked example workflow also includes a `before_run` repair hook that fixes partially
+initialized ticket workspaces before Codex starts.
 
 Override the port with:
 

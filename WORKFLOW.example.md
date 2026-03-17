@@ -21,9 +21,29 @@ workspace:
   root: ~/code/symphony-workspaces/ace-platform
 hooks:
   after_create: |
-    # Replace with your fork or preferred clone URL for ace-platform.
-    git clone --depth 1 https://github.com/your-github-handle/ace-platform.git .
+    # Change this to your fork if you want Symphony-created branches and PRs to
+    # push there instead of the upstream repo.
+    git clone --depth 1 https://github.com/DannyMac180/ace-platform.git .
     python3 -m venv venv
+    . venv/bin/activate
+    pip install -e ".[dev]"
+  before_run: |
+    # Repair partially initialized workspaces before Codex starts. This fixes
+    # cases where a previous run left the repo nested under ./repo or created a
+    # venv before the checkout finished.
+    if [ -d repo/.git ] && [ ! -d .git ]; then
+      cp -a repo/. .
+      rm -rf repo
+    fi
+    if [ ! -d .git ]; then
+      rm -rf repo
+      git clone --depth 1 https://github.com/DannyMac180/ace-platform.git repo
+      cp -a repo/. .
+      rm -rf repo
+    fi
+    if [ ! -x venv/bin/python ]; then
+      python3 -m venv venv
+    fi
     . venv/bin/activate
     pip install -e ".[dev]"
 agent:

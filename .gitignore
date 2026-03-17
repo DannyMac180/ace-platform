@@ -50,6 +50,7 @@ results/
 logs/
 *.log
 .symphony-workspaces/
+.symphony-workflow.generated.md
 /WORKFLOW.md
 WORKFLOW.local.md
 
