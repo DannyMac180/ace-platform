@@ -97,13 +97,24 @@ Local setup:
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
-source venv/bin/activate && symphony \
-  --i-understand-that-this-will-be-running-without-the-usual-guardrails \
-  WORKFLOW.md
+cp WORKFLOW.example.md WORKFLOW.md
+# Edit WORKFLOW.md for your Linear project, workspace root, and repo clone URL
+./scripts/run-symphony.sh
 ```
 
-The checked-in [WORKFLOW.md](WORKFLOW.md) is configured for the `ace-platform` Linear project and
-creates a fresh workspace clone of `DannyMac180/ace-platform` with its own Python virtualenv.
+Use [WORKFLOW.example.md](WORKFLOW.example.md) as the committed template for your local
+`WORKFLOW.md`. The real `WORKFLOW.md` is intentionally gitignored so each developer can point
+Symphony at their own Linear project, workspace root, and fork or clone URL.
+
+Notes:
+
+- `WORKFLOW.example.md` includes the fields you must customize before your first run.
+- `scripts/run-symphony.sh` uses the repo-local `venv/bin/symphony` launcher directly instead of relying on shell activation.
+- The script starts the observability dashboard on `http://127.0.0.1:4000/`.
+- Override the dashboard port with `SYMPHONY_PORT=4001 ./scripts/run-symphony.sh` if needed.
+- Local open-source Symphony development currently expects a Linear project and `LINEAR_API_KEY`.
+- If you want Symphony-created branches or PRs to push to your fork, make sure the clone URL in
+  `WORKFLOW.md` and your local git auth are configured for that fork.
 
 ### Fastest Full-Stack Docker Setup
 

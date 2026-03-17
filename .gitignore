@@ -50,6 +50,7 @@ results/
 logs/
 *.log
 .symphony-workspaces/
+/WORKFLOW.md
 WORKFLOW.local.md
 
 # Jupyter
