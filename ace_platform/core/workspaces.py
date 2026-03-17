@@ -14,6 +14,7 @@ from ace_platform.db.models import (
     User,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceEntitlement,
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
@@ -58,7 +59,10 @@ async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspac
         select(Workspace)
         .join(WorkspaceMembership)
         .where(WorkspaceMembership.user_id == user_id)
-        .options(selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user))
+        .options(
+            selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
+            selectinload(Workspace.entitlements),
+        )
         .order_by(Workspace.created_at.asc(), Workspace.id.asc())
     )
     return list(result.scalars().unique().all())
@@ -77,7 +81,10 @@ async def get_workspace_for_user(
             Workspace.id == workspace_id,
             WorkspaceMembership.user_id == user_id,
         )
-        .options(selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user))
+        .options(
+            selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
+            selectinload(Workspace.entitlements),
+        )
     )
     return result.scalars().unique().one_or_none()
 
@@ -108,7 +115,7 @@ async def get_workspace_membership_by_id(
     result = await db.execute(
         select(WorkspaceMembership)
         .where(
-            WorkspaceMembership.id == membership_id,
+            WorkspaceMembership.user_id == membership_id,
             WorkspaceMembership.workspace_id == workspace_id,
         )
         .options(selectinload(WorkspaceMembership.user))
@@ -125,7 +132,7 @@ async def list_workspace_memberships(
         select(WorkspaceMembership)
         .where(WorkspaceMembership.workspace_id == workspace_id)
         .options(selectinload(WorkspaceMembership.user))
-        .order_by(WorkspaceMembership.created_at.asc(), WorkspaceMembership.id.asc())
+        .order_by(WorkspaceMembership.created_at.asc(), WorkspaceMembership.user_id.asc())
     )
     return list(result.scalars().all())
 
@@ -161,6 +168,12 @@ async def create_workspace(
         role=WorkspaceRole.OWNER,
     )
     db.add(membership)
+
+    entitlements = WorkspaceEntitlement(
+        workspace_id=workspace.id,
+        **WorkspaceEntitlement.defaults_for_plan(plan),
+    )
+    db.add(entitlements)
     await db.flush()
 
     return workspace
@@ -196,6 +209,7 @@ async def update_workspace(
     seat_limit: int | None = None,
 ) -> Workspace:
     """Update mutable workspace fields."""
+    previous_plan = workspace.plan
     next_plan = plan or workspace.plan
     next_deployment_mode = deployment_mode or workspace.deployment_mode
     requested_seat_limit = seat_limit if seat_limit is not None else workspace.seat_limit
@@ -216,6 +230,15 @@ async def update_workspace(
     workspace.plan = next_plan
     workspace.deployment_mode = next_deployment_mode
     workspace.seat_limit = next_seat_limit
+
+    if workspace.entitlements is None:
+        workspace.entitlements = WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(next_plan)
+        )
+    elif next_plan != previous_plan:
+        for field_name, value in WorkspaceEntitlement.defaults_for_plan(next_plan).items():
+            setattr(workspace.entitlements, field_name, value)
+
     await db.flush()
     return workspace
 

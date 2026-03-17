@@ -75,15 +75,6 @@ class TestWorkspaceRoutesIntegration:
         async with engine.begin() as conn:
             await conn.execute(text("DROP SCHEMA public CASCADE"))
             await conn.execute(text("CREATE SCHEMA public"))
-            await conn.execute(
-                text("CREATE TYPE workspaceplan AS ENUM ('personal', 'team', 'enterprise')")
-            )
-            await conn.execute(
-                text("CREATE TYPE workspacedeploymentmode AS ENUM ('cloud', 'self_hosted')")
-            )
-            await conn.execute(
-                text("CREATE TYPE workspacerole AS ENUM ('owner', 'member', 'reviewer', 'admin')")
-            )
             await conn.run_sync(Base.metadata.create_all)
 
         yield engine
@@ -188,7 +179,7 @@ class TestWorkspaceRoutesIntegration:
         assert payload[0]["plan"] == "personal"
 
         membership_count = await async_session.scalar(
-            select(func.count(WorkspaceMembership.id)).where(
+            select(func.count()).select_from(WorkspaceMembership).where(
                 WorkspaceMembership.user_id == existing_user["user"].id
             )
         )

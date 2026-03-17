@@ -1,6 +1,9 @@
-"""Workspace service routes."""
+"""Workspace service and entitlement routes."""
 
-from typing import Annotated
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,6 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import RequiredUser
 from ace_platform.api.deps import get_db
+from ace_platform.core.entitlements import (
+    WorkspaceEntitlementsSnapshot,
+    get_workspace_id,
+    resolve_workspace_entitlements,
+)
 from ace_platform.core.workspaces import (
     MANAGER_ROLES,
     add_workspace_member,
@@ -33,7 +41,7 @@ from ace_platform.db.models import (
     WorkspaceRole,
 )
 
-router = APIRouter(prefix="/workspaces", tags=["workspaces"])
+router = APIRouter(tags=["workspaces"])
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = RequiredUser
@@ -65,7 +73,7 @@ class WorkspaceMembershipCreateRequest(BaseModel):
     role: WorkspaceRole = Field(default=WorkspaceRole.MEMBER)
 
     @model_validator(mode="after")
-    def validate_lookup(self) -> "WorkspaceMembershipCreateRequest":
+    def validate_lookup(self) -> WorkspaceMembershipCreateRequest:
         """Require either a user ID or email."""
         if not self.user_id and not self.user_email:
             raise ValueError("Either user_id or user_email is required")
@@ -107,6 +115,73 @@ class WorkspaceBootstrapResponse(BaseModel):
     workspaces: list[WorkspaceResponse]
 
 
+class WorkspaceFeatureAccessResponse(BaseModel):
+    """API response model for workspace feature flags."""
+
+    cloud_sync: bool
+    hosted_backups: bool
+    managed_inference: bool
+    hosted_evals: bool
+    invite_members: bool
+    shared_workspace: bool
+    approvals: bool
+    rbac: bool
+    sso: bool
+    audit_logs: bool
+
+
+class WorkspaceUsageLimitsResponse(BaseModel):
+    """API response model for workspace usage limits and current usage."""
+
+    monthly_evolution_runs: int | None
+    current_evolution_runs: int
+    remaining_evolution_runs: int | None
+    monthly_cost_limit_usd: Decimal | None
+    current_cost_usd: Decimal
+    remaining_cost_usd: Decimal | None
+    current_total_tokens: int
+    max_playbooks: int | None
+    is_within_limits: bool
+    limit_exceeded: str | None
+
+
+class WorkspaceEntitlementsResponse(BaseModel):
+    """API response model for one workspace entitlement snapshot."""
+
+    workspace_id: str
+    plan: Literal["personal", "team", "enterprise"]
+    deployment_mode: Literal["cloud", "self_hosted"]
+    seat_limit: int | None
+    enabled_features: list[str]
+    access: WorkspaceAccessResponse
+    entitlements: WorkspaceFeatureAccessResponse
+    usage_limits: WorkspaceUsageLimitsResponse
+
+
+class WorkspaceAccessResponse(BaseModel):
+    """API response model for subscription-derived access state."""
+
+    subscription_tier: str
+    subscription_status: str
+    effective_tier: str
+    has_feature_access: bool
+    is_trialing: bool
+
+
+ENTITLEMENT_FIELDS = (
+    "cloud_sync",
+    "hosted_backups",
+    "managed_inference",
+    "hosted_evals",
+    "invite_members",
+    "shared_workspace",
+    "approvals",
+    "rbac",
+    "sso",
+    "audit_logs",
+)
+
+
 def _serialize_workspace(workspace: Workspace, current_user_id: UUID) -> WorkspaceResponse:
     """Serialize a workspace with the caller's role."""
     current_membership = next(
@@ -139,6 +214,86 @@ def _serialize_membership(membership) -> WorkspaceMembershipResponse:
         user_id=membership.user_id,
         user_email=membership.user.email,
         role=membership.role,
+    )
+
+
+async def _resolve_entitlements_workspace(
+    db: AsyncSession,
+    current_user: User,
+    workspace_id: str,
+) -> Workspace | None:
+    """Resolve a concrete workspace id for entitlement lookups."""
+    if workspace_id in {"personal", "me", get_workspace_id(current_user)}:
+        return None
+
+    try:
+        parsed_workspace_id = UUID(workspace_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace not found.",
+        ) from exc
+
+    workspace = await get_workspace_for_user(db, parsed_workspace_id, current_user.id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this workspace.",
+        )
+    return workspace
+
+
+def _to_response(
+    snapshot: WorkspaceEntitlementsSnapshot,
+    workspace: Workspace | None = None,
+) -> WorkspaceEntitlementsResponse:
+    """Serialize the core entitlement snapshot into the route response model."""
+    entitlements_source = workspace.entitlements if workspace is not None else None
+    feature_values = {
+        field_name: (
+            bool(getattr(entitlements_source, field_name))
+            if entitlements_source is not None
+            else bool(getattr(snapshot.entitlements, field_name))
+        )
+        for field_name in ENTITLEMENT_FIELDS
+    }
+
+    workspace_id = snapshot.workspace_id
+    plan = snapshot.plan
+    deployment_mode = snapshot.deployment_mode
+    seat_limit = snapshot.seat_limit
+    if workspace is not None:
+        workspace_id = str(workspace.id)
+        plan = workspace.plan.value
+        deployment_mode = workspace.deployment_mode.value
+        seat_limit = workspace.seat_limit
+
+    return WorkspaceEntitlementsResponse(
+        workspace_id=workspace_id,
+        plan=plan,
+        deployment_mode=deployment_mode,
+        seat_limit=seat_limit,
+        enabled_features=[name for name in ENTITLEMENT_FIELDS if feature_values[name]],
+        access=WorkspaceAccessResponse(
+            subscription_tier=snapshot.access.subscription_tier.value,
+            subscription_status=snapshot.access.subscription_status.value,
+            effective_tier=snapshot.access.effective_tier.value,
+            has_feature_access=snapshot.access.has_feature_access,
+            is_trialing=snapshot.access.is_trialing,
+        ),
+        entitlements=WorkspaceFeatureAccessResponse(**feature_values),
+        usage_limits=WorkspaceUsageLimitsResponse(
+            monthly_evolution_runs=snapshot.usage_limits.monthly_evolution_runs,
+            current_evolution_runs=snapshot.usage_limits.current_evolution_runs,
+            remaining_evolution_runs=snapshot.usage_limits.remaining_evolution_runs,
+            monthly_cost_limit_usd=snapshot.usage_limits.monthly_cost_limit_usd,
+            current_cost_usd=snapshot.usage_limits.current_cost_usd,
+            remaining_cost_usd=snapshot.usage_limits.remaining_cost_usd,
+            current_total_tokens=snapshot.usage_limits.current_total_tokens,
+            max_playbooks=snapshot.usage_limits.max_playbooks,
+            is_within_limits=snapshot.usage_limits.is_within_limits,
+            limit_exceeded=snapshot.usage_limits.limit_exceeded,
+        ),
     )
 
 
@@ -183,7 +338,7 @@ async def _resolve_user(
     return target_user
 
 
-@router.get("", response_model=list[WorkspaceResponse])
+@router.get("/workspaces", response_model=list[WorkspaceResponse])
 async def list_workspaces(
     db: DbSession,
     current_user: CurrentUser,
@@ -197,7 +352,7 @@ async def list_workspaces(
     return [_serialize_workspace(workspace, current_user.id) for workspace in workspaces]
 
 
-@router.post("/bootstrap", response_model=WorkspaceBootstrapResponse)
+@router.post("/workspaces/bootstrap", response_model=WorkspaceBootstrapResponse)
 async def bootstrap_workspaces(
     db: DbSession,
     current_user: CurrentUser,
@@ -213,7 +368,7 @@ async def bootstrap_workspaces(
     )
 
 
-@router.post("", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/workspaces", response_model=WorkspaceResponse, status_code=status.HTTP_201_CREATED)
 async def create_workspace_route(
     payload: WorkspaceCreateRequest,
     db: DbSession,
@@ -236,7 +391,7 @@ async def create_workspace_route(
     return _serialize_workspace(workspace, current_user.id)
 
 
-@router.get("/{workspace_id}", response_model=WorkspaceResponse)
+@router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace_route(
     workspace_id: UUID,
     db: DbSession,
@@ -249,7 +404,7 @@ async def get_workspace_route(
     return _serialize_workspace(workspace, current_user.id)
 
 
-@router.patch("/{workspace_id}", response_model=WorkspaceResponse)
+@router.patch("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
 async def update_workspace_route(
     workspace_id: UUID,
     payload: WorkspaceUpdateRequest,
@@ -283,7 +438,7 @@ async def update_workspace_route(
     return _serialize_workspace(workspace, current_user.id)
 
 
-@router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/workspaces/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_workspace_route(
     workspace_id: UUID,
     db: DbSession,
@@ -305,7 +460,10 @@ async def delete_workspace_route(
     await db.commit()
 
 
-@router.get("/{workspace_id}/memberships", response_model=list[WorkspaceMembershipResponse])
+@router.get(
+    "/workspaces/{workspace_id}/memberships",
+    response_model=list[WorkspaceMembershipResponse],
+)
 async def list_workspace_memberships_route(
     workspace_id: UUID,
     db: DbSession,
@@ -318,7 +476,7 @@ async def list_workspace_memberships_route(
 
 
 @router.post(
-    "/{workspace_id}/memberships",
+    "/workspaces/{workspace_id}/memberships",
     response_model=WorkspaceMembershipResponse,
     status_code=status.HTTP_201_CREATED,
 )
@@ -352,7 +510,7 @@ async def create_workspace_membership_route(
 
 
 @router.patch(
-    "/{workspace_id}/memberships/{membership_id}",
+    "/workspaces/{workspace_id}/memberships/{membership_id}",
     response_model=WorkspaceMembershipResponse,
 )
 async def update_workspace_membership_route(
@@ -380,7 +538,8 @@ async def update_workspace_membership_route(
 
 
 @router.delete(
-    "/{workspace_id}/memberships/{membership_id}", status_code=status.HTTP_204_NO_CONTENT
+    "/workspaces/{workspace_id}/memberships/{membership_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_workspace_membership_route(
     workspace_id: UUID,
@@ -402,3 +561,23 @@ async def delete_workspace_membership_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     await db.commit()
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/entitlements",
+    response_model=WorkspaceEntitlementsResponse,
+)
+@router.get(
+    "/workspaces/{workspace_id}/entitlements",
+    response_model=WorkspaceEntitlementsResponse,
+    include_in_schema=False,
+)
+async def get_workspace_entitlements(
+    workspace_id: str,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> WorkspaceEntitlementsResponse:
+    """Return authoritative feature access for the caller's cloud workspace."""
+    workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
+    snapshot = await resolve_workspace_entitlements(db, current_user)
+    return _to_response(snapshot, workspace)
