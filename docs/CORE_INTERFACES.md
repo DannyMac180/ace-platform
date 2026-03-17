@@ -63,6 +63,9 @@ Local implementations can satisfy the contracts with:
 - a local `EvalRunner`
 - static or config-based `Entitlements`
 
+The current production local adapter surface lives in `ace_core.local` and is
+mirrored in `packages/ace-core/src/ace_core/` for the extracted package path.
+
 Cloud implementations can satisfy the same contracts with:
 
 - API or database backed `PlaybookStore`
