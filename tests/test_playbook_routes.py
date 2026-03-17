@@ -227,6 +227,28 @@ class TestPortableImportRoutes:
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
+    def test_import_validation_rejects_overlong_version_content(self, client):
+        """Test that portable schema validation rejects oversized imported content."""
+        response = client.post(
+            "/playbooks/import",
+            json={
+                "playbooks": [
+                    {
+                        "name": "portable",
+                        "versions": [
+                            {
+                                "version_number": 1,
+                                "content": "x" * 102_401,
+                            }
+                        ],
+                        "traces": [],
+                    }
+                ]
+            },
+        )
+
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
 
 class TestPaginatedResponse:
     """Tests for paginated response schema."""

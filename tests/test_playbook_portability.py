@@ -9,6 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from ace_core.portability import (
+    PORTABLE_PLAYBOOK_CONTENT_MAX_LENGTH,
     PortableBundleOrigin,
     PortablePlaybook,
     PortablePlaybookBundle,
@@ -120,6 +121,14 @@ def test_bundle_json_round_trip_preserves_playbooks_and_traces() -> None:
 def test_portable_playbook_name_is_bounded() -> None:
     with pytest.raises(ValidationError):
         PortablePlaybook(name="x" * 256, versions=[], traces=[])
+
+
+def test_portable_playbook_version_content_is_bounded() -> None:
+    with pytest.raises(ValidationError):
+        PortablePlaybookVersion(
+            version_number=1,
+            content="x" * (PORTABLE_PLAYBOOK_CONTENT_MAX_LENGTH + 1),
+        )
 
 
 @pytest.mark.asyncio
@@ -249,6 +258,28 @@ async def test_import_playbook_bundle_creates_imported_rows(
     assert playbooks[0].current_version_id is not None
     assert traces[0].outcome_status == OutcomeStatus.PARTIAL
     embedding_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_playbook_bundle_refreshes_embedding_without_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    embedding_refresh = AsyncMock()
+    monkeypatch.setattr("ace_platform.core.playbooks.refresh_playbook_embedding", embedding_refresh)
+
+    bundle = PortablePlaybookBundle(
+        playbooks=[PortablePlaybook(name="Portable Playbook", versions=[], traces=[])]
+    )
+    session = _ImportSession()
+    user = SimpleNamespace(
+        id=uuid4(), subscription_tier="starter", trial_ends_at=None, is_admin=False
+    )
+
+    summaries = await import_playbook_bundle(session, user, bundle)
+
+    assert len(summaries) == 1
+    embedding_refresh.assert_awaited_once()
+    assert embedding_refresh.await_args.kwargs["content"] is None
 
 
 @pytest.mark.asyncio

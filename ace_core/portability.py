@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, model_validator
 PORTABLE_BUNDLE_KIND = "ace.playbook_bundle"
 PORTABLE_BUNDLE_VERSION = 1
 PORTABLE_PLAYBOOK_NAME_MAX_LENGTH = 255
+PORTABLE_PLAYBOOK_CONTENT_MAX_LENGTH = 102_400
 PortableOutcome = Literal["success", "failure", "partial"]
 PortableScopeKind = Literal["user", "workspace", "organization", "global"]
 
@@ -40,7 +41,7 @@ class PortablePlaybookVersion(BaseModel):
 
     id: str | None = None
     version_number: int = Field(ge=1)
-    content: str
+    content: str = Field(max_length=PORTABLE_PLAYBOOK_CONTENT_MAX_LENGTH)
     bullet_count: int = Field(default=0, ge=0)
     diff_summary: str | None = None
     created_at: datetime | None = None
@@ -125,6 +126,7 @@ def bundle_from_json(payload: str | bytes) -> PortablePlaybookBundle:
 __all__ = [
     "PORTABLE_BUNDLE_KIND",
     "PORTABLE_BUNDLE_VERSION",
+    "PORTABLE_PLAYBOOK_CONTENT_MAX_LENGTH",
     "PORTABLE_PLAYBOOK_NAME_MAX_LENGTH",
     "PortableBundleOrigin",
     "PortableOutcome",

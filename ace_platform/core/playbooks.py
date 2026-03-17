@@ -201,12 +201,11 @@ async def import_playbook_bundle(
             if current_version_content is None and imported_versions:
                 current_version_content = imported_versions[-1].content
 
-        if current_version_content is not None:
-            await refresh_playbook_embedding(
-                playbook,
-                content=current_version_content,
-                settings=settings,
-            )
+        await refresh_playbook_embedding(
+            playbook,
+            content=current_version_content,
+            settings=settings,
+        )
 
         for portable_trace in portable_playbook.traces:
             trace_kwargs = {
