@@ -52,6 +52,8 @@ logs/
 .symphony-workspaces/
 /WORKFLOW.md
 WORKFLOW.local.md
+.symphony-workflow.generated.md
+.codex-tmp/
 
 # Jupyter
 .ipynb_checkpoints/
