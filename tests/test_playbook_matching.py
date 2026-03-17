@@ -2,26 +2,30 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+import inspect
+from dataclasses import dataclass
 
 import pytest
 
+import ace_core
 from ace_core import playbook_matching as core_playbook_matching
-from ace_platform.config import Settings
 from ace_platform.core import playbook_matching as platform_playbook_matching
-from ace_platform.db.models import Playbook, PlaybookSource, PlaybookStatus
 
 
-def _test_playbook(
-    name: str = "Deploy App", description: str | None = "Deployment checklist"
-) -> Playbook:
-    return Playbook(
-        user_id=uuid4(),
-        name=name,
-        description=description,
-        status=PlaybookStatus.ACTIVE,
-        source=PlaybookSource.USER_CREATED,
-    )
+@dataclass
+class MatchSettingsFixture:
+    openai_api_key: str = ""
+    playbook_embedding_model: str = core_playbook_matching.DEFAULT_EMBEDDING_MODEL
+    playbook_embedding_max_chars: int = core_playbook_matching.DEFAULT_EMBEDDING_MAX_CHARS
+
+
+@dataclass
+class MatchPlaybookFixture:
+    name: str = "Deploy App"
+    description: str | None = "Deployment checklist"
+    semantic_embedding: list[float] | None = None
+    semantic_embedding_model: str | None = None
+    semantic_embedding_updated_at: object | None = None
 
 
 @pytest.mark.parametrize(
@@ -114,7 +118,7 @@ def test_score_playbook_match_falls_back_to_local_when_models_differ(module) -> 
 
 @pytest.mark.asyncio
 async def test_generate_embedding_falls_back_to_local_without_openai_key() -> None:
-    settings = Settings(openai_api_key="")
+    settings = MatchSettingsFixture(openai_api_key="")
     embedding, model = await core_playbook_matching.generate_embedding(
         "match this task", settings=settings
     )
@@ -124,8 +128,8 @@ async def test_generate_embedding_falls_back_to_local_without_openai_key() -> No
 
 @pytest.mark.asyncio
 async def test_refresh_playbook_embedding_sets_fields_async() -> None:
-    playbook = _test_playbook()
-    settings = Settings(openai_api_key="")
+    playbook = MatchPlaybookFixture()
+    settings = MatchSettingsFixture(openai_api_key="")
 
     await core_playbook_matching.refresh_playbook_embedding(
         playbook,
@@ -139,8 +143,8 @@ async def test_refresh_playbook_embedding_sets_fields_async() -> None:
 
 
 def test_refresh_playbook_embedding_sets_fields_sync() -> None:
-    playbook = _test_playbook()
-    settings = Settings(openai_api_key="")
+    playbook = MatchPlaybookFixture()
+    settings = MatchSettingsFixture(openai_api_key="")
 
     core_playbook_matching.refresh_playbook_embedding_sync(
         playbook,
@@ -155,7 +159,7 @@ def test_refresh_playbook_embedding_sets_fields_sync() -> None:
 
 @pytest.mark.asyncio
 async def test_platform_adapter_uses_core_generate_embedding() -> None:
-    settings = Settings(openai_api_key="")
+    settings = MatchSettingsFixture(openai_api_key="")
 
     embedding, model = await platform_playbook_matching.generate_embedding(
         "match this task",
@@ -168,8 +172,8 @@ async def test_platform_adapter_uses_core_generate_embedding() -> None:
 
 @pytest.mark.asyncio
 async def test_platform_adapter_refreshes_playbook_fields() -> None:
-    playbook = _test_playbook()
-    settings = Settings(openai_api_key="")
+    playbook = MatchPlaybookFixture()
+    settings = MatchSettingsFixture(openai_api_key="")
 
     await platform_playbook_matching.refresh_playbook_embedding(
         playbook,
@@ -180,3 +184,11 @@ async def test_platform_adapter_refreshes_playbook_fields() -> None:
     assert playbook.semantic_embedding is not None
     assert playbook.semantic_embedding_model == core_playbook_matching.LOCAL_EMBEDDING_MODEL
     assert playbook.semantic_embedding_updated_at is not None
+
+
+def test_core_module_does_not_import_ace_platform() -> None:
+    assert "ace_platform" not in inspect.getsource(core_playbook_matching)
+
+
+def test_ace_core_re_exports_playbook_matching_helpers() -> None:
+    assert ace_core.build_playbook_match_text is core_playbook_matching.build_playbook_match_text

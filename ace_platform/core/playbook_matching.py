@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from ace_core.playbook_matching import (
     DEFAULT_EMBEDDING_MAX_CHARS,
     DEFAULT_EMBEDDING_MODEL,
     LOCAL_EMBEDDING_DIMENSIONS,
     LOCAL_EMBEDDING_MODEL,
+    EmbeddingSettings,
+    PlaybookEmbeddingTarget,
     build_playbook_match_text,
     cosine_similarity,
     generate_local_embedding,
@@ -26,18 +30,24 @@ from ace_core.playbook_matching import (
 from ace_core.playbook_matching import (
     refresh_playbook_embedding_sync as _refresh_playbook_embedding_sync,
 )
-from ace_platform.config import Settings, get_settings
-from ace_platform.db.models import Playbook
+
+if TYPE_CHECKING:
+    from ace_platform.config import Settings
 
 
-def _resolved_settings(settings: Settings | None) -> Settings:
-    return settings or get_settings()
+def _resolved_settings(settings: Settings | EmbeddingSettings | None) -> EmbeddingSettings:
+    if settings is not None:
+        return settings
+
+    from ace_platform.config import get_settings
+
+    return get_settings()
 
 
 async def generate_embedding(
     text: str,
     *,
-    settings: Settings | None = None,
+    settings: Settings | EmbeddingSettings | None = None,
 ) -> tuple[list[float], str]:
     """Generate embedding using platform settings defaults."""
     current_settings = _resolved_settings(settings)
@@ -51,7 +61,7 @@ async def generate_embedding(
 def generate_embedding_sync(
     text: str,
     *,
-    settings: Settings | None = None,
+    settings: Settings | EmbeddingSettings | None = None,
 ) -> tuple[list[float], str]:
     """Synchronous variant of embedding generation for platform callers."""
     current_settings = _resolved_settings(settings)
@@ -63,10 +73,10 @@ def generate_embedding_sync(
 
 
 async def refresh_playbook_embedding(
-    playbook: Playbook,
+    playbook: PlaybookEmbeddingTarget,
     *,
     content: str | None,
-    settings: Settings | None = None,
+    settings: Settings | EmbeddingSettings | None = None,
 ) -> None:
     """Update a playbook's stored embedding fields using platform settings."""
     current_settings = _resolved_settings(settings)
@@ -80,10 +90,10 @@ async def refresh_playbook_embedding(
 
 
 def refresh_playbook_embedding_sync(
-    playbook: Playbook,
+    playbook: PlaybookEmbeddingTarget,
     *,
     content: str | None,
-    settings: Settings | None = None,
+    settings: Settings | EmbeddingSettings | None = None,
 ) -> None:
     """Synchronous variant for worker code paths."""
     current_settings = _resolved_settings(settings)
@@ -99,8 +109,10 @@ def refresh_playbook_embedding_sync(
 __all__ = [
     "DEFAULT_EMBEDDING_MAX_CHARS",
     "DEFAULT_EMBEDDING_MODEL",
+    "EmbeddingSettings",
     "LOCAL_EMBEDDING_DIMENSIONS",
     "LOCAL_EMBEDDING_MODEL",
+    "PlaybookEmbeddingTarget",
     "build_playbook_match_text",
     "cosine_similarity",
     "generate_embedding",
