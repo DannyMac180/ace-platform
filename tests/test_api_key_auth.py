@@ -100,7 +100,7 @@ def sync_session(sync_engine):
 async def test_user(async_session: AsyncSession):
     """Create a test user."""
     user = User(
-        email="test@example.com",
+        email=f"test-{uuid4()}@example.com",
         hashed_password="hashed_password_here",
     )
     async_session.add(user)
@@ -113,7 +113,7 @@ async def test_user(async_session: AsyncSession):
 def test_user_sync(sync_session: Session):
     """Create a test user (sync version)."""
     user = User(
-        email="test@example.com",
+        email=f"test-{uuid4()}@example.com",
         hashed_password="hashed_password_here",
     )
     sync_session.add(user)
