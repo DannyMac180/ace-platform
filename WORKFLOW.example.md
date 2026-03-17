@@ -1,7 +1,8 @@
 ---
 tracker:
   kind: linear
-  project_slug: "ace-v2-4fe95176a1f5"
+  # Replace with your Linear project slug.
+  project_slug: "your-linear-project-slug"
   active_states:
     - Todo
     - In Progress
@@ -16,10 +17,12 @@ tracker:
 polling:
   interval_ms: 5000
 workspace:
+  # Replace with the directory where you want Symphony to create ticket workspaces.
   root: ~/code/symphony-workspaces/ace-platform
 hooks:
   after_create: |
-    git clone --depth 1 https://github.com/DannyMac180/ace-platform.git .
+    # Replace with your fork or preferred clone URL for ace-platform.
+    git clone --depth 1 https://github.com/your-github-handle/ace-platform.git .
     python3 -m venv venv
     . venv/bin/activate
     pip install -e ".[dev]"
@@ -27,6 +30,7 @@ agent:
   max_concurrent_agents: 10
   max_turns: 20
 codex:
+  # Adjust the model, sandbox, or reasoning settings if your local setup differs.
   command: codex --config shell_environment_policy.inherit=all --config model_reasoning_effort=high --model gpt-5.4 app-server
   approval_policy: never
   thread_sandbox: danger-full-access

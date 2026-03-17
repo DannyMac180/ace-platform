@@ -11,6 +11,8 @@ downloads/
 eggs/
 .eggs/
 lib/
+!vendor/symphony-elixir/lib/
+!vendor/symphony-elixir/lib/**
 lib64/
 parts/
 sdist/
@@ -48,6 +50,7 @@ results/
 logs/
 *.log
 .symphony-workspaces/
+/WORKFLOW.md
 WORKFLOW.local.md
 
 # Jupyter
