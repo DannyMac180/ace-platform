@@ -1,0 +1,138 @@
+"""Tests for workspace tenancy schema models."""
+
+from sqlalchemy import CheckConstraint
+
+from ace_platform.db.models import (
+    Membership,
+    MembershipRole,
+    User,
+    Workspace,
+    WorkspaceBillingProvider,
+    WorkspaceDeploymentMode,
+    WorkspaceEntitlement,
+    WorkspacePlan,
+    WorkspaceSubscription,
+    WorkspaceSubscriptionStatus,
+    get_default_workspace_entitlements,
+    get_workspace_plan_from_legacy_tier,
+)
+
+
+def test_get_default_workspace_entitlements_by_plan():
+    personal = get_default_workspace_entitlements(WorkspacePlan.PERSONAL)
+    team = get_default_workspace_entitlements(WorkspacePlan.TEAM)
+    enterprise = get_default_workspace_entitlements(WorkspacePlan.ENTERPRISE)
+
+    assert personal["cloud_sync"] is True
+    assert personal["invite_members"] is False
+    assert personal["rbac"] is False
+
+    assert team["invite_members"] is True
+    assert team["shared_workspace"] is True
+    assert team["sso"] is False
+
+    assert enterprise["invite_members"] is True
+    assert enterprise["sso"] is True
+    assert enterprise["audit_logs"] is True
+
+
+def test_get_workspace_plan_from_legacy_tier():
+    assert get_workspace_plan_from_legacy_tier(None) == WorkspacePlan.PERSONAL
+    assert get_workspace_plan_from_legacy_tier("starter") == WorkspacePlan.PERSONAL
+    assert get_workspace_plan_from_legacy_tier("enterprise") == WorkspacePlan.ENTERPRISE
+
+
+def test_workspace_models_support_all_plans_in_one_schema():
+    owner = User(email="owner@example.com")
+    reviewer = User(email="reviewer@example.com")
+
+    personal = Workspace(
+        name="Owner Workspace",
+        plan=WorkspacePlan.PERSONAL,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=1,
+        entitlements=WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.PERSONAL)
+        ),
+        memberships=[Membership(user=owner, role=MembershipRole.OWNER)],
+        subscription=WorkspaceSubscription(
+            billing_provider=WorkspaceBillingProvider.STRIPE,
+            status=WorkspaceSubscriptionStatus.TRIALING,
+            plan_code="starter",
+            provider_customer_id="cus_personal",
+            provider_subscription_id="sub_personal",
+        ),
+    )
+    team = Workspace(
+        name="Team Workspace",
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=5,
+        entitlements=WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.TEAM)
+        ),
+        memberships=[
+            Membership(user=owner, role=MembershipRole.OWNER),
+            Membership(user=reviewer, role=MembershipRole.REVIEWER),
+        ],
+        subscription=WorkspaceSubscription(
+            billing_provider=WorkspaceBillingProvider.STRIPE,
+            status=WorkspaceSubscriptionStatus.ACTIVE,
+            plan_code="team-v1",
+            provider_customer_id="cus_team",
+            provider_subscription_id="sub_team",
+        ),
+    )
+    enterprise = Workspace(
+        name="Enterprise Workspace",
+        plan=WorkspacePlan.ENTERPRISE,
+        deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+        seat_limit=25,
+        entitlements=WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.ENTERPRISE)
+        ),
+        memberships=[Membership(user=owner, role=MembershipRole.ADMIN)],
+        subscription=WorkspaceSubscription(
+            billing_provider=WorkspaceBillingProvider.MANUAL,
+            status=WorkspaceSubscriptionStatus.UNPAID,
+            plan_code="enterprise-contract",
+        ),
+    )
+
+    assert personal.subscription is not None
+    assert personal.subscription.status is WorkspaceSubscriptionStatus.TRIALING
+    assert team.subscription is not None
+    assert team.subscription.plan_code == "team-v1"
+    assert team.entitlements is not None
+    assert team.entitlements.shared_workspace is True
+    assert len(team.memberships) == 2
+    assert enterprise.entitlements is not None
+    assert enterprise.entitlements.audit_logs is True
+    assert enterprise.entitlements.sso is True
+    assert enterprise.subscription is not None
+    assert enterprise.subscription.status is WorkspaceSubscriptionStatus.UNPAID
+
+
+def test_workspace_constraints_encode_uniqueness_and_personal_seat_limit():
+    membership_pk = list(Membership.__table__.primary_key.columns.keys())
+    subscription_pk = list(WorkspaceSubscription.__table__.primary_key.columns.keys())
+    entitlement_pk = list(WorkspaceEntitlement.__table__.primary_key.columns.keys())
+    workspace_constraints = [
+        constraint
+        for constraint in Workspace.__table__.constraints
+        if isinstance(constraint, CheckConstraint)
+    ]
+
+    assert membership_pk == ["workspace_id", "user_id"]
+    assert subscription_pk == ["workspace_id"]
+    assert entitlement_pk == ["workspace_id"]
+    assert any(
+        constraint.name == "ck_workspaces_seat_limit"
+        and "seat_limit >= 1" in str(constraint.sqltext)
+        for constraint in workspace_constraints
+    )
+    assert any(
+        constraint.name == "ck_workspaces_personal_seat_limit"
+        and "seat_limit = 1" in str(constraint.sqltext)
+        for constraint in workspace_constraints
+    )
