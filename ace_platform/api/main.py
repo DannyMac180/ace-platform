@@ -404,6 +404,7 @@ def _register_routes(app: FastAPI) -> None:
         playbooks_router,
         support_router,
         usage_router,
+        workspaces_router,
     )
 
     # Include API routers
@@ -417,6 +418,7 @@ def _register_routes(app: FastAPI) -> None:
     app.include_router(usage_router)
     app.include_router(evolutions_router)
     app.include_router(support_router)
+    app.include_router(workspaces_router)
 
     # Mount MCP server at /mcp with Streamable HTTP as default transport.
     # Legacy SSE endpoints remain available at /mcp/sse and /mcp/messages
