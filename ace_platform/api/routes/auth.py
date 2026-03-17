@@ -74,6 +74,7 @@ from ace_platform.core.security import (
     hash_password,
     verify_password,
 )
+from ace_platform.core.workspaces import bootstrap_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
@@ -332,6 +333,7 @@ async def register(
     try:
         # Flush to get user ID and check for integrity errors
         await db.flush()
+        await bootstrap_workspace_for_user(db, user)
     except IntegrityError:
         # Race condition: another request registered this email between our check and flush
         await db.rollback()
@@ -440,6 +442,8 @@ async def login(
 
             has_logins = await has_previous_logins(db, user.id)
             should_send_alert = has_logins
+
+    await bootstrap_workspace_for_user(db, user)
 
     # Audit log the successful login
     await audit_login_success(db, user.id, http_request, method="password")

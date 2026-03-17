@@ -34,6 +34,7 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -410,8 +411,23 @@ class Membership(Base):
 
     __table_args__ = (Index("ix_workspace_memberships_user_role", "user_id", "role"),)
 
+    @hybrid_property
+    def id(self) -> UUID:
+        """Compatibility identifier used by the workspace service routes."""
+        return self.user_id
+
+    @id.expression
+    def id(self):
+        """Map compatibility lookups onto the membership's user id."""
+        return self.user_id
+
     def __repr__(self) -> str:
         return f"<Membership workspace={self.workspace_id} user={self.user_id} {self.role.value}>"
+
+
+# Backward-compatible aliases for the newer workspace service naming.
+WorkspaceMembership = Membership
+WorkspaceRole = MembershipRole
 
 
 class WorkspaceSubscription(Base):

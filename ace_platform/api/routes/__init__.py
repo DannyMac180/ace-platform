@@ -8,6 +8,7 @@ This package contains FastAPI routers for different resource types:
 - playbooks: Playbook CRUD operations
 - usage: Usage reporting for billing dashboard
 - evolutions: Evolution statistics and activity
+- workspaces: Workspace CRUD, memberships, and bootstrap flows
 """
 
 from .account import router as account_router

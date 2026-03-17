@@ -97,7 +97,12 @@ class TestWorkspaceEntitlementsRoutes:
         app.dependency_overrides[require_user] = override_user
         app.dependency_overrides[get_db] = override_db
 
-        response = TestClient(app).get(f"/v1/workspaces/{uuid4()}/entitlements")
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                "ace_platform.api.routes.workspaces.get_workspace_for_user",
+                AsyncMock(return_value=None),
+            )
+            response = TestClient(app).get(f"/v1/workspaces/{uuid4()}/entitlements")
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert response.json()["detail"] == "You do not have access to this workspace."
