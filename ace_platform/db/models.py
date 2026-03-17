@@ -2,6 +2,9 @@
 
 This module defines all database models for the platform:
 - User: Platform users with auth
+- Workspace: Hosted tenancy container for personal/team/enterprise plans
+- WorkspaceMembership: User membership inside a workspace
+- WorkspaceSubscription: Workspace-scoped billing state
 - Playbook: User playbooks with version tracking
 - PlaybookVersion: Immutable playbook versions
 - Outcome: Task outcomes for evolution
@@ -79,6 +82,48 @@ class SubscriptionStatus(str, enum.Enum):
     """Status of a user's subscription."""
 
     NONE = "none"  # No subscription (free tier)
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+    UNPAID = "unpaid"
+
+
+class WorkspacePlan(str, enum.Enum):
+    """Workspace plan types for hosted tenancy."""
+
+    PERSONAL = "personal"
+    TEAM = "team"
+    ENTERPRISE = "enterprise"
+
+
+class DeploymentMode(str, enum.Enum):
+    """How a workspace is deployed."""
+
+    LOCAL = "local"
+    CLOUD = "cloud"
+    SELF_HOSTED = "self_hosted"
+
+
+class MembershipRole(str, enum.Enum):
+    """Membership roles available inside a workspace."""
+
+    OWNER = "owner"
+    MEMBER = "member"
+    REVIEWER = "reviewer"
+    ADMIN = "admin"
+
+
+class BillingProvider(str, enum.Enum):
+    """Billing provider for a workspace subscription."""
+
+    STRIPE = "stripe"
+    MANUAL = "manual"
+
+
+class WorkspaceSubscriptionStatus(str, enum.Enum):
+    """Status of a workspace-level subscription."""
+
+    TRIALING = "trialing"
     ACTIVE = "active"
     PAST_DUE = "past_due"
     CANCELED = "canceled"
@@ -208,6 +253,9 @@ class User(Base):
     playbooks: Mapped[list["Playbook"]] = relationship(
         "Playbook", back_populates="user", cascade="all, delete-orphan"
     )
+    workspace_memberships: Mapped[list["WorkspaceMembership"]] = relationship(
+        "WorkspaceMembership", back_populates="user", cascade="all, delete-orphan"
+    )
     api_keys: Mapped[list["ApiKey"]] = relationship(
         "ApiKey", back_populates="user", cascade="all, delete-orphan"
     )
@@ -223,6 +271,128 @@ class User(Base):
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"
+
+
+class Workspace(Base):
+    """Hosted tenancy container for personal, team, and enterprise plans."""
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    plan: Mapped[WorkspacePlan] = mapped_column(Enum(WorkspacePlan), nullable=False, index=True)
+    deployment_mode: Mapped[DeploymentMode] = mapped_column(
+        Enum(DeploymentMode),
+        nullable=False,
+        default=DeploymentMode.CLOUD,
+        index=True,
+    )
+    seat_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    entitlement_overrides: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    usage_limit_overrides: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    memberships: Mapped[list["WorkspaceMembership"]] = relationship(
+        "WorkspaceMembership", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    subscription: Mapped["WorkspaceSubscription | None"] = relationship(
+        "WorkspaceSubscription",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+    def __repr__(self) -> str:
+        return f"<Workspace {self.name} ({self.plan.value})>"
+
+
+class WorkspaceMembership(Base):
+    """Join table mapping users to workspaces."""
+
+    __tablename__ = "workspace_memberships"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role: Mapped[MembershipRole] = mapped_column(
+        Enum(MembershipRole),
+        nullable=False,
+        default=MembershipRole.MEMBER,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="memberships")
+    user: Mapped["User"] = relationship("User", back_populates="workspace_memberships")
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "user_id", name="uq_workspace_memberships_workspace_user"),
+        Index("ix_workspace_memberships_workspace_role", "workspace_id", "role"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceMembership workspace={self.workspace_id} user={self.user_id}>"
+
+
+class WorkspaceSubscription(Base):
+    """Workspace-scoped subscription and billing metadata."""
+
+    __tablename__ = "workspace_subscriptions"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    billing_provider: Mapped[BillingProvider] = mapped_column(
+        Enum(BillingProvider),
+        nullable=False,
+        default=BillingProvider.STRIPE,
+    )
+    status: Mapped[WorkspaceSubscriptionStatus] = mapped_column(
+        Enum(WorkspaceSubscriptionStatus),
+        nullable=False,
+        default=WorkspaceSubscriptionStatus.ACTIVE,
+    )
+    plan_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    external_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    external_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="subscription")
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceSubscription workspace={self.workspace_id} status={self.status.value}>"
 
 
 class Playbook(Base):
