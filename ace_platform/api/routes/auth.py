@@ -65,6 +65,7 @@ from ace_platform.core.rate_limit import (
     rate_limit_password_reset,
     rate_limit_verification_email,
 )
+from ace_platform.core.rollouts import get_available_plans, get_user_capabilities
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -145,6 +146,8 @@ class UserResponse(BaseModel):
     has_used_trial: bool = False
     trial_ends_at: datetime | None = None
     has_payment_method: bool = False
+    available_plans: dict[str, bool] = Field(default_factory=dict)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -517,7 +520,13 @@ async def refresh_token(
 )
 async def get_current_user(user: RequiredUser) -> UserResponse:
     """Get the current authenticated user's information."""
-    return UserResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    return response.model_copy(
+        update={
+            "available_plans": get_available_plans(user),
+            "capabilities": get_user_capabilities(user),
+        }
+    )
 
 
 # =============================================================================

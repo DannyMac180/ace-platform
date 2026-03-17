@@ -8,16 +8,19 @@ from ace_platform.api.auth import (
     SubscriptionError,
     get_user_tier,
     require_active_subscription,
+    require_capability,
     require_feature,
     require_paid_access,
     require_tier,
 )
+from ace_platform.config import Settings
 from ace_platform.core.authorization import (
     PAYMENT_REQUIRED_STATUS,
     check_feature_access,
     check_paid_access,
 )
 from ace_platform.core.limits import SubscriptionTier
+from ace_platform.core.rollouts import is_capability_enabled_for_user, is_plan_available_for_user
 from ace_platform.db.models import SubscriptionStatus, User
 
 
@@ -452,6 +455,136 @@ class TestRequireFeature:
             await checker(user)
 
         assert exc_info.value.status_code == 402
+
+
+class TestRequireCapability:
+    """Tests for rollout-aware capability checks."""
+
+    @pytest.mark.asyncio
+    async def test_allows_enabled_capability(self, monkeypatch):
+        """Allows access when rollout evaluation enables the capability."""
+        import ace_platform.api.auth as auth_module
+
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        monkeypatch.setattr(
+            auth_module,
+            "is_capability_enabled_for_user",
+            lambda current_user, feature: current_user is user and feature == "shared_workspace",
+        )
+
+        checker = require_capability("shared_workspace")
+        result = await checker(user)
+
+        assert result == user
+
+    @pytest.mark.asyncio
+    async def test_rejects_disabled_capability(self, monkeypatch):
+        """Rejects access when rollout evaluation disables the capability."""
+        import ace_platform.api.auth as auth_module
+
+        user = _make_user(
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        monkeypatch.setattr(
+            auth_module,
+            "is_capability_enabled_for_user",
+            lambda _current_user, _feature: False,
+        )
+
+        checker = require_capability("shared_workspace")
+
+        with pytest.raises(SubscriptionError) as exc_info:
+            await checker(user)
+
+        assert exc_info.value.status_code == 403
+        assert "shared workspace" in exc_info.value.detail.lower()
+
+
+class TestRolloutControls:
+    """Tests for environment-aware plan and capability rollout evaluation."""
+
+    def test_plan_rollout_respects_environment(self):
+        """Plans can be opened in a specific environment before GA."""
+        settings = Settings(
+            environment="staging",
+            jwt_secret_key="staging-secret",
+            session_secret_key="staging-session-secret",
+            session_cookie_secure=True,
+            pre_ga_rollouts={
+                "plan:enterprise": {
+                    "environments": ["staging"],
+                }
+            },
+        )
+
+        assert (
+            is_plan_available_for_user(None, SubscriptionTier.ENTERPRISE, settings=settings) is True
+        )
+
+        prod_settings = Settings(
+            environment="production",
+            jwt_secret_key="prod-secret",
+            session_secret_key="prod-session-secret",
+            session_cookie_secure=True,
+            pre_ga_rollouts={
+                "plan:enterprise": {
+                    "environments": ["staging"],
+                }
+            },
+        )
+
+        assert (
+            is_plan_available_for_user(None, SubscriptionTier.ENTERPRISE, settings=prod_settings)
+            is False
+        )
+
+    def test_capability_rollout_targets_selected_users(self):
+        """Capabilities can be allowlisted for selected users before GA."""
+        settings = Settings(
+            environment="production",
+            jwt_secret_key="prod-secret",
+            session_secret_key="prod-session-secret",
+            session_cookie_secure=True,
+            pre_ga_rollouts={
+                "capability:managed_inference": {
+                    "emails": ["beta@example.com"],
+                }
+            },
+        )
+
+        allowlisted_user = _make_user(
+            email="beta@example.com",
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+        other_user = _make_user(
+            email="other@example.com",
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+        assert (
+            is_capability_enabled_for_user(
+                allowlisted_user,
+                "managed_inference",
+                settings=settings,
+            )
+            is True
+        )
+        assert (
+            is_capability_enabled_for_user(
+                other_user,
+                "managed_inference",
+                settings=settings,
+            )
+            is False
+        )
 
 
 class TestSubscriptionError:

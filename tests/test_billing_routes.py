@@ -9,12 +9,13 @@ These tests verify:
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastapi import status
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
+import ace_platform.api.routes.billing as billing_routes
 from ace_platform.api.routes.billing import (
     CardSetupResponse,
     CardStatusResponse,
@@ -408,3 +409,59 @@ class TestSubscriptionTierHelpers:
         # Should be after current time
         now = datetime.now(UTC)
         assert period_end > now or (period_end.month == now.month and period_end.day == 1)
+
+
+class TestBillingRolloutBehavior:
+    """Tests for rollout-aware billing behavior."""
+
+    @pytest.mark.asyncio
+    async def test_get_subscription_includes_rollout_metadata(self, monkeypatch):
+        """Subscription responses include rollout-aware plan and capability availability."""
+        user = MagicMock()
+        user.subscription_tier = "starter"
+        user.subscription_status = MagicMock(value="active")
+        user.subscription_current_period_end = None
+        user.stripe_customer_id = "cus_123"
+        user.stripe_subscription_id = "sub_123"
+
+        monkeypatch.setattr(
+            billing_routes,
+            "get_available_plans",
+            lambda _user: {"starter": True, "enterprise": False},
+        )
+        monkeypatch.setattr(
+            billing_routes,
+            "get_user_capabilities",
+            lambda _user: {"managed_inference": True, "shared_workspace": False},
+        )
+
+        response = await billing_routes.get_subscription(user)
+
+        assert response.available_plans == {"starter": True, "enterprise": False}
+        assert response.capabilities == {
+            "managed_inference": True,
+            "shared_workspace": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_subscribe_rejects_unavailable_plan(self, monkeypatch):
+        """Subscribe blocks plans that are not enabled for the current user."""
+        user = MagicMock()
+        user.has_used_trial = False
+        user.subscription_status = MagicMock(value="active")
+
+        monkeypatch.setattr(
+            billing_routes,
+            "is_plan_available_for_user",
+            lambda _user, _tier: False,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await billing_routes.subscribe(
+                AsyncMock(),
+                user,
+                SubscribeRequest(tier=SubscriptionTier.PRO),
+            )
+
+        assert exc_info.value.status_code == 403
+        assert "not available" in exc_info.value.detail.lower()
