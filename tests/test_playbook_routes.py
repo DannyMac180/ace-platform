@@ -85,6 +85,8 @@ class TestPlaybookRoutesIntegration:
         routes = [route.path for route in app.routes]
         assert "/playbooks" in routes
         assert "/playbooks/{playbook_id}" in routes
+        assert "/playbooks/export" in routes
+        assert "/playbooks/import" in routes
 
     def test_list_playbooks_requires_auth(self, client):
         """Test that listing playbooks requires authentication."""
@@ -118,6 +120,16 @@ class TestPlaybookRoutesIntegration:
         """Test that deleting playbook requires authentication."""
         playbook_id = str(uuid4())
         response = client.delete(f"/playbooks/{playbook_id}")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_export_playbooks_requires_auth(self, client):
+        """Test that exporting playbooks requires authentication."""
+        response = client.get("/playbooks/export")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_import_playbooks_requires_auth(self, client):
+        """Test that importing playbooks requires authentication."""
+        response = client.post("/playbooks/import", json={"playbooks": []})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_create_playbook_validation_empty_name(self, client):

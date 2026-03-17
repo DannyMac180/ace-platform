@@ -19,12 +19,14 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ace_core.portability import PortablePlaybookBundle, bundle_to_json
 from ace_platform.api.auth import (
     AuthorizationError,
     SubscriptionError,
@@ -38,6 +40,12 @@ from ace_platform.core.limits import (
     is_user_trialing,
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
+from ace_platform.core.playbooks import (
+    export_playbook_bundle as build_portable_playbook_bundle,
+)
+from ace_platform.core.playbooks import (
+    import_playbook_bundle as ingest_portable_playbook_bundle,
+)
 from ace_platform.core.rate_limit import rate_limit_outcome
 from ace_platform.core.validation import (
     MAX_NOTES_SIZE,
@@ -170,6 +178,21 @@ class PaginatedPlaybookResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class PlaybookImportItemResponse(BaseModel):
+    """Response item for an imported playbook."""
+
+    playbook_id: UUID
+    version_count: int
+    trace_count: int
+
+
+class PlaybookImportResponse(BaseModel):
+    """Response schema for portable import results."""
+
+    imported_count: int
+    imported_playbooks: list[PlaybookImportItemResponse]
 
 
 class OutcomeResponse(BaseModel):
@@ -351,6 +374,57 @@ async def list_playbooks(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+    )
+
+
+@router.get("/export")
+async def export_playbooks_bundle(
+    request: Request,
+    db: DbSession,
+    current_user: PaidUser,
+) -> Response:
+    """Export the caller's playbooks and traces as a portable bundle."""
+
+    bundle = await build_portable_playbook_bundle(
+        db,
+        current_user.id,
+        api_url=str(request.base_url).rstrip("/"),
+    )
+    payload = bundle_to_json(bundle).encode("utf-8")
+    filename = f"ace-playbooks-export-{datetime.utcnow().date().isoformat()}.json"
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import", response_model=PlaybookImportResponse, status_code=status.HTTP_201_CREATED)
+async def import_playbooks_bundle(
+    bundle: PortablePlaybookBundle,
+    db: DbSession,
+    current_user: PaidUser,
+) -> PlaybookImportResponse:
+    """Import a portable playbook bundle for the authenticated user."""
+
+    try:
+        imported = await ingest_portable_playbook_bundle(db, current_user.id, bundle)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    return PlaybookImportResponse(
+        imported_count=len(imported),
+        imported_playbooks=[
+            PlaybookImportItemResponse(
+                playbook_id=item.playbook_id,
+                version_count=item.version_count,
+                trace_count=item.trace_count,
+            )
+            for item in imported
+        ],
     )
 
 

@@ -68,6 +68,7 @@ dependencies = [
 ]
 
 [project.scripts]
+ace = "ace_platform.cli:main"
 symphony = "ace_platform.symphony.cli:main"
 
 [project.optional-dependencies]
