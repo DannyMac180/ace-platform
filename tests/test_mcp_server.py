@@ -187,10 +187,9 @@ class TestFlyReplayMiddleware:
         await app(scope, receive or default_receive, send)
         return parts
 
-    def test_noop_without_fly_machine_id(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_noop_without_fly_machine_id(self, dummy_app):
         """Middleware passes through when FLY_MACHINE_ID is not set."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {}, clear=False):
@@ -198,26 +197,24 @@ class TestFlyReplayMiddleware:
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "http", "path": "/mcp/messages/", "query_string": b"session_id=abc"}
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_noop_for_non_http(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_noop_for_non_http(self, dummy_app):
         """Middleware passes through for non-HTTP scopes."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "lifespan"}
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_messages_passthrough_same_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_passthrough_same_instance(self, dummy_app):
         """POST to /messages/ with matching fly_instance passes through."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -228,13 +225,12 @@ class TestFlyReplayMiddleware:
             "path": "/mcp/messages/",
             "query_string": b"session_id=abc&fly_instance=machine-a",
         }
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_messages_replay_different_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_replay_different_instance(self, dummy_app):
         """POST to /messages/ with different fly_instance returns fly-replay header."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -247,7 +243,7 @@ class TestFlyReplayMiddleware:
             "query_string": b"session_id=abc&fly_instance=machine-b",
             "headers": [],
         }
-        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        parts = await self._collect_response(mw, scope)
         assert not dummy_app.called
         # Check for fly-replay header
         start = parts[0]
@@ -255,10 +251,9 @@ class TestFlyReplayMiddleware:
         headers = dict(start.get("headers", []))
         assert headers.get(b"fly-replay") == b"instance=machine-b"
 
-    def test_messages_passthrough_no_fly_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_passthrough_no_fly_instance(self, dummy_app):
         """POST to /messages/ without fly_instance param passes through normally."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -269,13 +264,12 @@ class TestFlyReplayMiddleware:
             "path": "/mcp/messages/",
             "query_string": b"session_id=abc",
         }
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
         """SSE endpoint response has fly_instance appended to endpoint data URL."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         # Make the dummy app return an SSE-like body
@@ -285,7 +279,7 @@ class TestFlyReplayMiddleware:
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "http", "path": "/mcp/sse", "query_string": b""}
-        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        parts = await self._collect_response(mw, scope)
         body_part = next(p for p in parts if p.get("type") == "http.response.body")
         body_text = body_part["body"].decode("utf-8")
         assert "event: endpoint\r\n" in body_text
