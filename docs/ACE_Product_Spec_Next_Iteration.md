@@ -611,6 +611,7 @@ This section is structured to be directly broken into issues, milestones, or AI 
 
 - [ ] **E0-T3** Create issue templates for epics, implementation tasks, and migration tasks.
   - Deliverables: GitHub issue templates or internal equivalents.
+  - Internal equivalent location: `docs/templates/`
   - Acceptance criteria: future tasks can be generated consistently by humans or AI agents.
 
 ### Epic 1 — Extract and harden the OSS core
