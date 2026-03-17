@@ -74,6 +74,7 @@ from ace_platform.core.security import (
     hash_password,
     verify_password,
 )
+from ace_platform.core.workspaces import ensure_personal_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
@@ -339,6 +340,8 @@ async def register(
             status_code=status.HTTP_409_CONFLICT,
             detail="Email already registered",
         )
+
+    await ensure_personal_workspace_for_user(db, user)
 
     # Audit log the account creation
     await audit_account_created(db, user.id, http_request, method="email")
