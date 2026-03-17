@@ -2,6 +2,47 @@
 
 Utility scripts for development, testing, and operations.
 
+## Symphony
+
+### run-symphony.sh
+
+Start the vendored Symphony runtime with the repo-local virtualenv launcher and a local
+`WORKFLOW.md`.
+
+#### Prerequisites
+
+```bash
+source venv/bin/activate && pip install -e .
+source venv/bin/activate && symphony setup
+cp WORKFLOW.example.md WORKFLOW.md
+```
+
+Before running, edit `WORKFLOW.md` to set:
+
+- your Linear `project_slug`
+- your preferred Symphony workspace root
+- the repo clone URL Symphony should use for ticket workspaces
+
+You also need:
+
+- `LINEAR_API_KEY` in your shell
+- `codex` on your `PATH`
+- `mise` installed
+
+#### Usage
+
+```bash
+./scripts/run-symphony.sh
+```
+
+The script starts the dashboard at `http://127.0.0.1:4000/` by default.
+
+Override the port with:
+
+```bash
+SYMPHONY_PORT=4001 ./scripts/run-symphony.sh
+```
+
 ## Load Testing
 
 ### load_test_mcp.py

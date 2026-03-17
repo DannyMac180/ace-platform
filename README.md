@@ -97,13 +97,29 @@ Local setup:
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
-source venv/bin/activate && symphony \
-  --i-understand-that-this-will-be-running-without-the-usual-guardrails \
-  WORKFLOW.md
+cp WORKFLOW.example.md WORKFLOW.local.md
+# Edit WORKFLOW.local.md for your Linear project, workspace root, and repo clone URL
+./scripts/run-symphony.sh
 ```
 
-The checked-in [WORKFLOW.md](WORKFLOW.md) is configured for the `ace-platform` Linear project and
-creates a fresh workspace clone of `DannyMac180/ace-platform` with its own Python virtualenv.
+Use [WORKFLOW.example.md](WORKFLOW.example.md) as the committed template for your local
+`WORKFLOW.local.md`. The local workflow files are intentionally gitignored so each developer can point
+Symphony at their own Linear project, workspace root, and fork or clone URL without losing those settings
+on pulls or merges. The launcher script builds a runtime workflow by combining the tracked
+`WORKFLOW.example.md` with your local frontmatter overrides, so shared workflow logic changes still
+flow through after a pull while machine-specific settings stay local.
+
+Notes:
+
+- `WORKFLOW.example.md` includes the fields you must customize before your first run.
+- Keep your machine-specific Symphony config in `WORKFLOW.local.md`, not by editing the tracked example.
+- `WORKFLOW.local.md` should be treated as local frontmatter overrides for the tracked example workflow.
+- `scripts/run-symphony.sh` uses the repo-local `venv/bin/symphony` launcher directly instead of relying on shell activation.
+- The script starts the observability dashboard on `http://127.0.0.1:4000/`.
+- Override the dashboard port with `SYMPHONY_PORT=4001 ./scripts/run-symphony.sh` if needed.
+- Local open-source Symphony development currently expects a Linear project and `LINEAR_API_KEY`.
+- If you want Symphony-created branches or PRs to push to your fork, make sure the clone URL in
+  `WORKFLOW.local.md` and your local git auth are configured for that fork.
 
 ### Fastest Full-Stack Docker Setup
 
