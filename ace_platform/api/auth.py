@@ -509,13 +509,16 @@ def require_tier(minimum_tier: SubscriptionTier):
         async def premium_feature(user: User = Depends(require_tier(SubscriptionTier.STARTER))):
             ...
     """
+
     async def tier_checker(
         user: Annotated[User, Depends(require_active_subscription)],
     ) -> User:
         """Check that the user has at least the minimum required tier."""
         decision = check_minimum_tier(user, minimum_tier)
         if not decision.allowed:
-            raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
+            raise SubscriptionError(
+                decision.detail or "Subscription required", decision.status_code
+            )
         return user
 
     return tier_checker
@@ -547,7 +550,9 @@ def require_feature(feature: str):
         """Check that the user's tier has the required feature."""
         decision = check_feature_access(user, feature)
         if not decision.allowed:
-            raise SubscriptionError(decision.detail or "Subscription required", decision.status_code)
+            raise SubscriptionError(
+                decision.detail or "Subscription required", decision.status_code
+            )
         return user
 
     return feature_checker
