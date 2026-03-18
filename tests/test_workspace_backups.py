@@ -48,20 +48,42 @@ from ace_platform.db.models import (
 class TestWorkspaceBackups:
     @pytest.fixture(scope="function")
     async def async_engine(self):
-        engine = create_async_engine(
+        schema_name = f"workspace_backup_test_{uuid4().hex}"
+        admin_engine = create_async_engine(
             TEST_DATABASE_URL_ASYNC,
             echo=False,
             poolclass=NullPool,
         )
 
+        async with admin_engine.begin() as conn:
+            await conn.execute(text(f"CREATE SCHEMA {schema_name}"))
+
+        await admin_engine.dispose()
+
+        engine = create_async_engine(
+            TEST_DATABASE_URL_ASYNC,
+            echo=False,
+            poolclass=NullPool,
+            connect_args={"server_settings": {"search_path": schema_name}},
+        )
+
         async with engine.begin() as conn:
-            await conn.execute(text("DROP SCHEMA public CASCADE"))
-            await conn.execute(text("CREATE SCHEMA public"))
             await conn.run_sync(Base.metadata.create_all)
 
         yield engine
 
         await engine.dispose()
+
+        cleanup_engine = create_async_engine(
+            TEST_DATABASE_URL_ASYNC,
+            echo=False,
+            poolclass=NullPool,
+        )
+
+        async with cleanup_engine.begin() as conn:
+            await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+
+        await cleanup_engine.dispose()
 
     @pytest.fixture
     async def async_session(self, async_engine):
