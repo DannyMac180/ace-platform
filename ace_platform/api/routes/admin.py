@@ -1,7 +1,6 @@
 """Admin dashboard routes.
 
-Read-only admin endpoints for viewing platform-wide user activity,
-subscription distribution, signups over time, and usage data.
+Includes platform analytics plus hosted-personal backup/restore tooling.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -9,13 +8,14 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AdminUser
 from ace_platform.api.deps import get_db
+from ace_platform.core import workspace_backups as workspace_backup_service
 from ace_platform.core.metering import (
     get_platform_daily_summary,
     get_top_users_by_spend,
@@ -155,6 +155,30 @@ class PaginatedAuditEventsResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class WorkspaceBackupItem(BaseModel):
+    """Admin-visible metadata for one hosted workspace backup."""
+
+    id: str
+    workspace_id: str
+    owner_user_id: str | None
+    trigger_source: str
+    created_at: datetime
+    restored_at: datetime | None
+    backup_size_bytes: int
+    playbook_count: int
+
+
+class WorkspaceBackupRestoreResponse(BaseModel):
+    """Response returned after a hosted workspace restore."""
+
+    backup_id: str
+    workspace_id: str
+    restored_playbooks: int
+    restored_usage_records: int
+    restored_api_keys: int
+    restored_oauth_accounts: int
 
 
 # =============================================================================
@@ -368,8 +392,6 @@ async def get_user_detail(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> AdminUserDetailResponse:
     """Get full user detail with usage summary."""
-    from fastapi import HTTPException, status
-
     user = await db.get(User, user_id)
     if not user:
         raise HTTPException(
@@ -434,6 +456,120 @@ async def get_signups(
         )
         for row in results
     ]
+
+
+@router.get(
+    "/workspaces/{workspace_id}/backups",
+    response_model=list[WorkspaceBackupItem],
+    summary="List hosted workspace backups",
+)
+async def list_workspace_backups(
+    workspace_id: UUID,
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> list[WorkspaceBackupItem]:
+    """List durable hosted backups for one workspace."""
+    workspace = await workspace_backup_service.get_restoreable_personal_workspace(db, workspace_id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hosted personal workspace not found",
+        )
+
+    backups = await workspace_backup_service.list_workspace_backups(db, workspace.id)
+    return [
+        WorkspaceBackupItem(
+            id=str(item.id),
+            workspace_id=str(item.workspace_id),
+            owner_user_id=str(item.owner_user_id) if item.owner_user_id else None,
+            trigger_source=item.trigger_source,
+            created_at=item.created_at,
+            restored_at=item.restored_at,
+            backup_size_bytes=item.backup_size_bytes,
+            playbook_count=len(item.payload["account_export"]["playbooks"]),
+        )
+        for item in backups
+    ]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/backups",
+    response_model=WorkspaceBackupItem,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a hosted workspace backup",
+)
+async def create_workspace_backup(
+    workspace_id: UUID,
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> WorkspaceBackupItem:
+    """Create a durable hosted backup for one workspace."""
+    workspace = await workspace_backup_service.get_restoreable_personal_workspace(db, workspace_id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Hosted personal workspace not found",
+        )
+
+    try:
+        backup = await workspace_backup_service.create_workspace_backup_snapshot(
+            db,
+            workspace,
+            trigger_source="admin_manual",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return WorkspaceBackupItem(
+        id=str(backup.id),
+        workspace_id=str(backup.workspace_id),
+        owner_user_id=str(backup.owner_user_id) if backup.owner_user_id else None,
+        trigger_source=backup.trigger_source,
+        created_at=backup.created_at,
+        restored_at=backup.restored_at,
+        backup_size_bytes=backup.backup_size_bytes,
+        playbook_count=len(backup.payload["account_export"]["playbooks"]),
+    )
+
+
+@router.post(
+    "/workspaces/{workspace_id}/backups/{backup_id}/restore",
+    response_model=WorkspaceBackupRestoreResponse,
+    summary="Restore a hosted workspace backup",
+)
+async def restore_workspace_backup(
+    workspace_id: UUID,
+    backup_id: UUID,
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> WorkspaceBackupRestoreResponse:
+    """Restore one hosted workspace from a durable backup snapshot."""
+    backup = await workspace_backup_service.get_workspace_backup(db, workspace_id, backup_id)
+    if backup is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Workspace backup not found",
+        )
+
+    try:
+        result = await workspace_backup_service.restore_workspace_backup(db, backup)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    return WorkspaceBackupRestoreResponse(
+        backup_id=result["backup_id"],
+        workspace_id=result["workspace_id"],
+        restored_playbooks=result["restored_playbooks"],
+        restored_usage_records=result["restored_usage_records"],
+        restored_api_keys=result["restored_api_keys"],
+        restored_oauth_accounts=result["restored_oauth_accounts"],
+    )
 
 
 @router.get(
