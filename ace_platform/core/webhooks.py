@@ -19,13 +19,21 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.config import get_settings
+from ace_platform.core.limits import SubscriptionTier
 from ace_platform.core.stripe_config import get_tier_from_price_id
+from ace_platform.core.subscription_service import (
+    FREE_PLAN_CODE,
+    get_plan_code_for_tier,
+    get_subscription_tier_for_plan_code,
+    sync_workspace_subscription_state,
+)
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
     ProcessedWebhookEvent,
     SubscriptionStatus,
     User,
+    WorkspaceSubscriptionStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -186,6 +194,31 @@ def _map_stripe_status(stripe_status: str) -> SubscriptionStatus:
     return status_map.get(stripe_status, SubscriptionStatus.NONE)
 
 
+def _map_workspace_status(stripe_status: str) -> WorkspaceSubscriptionStatus:
+    """Map Stripe subscription status to the workspace subscription enum."""
+
+    status_map = {
+        "active": WorkspaceSubscriptionStatus.ACTIVE,
+        "past_due": WorkspaceSubscriptionStatus.PAST_DUE,
+        "canceled": WorkspaceSubscriptionStatus.CANCELED,
+        "unpaid": WorkspaceSubscriptionStatus.UNPAID,
+        "trialing": WorkspaceSubscriptionStatus.TRIALING,
+    }
+    return status_map.get(stripe_status, WorkspaceSubscriptionStatus.CANCELED)
+
+
+def _get_metadata_dict(obj, metadata: dict | None = None) -> dict[str, object]:
+    """Return a plain metadata dict from a Stripe payload or test double."""
+
+    if isinstance(metadata, dict):
+        return metadata
+
+    raw_metadata = _stripe_get(obj, "metadata") or {}
+    if isinstance(raw_metadata, dict):
+        return dict(raw_metadata)
+    return {}
+
+
 _SENTINEL = object()
 
 
@@ -238,6 +271,43 @@ def _get_subscription_tier(subscription: stripe.Subscription) -> str | None:
     return None
 
 
+def _get_subscription_tier_enum(
+    subscription: stripe.Subscription,
+    metadata: dict | None = None,
+) -> SubscriptionTier | None:
+    """Resolve the billing tier from the Stripe payload or its metadata."""
+
+    tier_value = _get_subscription_tier(subscription)
+    if tier_value:
+        return SubscriptionTier(tier_value)
+
+    raw_metadata = _get_metadata_dict(subscription, metadata)
+    if raw_metadata.get("tier"):
+        try:
+            return SubscriptionTier(str(raw_metadata["tier"]).strip().lower())
+        except ValueError:
+            return None
+
+    return get_subscription_tier_for_plan_code(raw_metadata.get("plan_code"))
+
+
+def _get_subscription_plan_code(
+    subscription: stripe.Subscription,
+    metadata: dict | None = None,
+) -> str | None:
+    """Resolve the catalog code associated with a Stripe subscription."""
+
+    raw_metadata = _get_metadata_dict(subscription, metadata)
+    plan_code = raw_metadata.get("plan_code")
+    if plan_code:
+        return str(plan_code).strip().lower()
+
+    tier = _get_subscription_tier_enum(subscription, raw_metadata)
+    if tier is None:
+        return None
+    return get_plan_code_for_tier(tier)
+
+
 async def _handle_checkout_completed(
     db: AsyncSession,
     event: stripe.Event,
@@ -250,7 +320,7 @@ async def _handle_checkout_completed(
     session = event.data.object
     customer_id = _stripe_get(session, "customer")
     subscription_id = _stripe_get(session, "subscription")
-    metadata = _stripe_get(session, "metadata") or {}
+    metadata = _get_metadata_dict(session)
     mode = _stripe_get(session, "mode", "subscription")
 
     logger.info(
@@ -309,6 +379,21 @@ async def _handle_checkout_completed(
                 logger.warning(f"Failed to fetch subscription for trial_ends_at: {e}")
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
+    await sync_workspace_subscription_state(
+        db,
+        user,
+        status=(
+            WorkspaceSubscriptionStatus.TRIALING if is_trial else WorkspaceSubscriptionStatus.ACTIVE
+        ),
+        subscription_tier=(
+            SubscriptionTier(tier) if tier in SubscriptionTier._value2member_map_ else None
+        ),
+        plan_code=metadata.get("plan_code"),
+        provider_customer_id=customer_id,
+        provider_subscription_id=subscription_id,
+        current_period_end=update_values.get("subscription_current_period_end"),
+        trial_ends_at=update_values.get("trial_ends_at"),
+    )
 
     if is_trial:
         db.add(
@@ -408,7 +493,7 @@ async def _handle_subscription_created(
     # fire simultaneously, the customer ID may not be committed to the DB yet.
     # Fall back to user_id in subscription metadata (set in billing.py).
     if not user:
-        metadata = _stripe_get(subscription, "metadata") or {}
+        metadata = _get_metadata_dict(subscription)
         user = await _get_user_by_metadata(db, metadata)
         if user:
             logger.info(
@@ -424,15 +509,18 @@ async def _handle_subscription_created(
         )
 
     sub_id = _stripe_get(subscription, "id")
-    tier = _get_subscription_tier(subscription)
+    metadata = _get_metadata_dict(subscription)
+    tier = _get_subscription_tier_enum(subscription, metadata)
+    plan_code = _get_subscription_plan_code(subscription, metadata)
     status = _map_stripe_status(_stripe_get(subscription, "status"))
+    workspace_status = _map_workspace_status(_stripe_get(subscription, "status"))
     period_end_ts = _stripe_get(subscription, "current_period_end")
     period_end = datetime.fromtimestamp(period_end_ts, tz=UTC) if period_end_ts else None
 
     # Build update values
     update_values: dict = {
         "stripe_subscription_id": sub_id,
-        "subscription_tier": tier,
+        "subscription_tier": tier.value if tier else None,
         "subscription_status": status,
         "subscription_current_period_end": period_end,
     }
@@ -462,6 +550,17 @@ async def _handle_subscription_created(
             logger.info(f"Subscription has trial ending at {trial_ends_at}")
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
+    await sync_workspace_subscription_state(
+        db,
+        user,
+        status=workspace_status,
+        subscription_tier=tier,
+        plan_code=plan_code,
+        provider_customer_id=customer_id,
+        provider_subscription_id=sub_id,
+        current_period_end=period_end,
+        trial_ends_at=update_values.get("trial_ends_at"),
+    )
     await db.commit()
 
     logger.info(f"Subscription created for user {user.id}: {sub_id}")
@@ -488,7 +587,7 @@ async def _handle_subscription_updated(
 
     # Metadata fallback (same race condition guard as subscription.created)
     if not user:
-        metadata = _stripe_get(subscription, "metadata") or {}
+        metadata = _get_metadata_dict(subscription)
         user = await _get_user_by_metadata(db, metadata)
         if user:
             logger.info(
@@ -504,15 +603,18 @@ async def _handle_subscription_updated(
         )
 
     sub_id = _stripe_get(subscription, "id")
-    tier = _get_subscription_tier(subscription)
+    metadata = _stripe_get(subscription, "metadata") or {}
+    tier = _get_subscription_tier_enum(subscription, metadata)
+    plan_code = _get_subscription_plan_code(subscription, metadata)
     status = _map_stripe_status(_stripe_get(subscription, "status"))
+    workspace_status = _map_workspace_status(_stripe_get(subscription, "status"))
     period_end_ts = _stripe_get(subscription, "current_period_end")
     period_end = datetime.fromtimestamp(period_end_ts, tz=UTC) if period_end_ts else None
 
     # Build update values
     update_values: dict = {
         "stripe_subscription_id": sub_id,
-        "subscription_tier": tier,
+        "subscription_tier": tier.value if tier else None,
         "subscription_status": status,
         "subscription_current_period_end": period_end,
     }
@@ -527,6 +629,17 @@ async def _handle_subscription_updated(
         update_values["trial_ends_at"] = None
 
     await db.execute(update(User).where(User.id == user.id).values(**update_values))
+    await sync_workspace_subscription_state(
+        db,
+        user,
+        status=workspace_status,
+        subscription_tier=tier,
+        plan_code=plan_code,
+        provider_customer_id=customer_id,
+        provider_subscription_id=sub_id,
+        current_period_end=period_end,
+        trial_ends_at=update_values["trial_ends_at"],
+    )
     await db.commit()
 
     logger.info(f"Subscription updated for user {user.id}: status={status}")
@@ -548,6 +661,7 @@ async def _handle_subscription_deleted(
     """
     subscription = event.data.object
     customer_id = _stripe_get(subscription, "customer")
+    sub_id = _stripe_get(subscription, "id")
 
     user = await _get_user_by_customer_id(db, customer_id)
     if not user:
@@ -569,9 +683,20 @@ async def _handle_subscription_deleted(
             trial_ends_at=None,  # Clear trial end date
         )
     )
+    await sync_workspace_subscription_state(
+        db,
+        user,
+        status=WorkspaceSubscriptionStatus.CANCELED,
+        subscription_tier=SubscriptionTier.FREE,
+        plan_code=FREE_PLAN_CODE,
+        provider_customer_id=customer_id,
+        provider_subscription_id=None,
+        current_period_end=None,
+        trial_ends_at=None,
+    )
     await db.commit()
 
-    logger.info(f"Subscription cancelled for user {user.id}")
+    logger.info(f"Subscription cancelled for user {user.id}: {sub_id}")
     return WebhookResult(
         success=True,
         message="Subscription cancelled",
@@ -614,6 +739,13 @@ async def _handle_payment_failed(
         update(User)
         .where(User.id == user.id)
         .values(subscription_status=SubscriptionStatus.PAST_DUE)
+    )
+    await sync_workspace_subscription_state(
+        db,
+        user,
+        status=WorkspaceSubscriptionStatus.PAST_DUE,
+        provider_customer_id=customer_id,
+        provider_subscription_id=subscription_id,
     )
     await db.commit()
 
@@ -661,6 +793,13 @@ async def _handle_payment_succeeded(
             update(User)
             .where(User.id == user.id)
             .values(subscription_status=SubscriptionStatus.ACTIVE)
+        )
+        await sync_workspace_subscription_state(
+            db,
+            user,
+            status=WorkspaceSubscriptionStatus.ACTIVE,
+            provider_customer_id=customer_id,
+            provider_subscription_id=subscription_id,
         )
         await db.commit()
         logger.info(f"Payment succeeded, restored active status for user {user.id}")

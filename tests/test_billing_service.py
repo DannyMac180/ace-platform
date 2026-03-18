@@ -199,17 +199,24 @@ class TestCreateCheckoutSession:
         assert "No price configured" in result.error
 
     @pytest.mark.asyncio
+    @patch("ace_platform.core.billing.ensure_billing_workspace")
     @patch("ace_platform.core.billing._get_stripe_client")
     @patch("ace_platform.core.billing.get_or_create_stripe_customer")
     @patch("ace_platform.core.billing.get_price_id_for_tier")
     @patch("ace_platform.core.billing.is_stripe_configured")
     async def test_successful_checkout_session(
-        self, mock_configured, mock_get_price, mock_get_customer, mock_get_client
+        self,
+        mock_configured,
+        mock_get_price,
+        mock_get_customer,
+        mock_get_client,
+        mock_workspace,
     ):
         """Test successful checkout session creation."""
         mock_configured.return_value = True
         mock_get_price.return_value = "price_starter123"
         mock_get_customer.return_value = "cus_test123"
+        mock_workspace.return_value = MagicMock(id=uuid4())
 
         # Mock Stripe client
         mock_client = MagicMock()
@@ -232,14 +239,23 @@ class TestCreateCheckoutSession:
         assert result.success is True
         assert result.checkout_url == "https://checkout.stripe.com/test"
         assert result.session_id == "cs_test123"
+        params = mock_client.checkout.sessions.create.call_args.kwargs["params"]
+        assert params["metadata"]["workspace_id"] == str(mock_workspace.return_value.id)
+        assert params["metadata"]["plan_code"] == "personal-starter"
 
     @pytest.mark.asyncio
+    @patch("ace_platform.core.billing.ensure_billing_workspace")
     @patch("ace_platform.core.billing._get_stripe_client")
     @patch("ace_platform.core.billing.get_or_create_stripe_customer")
     @patch("ace_platform.core.billing.get_price_id_for_tier")
     @patch("ace_platform.core.billing.is_stripe_configured")
     async def test_stripe_error_handling(
-        self, mock_configured, mock_get_price, mock_get_customer, mock_get_client
+        self,
+        mock_configured,
+        mock_get_price,
+        mock_get_customer,
+        mock_get_client,
+        mock_workspace,
     ):
         """Test Stripe error handling."""
         import stripe
@@ -247,6 +263,7 @@ class TestCreateCheckoutSession:
         mock_configured.return_value = True
         mock_get_price.return_value = "price_starter123"
         mock_get_customer.return_value = "cus_test123"
+        mock_workspace.return_value = MagicMock(id=uuid4())
 
         # Mock Stripe client to raise error
         mock_client = MagicMock()
@@ -267,17 +284,24 @@ class TestCreateCheckoutSession:
         assert "Stripe error" in result.error
 
     @pytest.mark.asyncio
+    @patch("ace_platform.core.billing.ensure_billing_workspace")
     @patch("ace_platform.core.billing._get_stripe_client")
     @patch("ace_platform.core.billing.get_or_create_stripe_customer")
     @patch("ace_platform.core.billing.get_price_id_for_tier")
     @patch("ace_platform.core.billing.is_stripe_configured")
     async def test_yearly_checkout_uses_year_interval(
-        self, mock_configured, mock_get_price, mock_get_customer, mock_get_client
+        self,
+        mock_configured,
+        mock_get_price,
+        mock_get_customer,
+        mock_get_client,
+        mock_workspace,
     ):
         """Test yearly checkout requests the yearly Stripe price and metadata."""
         mock_configured.return_value = True
         mock_get_price.return_value = "price_pro_yearly"
         mock_get_customer.return_value = "cus_test123"
+        mock_workspace.return_value = MagicMock(id=uuid4())
 
         mock_client = MagicMock()
         mock_session = MagicMock()

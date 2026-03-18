@@ -22,6 +22,10 @@ from ace_platform.core.stripe_config import (
     get_product_config,
     is_stripe_configured,
 )
+from ace_platform.core.subscription_service import (
+    ensure_billing_workspace,
+    get_plan_catalog_entry_for_tier,
+)
 from ace_platform.db.models import User
 
 
@@ -173,6 +177,8 @@ async def create_checkout_session(
     try:
         # Get or create Stripe customer
         customer_id = await get_or_create_stripe_customer(db, user)
+        workspace = await ensure_billing_workspace(db, user)
+        plan_entry = get_plan_catalog_entry_for_tier(tier)
 
         # Get default URLs from settings
         settings = get_settings()
@@ -193,7 +199,10 @@ async def create_checkout_session(
         subscription_data: dict = {
             "metadata": {
                 "user_id": str(user.id),
+                "workspace_id": str(workspace.id),
                 "tier": tier.value,
+                "plan_code": plan_entry.code,
+                "workspace_plan": plan_entry.workspace_plan.value,
             },
         }
 
@@ -215,7 +224,10 @@ async def create_checkout_session(
             "cancel_url": final_cancel_url,
             "metadata": {
                 "user_id": str(user.id),
+                "workspace_id": str(workspace.id),
                 "tier": tier.value,
+                "plan_code": plan_entry.code,
+                "workspace_plan": plan_entry.workspace_plan.value,
                 "interval": interval.value,
                 "is_trial": str(include_trial and tier == SubscriptionTier.STARTER).lower(),
             },
