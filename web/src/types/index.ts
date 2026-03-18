@@ -145,6 +145,51 @@ export interface TriggerHostedEvalRunResponse extends HostedEvalRun {
   is_new: boolean;
 }
 
+export interface WorkspaceFeatureAccess {
+  cloud_sync: boolean;
+  hosted_backups: boolean;
+  managed_inference: boolean;
+  hosted_evals: boolean;
+  invite_members: boolean;
+  shared_workspace: boolean;
+  approvals: boolean;
+  rbac: boolean;
+  sso: boolean;
+  audit_logs: boolean;
+}
+
+export interface WorkspaceAccessState {
+  subscription_tier: string;
+  subscription_status: string;
+  effective_tier: string;
+  has_feature_access: boolean;
+  is_trialing: boolean;
+}
+
+export interface WorkspaceUsageLimits {
+  monthly_evolution_runs: number | null;
+  current_evolution_runs: number;
+  remaining_evolution_runs: number | null;
+  monthly_cost_limit_usd: string | number | null;
+  current_cost_usd: string | number;
+  remaining_cost_usd: string | number | null;
+  current_total_tokens: number;
+  max_playbooks: number | null;
+  is_within_limits: boolean;
+  limit_exceeded: string | null;
+}
+
+export interface WorkspaceEntitlements {
+  workspace_id: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number | null;
+  enabled_features: string[];
+  access: WorkspaceAccessState;
+  entitlements: WorkspaceFeatureAccess;
+  usage_limits: WorkspaceUsageLimits;
+}
+
 export interface UsageSummary {
   start_date: string;
   end_date: string;
