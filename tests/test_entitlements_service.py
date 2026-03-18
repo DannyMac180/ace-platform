@@ -130,30 +130,33 @@ def test_workspace_entitlements_returns_authoritative_snapshot():
     app.dependency_overrides[require_user] = lambda: user
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch(
-        "ace_platform.core.entitlements.get_user_usage_status",
-        new=AsyncMock(return_value=_usage_status(SubscriptionTier.STARTER)),
-    ), patch(
-        "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
-        new=AsyncMock(
-            return_value=SimpleNamespace(
-                id=workspace_id,
-                plan=SimpleNamespace(value="personal"),
-                deployment_mode=SimpleNamespace(value="cloud"),
-                seat_limit=1,
-                entitlements=SimpleNamespace(
-                    cloud_sync=True,
-                    hosted_backups=True,
-                    managed_inference=True,
-                    hosted_evals=True,
-                    invite_members=False,
-                    shared_workspace=False,
-                    approvals=False,
-                    rbac=False,
-                    sso=False,
-                    audit_logs=False,
-                ),
-            )
+    with (
+        patch(
+            "ace_platform.core.entitlements.get_user_usage_status",
+            new=AsyncMock(return_value=_usage_status(SubscriptionTier.STARTER)),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=workspace_id,
+                    plan=SimpleNamespace(value="personal"),
+                    deployment_mode=SimpleNamespace(value="cloud"),
+                    seat_limit=1,
+                    entitlements=SimpleNamespace(
+                        cloud_sync=True,
+                        hosted_backups=True,
+                        managed_inference=True,
+                        hosted_evals=True,
+                        invite_members=False,
+                        shared_workspace=False,
+                        approvals=False,
+                        rbac=False,
+                        sso=False,
+                        audit_logs=False,
+                    ),
+                )
+            ),
         ),
     ):
         client = TestClient(app)
