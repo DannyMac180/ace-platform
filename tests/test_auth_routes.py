@@ -1,7 +1,5 @@
 """Focused tests for auth route response shaping."""
 
-import os
-
 from datetime import datetime, timezone
 from unittest.mock import patch
 from uuid import uuid4
@@ -12,17 +10,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
-TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
-TEST_DATABASE_URL_ASYNC = "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test"
-
-os.environ["DATABASE_URL"] = TEST_DATABASE_URL_SYNC
-os.environ["DATABASE_URL_ASYNC"] = TEST_DATABASE_URL_ASYNC
-
 from ace_platform.api.deps import get_db
 from ace_platform.api.routes.auth import get_current_user
 from ace_platform.core.security import hash_password
-from ace_platform.db.models import SubscriptionStatus, User
-from ace_platform.db.models import Base
+from ace_platform.db.models import Base, SubscriptionStatus, User
+
+TEST_DATABASE_URL_ASYNC = "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test"
 
 
 @pytest.mark.asyncio
