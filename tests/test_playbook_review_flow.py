@@ -6,9 +6,9 @@ import os
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import httpx
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -76,7 +76,7 @@ async def test_user(async_session: AsyncSession):
 
 
 @pytest.fixture
-def app(async_engine, test_user: User, monkeypatch: pytest.MonkeyPatch):
+async def app(async_engine, test_user: User, monkeypatch: pytest.MonkeyPatch):
     from ace_platform.api.routes.playbooks import router
 
     app = FastAPI()
@@ -104,12 +104,15 @@ def app(async_engine, test_user: User, monkeypatch: pytest.MonkeyPatch):
 
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[require_paid_access] = override_paid_access
-    return app
+    yield app
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def client(app: FastAPI):
-    return TestClient(app)
+async def client(app: FastAPI):
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
 
 
 @pytest.mark.asyncio
@@ -138,7 +141,7 @@ async def test_review_actions_persist_history(async_session: AsyncSession, test_
     await async_session.commit()
     await async_session.refresh(playbook)
 
-    review_response = client.post(
+    review_response = await client.post(
         f"/playbooks/{playbook.id}/review-actions",
         json={"action": "proposed"},
     )
@@ -146,7 +149,7 @@ async def test_review_actions_persist_history(async_session: AsyncSession, test_
     assert review_response.status_code == 200
     assert review_response.json()["review_status"] == "proposed"
 
-    activity_response = client.get(f"/playbooks/{playbook.id}/activity")
+    activity_response = await client.get(f"/playbooks/{playbook.id}/activity")
 
     assert activity_response.status_code == 200
     payload = activity_response.json()
@@ -188,7 +191,7 @@ async def test_list_playbooks_filters_by_review_status(
     )
     await async_session.commit()
 
-    response = client.get("/playbooks?review_status_filter=approved")
+    response = await client.get("/playbooks?review_status_filter=approved")
 
     assert response.status_code == 200
     payload = response.json()

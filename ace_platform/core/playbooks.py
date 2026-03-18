@@ -74,7 +74,9 @@ async def export_playbook_bundle(
         review_status_updated_at = getattr(playbook, "review_status_updated_at", None)
         review_history = list(getattr(playbook, "review_history", []) or [])
         review_status_value = (
-            review_status.value if isinstance(review_status, PlaybookReviewStatus) else review_status
+            review_status.value
+            if isinstance(review_status, PlaybookReviewStatus)
+            else review_status
         )
         versions = [
             PortablePlaybookVersion(

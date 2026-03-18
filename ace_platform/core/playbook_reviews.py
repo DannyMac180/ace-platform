@@ -32,7 +32,9 @@ def build_review_event(
         "action": action.value,
         "from_review_status": from_status.value if from_status is not None else None,
         "to_review_status": to_status.value,
-        "actor_user_id": str(actor.id) if actor is not None and getattr(actor, "id", None) else None,
+        "actor_user_id": str(actor.id)
+        if actor is not None and getattr(actor, "id", None)
+        else None,
         "actor_email": getattr(actor, "email", None) if actor is not None else None,
         "created_at": occurred_at.isoformat(),
     }
