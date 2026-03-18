@@ -5,11 +5,13 @@ from __future__ import annotations
 import os
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
+from sqlalchemy.pool import NullPool
 
 from ace_platform.core.subscription_service import FREE_PLAN_CODE
 from ace_platform.core.webhooks import WebhookEventType, handle_webhook_event
@@ -30,16 +32,42 @@ TEST_DATABASE_URL_ASYNC = os.environ.get(
 
 @pytest.fixture(scope="function")
 async def async_engine():
-    engine = create_async_engine(TEST_DATABASE_URL_ASYNC, echo=False)
+    schema_name = f"workspace_billing_sync_{uuid4().hex}"
+    admin_engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(f"CREATE SCHEMA {schema_name}"))
+
+    await admin_engine.dispose()
+
+    engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+        connect_args={"server_settings": {"search_path": schema_name}},
+    )
 
     async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     await engine.dispose()
+
+    cleanup_engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+
+    async with cleanup_engine.begin() as conn:
+        await conn.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+
+    await cleanup_engine.dispose()
 
 
 @pytest.fixture

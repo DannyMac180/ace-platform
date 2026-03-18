@@ -67,6 +67,8 @@ from ace_platform.db.models import (
     User,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceInferenceMode,
+    WorkspaceInferenceProvider,
     WorkspacePlan,
     WorkspaceRole,
 )
@@ -87,6 +89,7 @@ class WorkspaceCreateRequest(BaseModel):
     plan: WorkspacePlan = Field(default=WorkspacePlan.PERSONAL)
     deployment_mode: WorkspaceDeploymentMode = Field(default=WorkspaceDeploymentMode.CLOUD)
     seat_limit: int | None = Field(default=None, ge=1)
+    inference_config: WorkspaceInferenceConfigRequest | None = None
 
 
 class WorkspaceUpdateRequest(BaseModel):
@@ -96,6 +99,22 @@ class WorkspaceUpdateRequest(BaseModel):
     plan: WorkspacePlan | None = None
     deployment_mode: WorkspaceDeploymentMode | None = None
     seat_limit: int | None = Field(default=None, ge=1)
+    inference_config: WorkspaceInferenceConfigRequest | None = None
+
+
+class WorkspaceInferenceConfigRequest(BaseModel):
+    """Incoming workspace inference configuration."""
+
+    mode: WorkspaceInferenceMode
+    provider: WorkspaceInferenceProvider = WorkspaceInferenceProvider.OPENAI
+
+
+class WorkspaceInferenceConfigResponse(BaseModel):
+    """Serialized workspace inference configuration."""
+
+    mode: WorkspaceInferenceMode
+    provider: WorkspaceInferenceProvider
+    available_modes: list[WorkspaceInferenceMode]
 
 
 class WorkspaceMembershipCreateRequest(BaseModel):
@@ -127,6 +146,7 @@ class WorkspaceResponse(BaseModel):
     plan: WorkspacePlan
     deployment_mode: WorkspaceDeploymentMode
     seat_limit: int
+    inference_config: WorkspaceInferenceConfigResponse
     member_count: int
     current_user_role: WorkspaceRole
 
@@ -386,8 +406,34 @@ def _serialize_workspace(workspace: Workspace, current_user_id: UUID) -> Workspa
         plan=workspace.plan,
         deployment_mode=workspace.deployment_mode,
         seat_limit=workspace.seat_limit,
+        inference_config=_serialize_workspace_inference_config(workspace),
         member_count=len(workspace.memberships),
         current_user_role=current_membership.role,
+    )
+
+
+def _serialize_workspace_inference_config(
+    workspace: Workspace,
+) -> WorkspaceInferenceConfigResponse:
+    """Serialize the workspace inference configuration with available mode choices."""
+
+    raw_config = workspace.inference_config or {}
+    available_modes = [WorkspaceInferenceMode.BYO_PROVIDER]
+    if (
+        workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD
+        and workspace.entitlements is not None
+        and workspace.entitlements.managed_inference
+    ):
+        available_modes.append(WorkspaceInferenceMode.MANAGED_PROVIDER)
+
+    return WorkspaceInferenceConfigResponse(
+        mode=WorkspaceInferenceMode(
+            raw_config.get("mode", WorkspaceInferenceMode.BYO_PROVIDER.value)
+        ),
+        provider=WorkspaceInferenceProvider(
+            raw_config.get("provider", WorkspaceInferenceProvider.OPENAI.value)
+        ),
+        available_modes=available_modes,
     )
 
 
@@ -678,6 +724,9 @@ async def create_workspace_route(
         plan=payload.plan,
         deployment_mode=payload.deployment_mode,
         seat_limit=payload.seat_limit,
+        inference_config=payload.inference_config.model_dump()
+        if payload.inference_config
+        else None,
     )
     await db.commit()
 
@@ -723,6 +772,9 @@ async def update_workspace_route(
             plan=payload.plan,
             deployment_mode=payload.deployment_mode,
             seat_limit=payload.seat_limit,
+            inference_config=payload.inference_config.model_dump()
+            if payload.inference_config
+            else None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

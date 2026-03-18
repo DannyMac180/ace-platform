@@ -22,6 +22,7 @@ Feature = Literal[
 ScopeKind = Literal["user", "workspace", "organization", "global"]
 SyncOperation = Literal["upsert", "delete"]
 InferenceRole = Literal["system", "user", "assistant", "tool"]
+InferenceMode = Literal["byo_provider", "managed_provider"]
 
 
 @dataclass(slots=True)
@@ -84,6 +85,25 @@ class TokenUsage:
 
 
 @dataclass(slots=True)
+class BYOProviderConfig:
+    """Route inference through caller-managed provider credentials."""
+
+    provider: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    organization: str | None = None
+
+
+@dataclass(slots=True)
+class ManagedProviderConfig:
+    """Route inference through ACE-managed provider infrastructure."""
+
+    provider: str | None = None
+    gateway_id: str | None = None
+    workspace_id: str | None = None
+
+
+@dataclass(slots=True)
 class ModelRequest:
     """Portable inference request for either direct-provider or managed gateways."""
 
@@ -91,6 +111,7 @@ class ModelRequest:
     messages: Sequence[InferenceMessage]
     max_tokens: int | None = None
     temperature: float | None = None
+    inference_config: BYOProviderConfig | ManagedProviderConfig | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -188,6 +209,7 @@ class Entitlements(Protocol):
 
 
 __all__ = [
+    "BYOProviderConfig",
     "Entitlements",
     "EvalCase",
     "EvalCaseResult",
@@ -196,8 +218,10 @@ __all__ = [
     "EvalSpec",
     "Feature",
     "InferenceGateway",
+    "InferenceMode",
     "InferenceMessage",
     "InferenceRole",
+    "ManagedProviderConfig",
     "ModelRequest",
     "ModelResponse",
     "PlaybookRecord",

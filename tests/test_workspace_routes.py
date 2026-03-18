@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from ace_platform.api.deps import get_db
+from ace_platform.api.routes.workspaces import WorkspaceCreateRequest, WorkspaceResponse
 from ace_platform.core.security import create_access_token, hash_password
 from ace_platform.db.models import Base, User, WorkspaceMembership
 
@@ -62,6 +63,23 @@ class TestWorkspaceRoutesUnit:
     def test_workspace_sync_pull_requires_auth(self, client):
         response = client.get(f"/v1/workspaces/{uuid4()}/sync/pull")
         assert response.status_code == 401
+
+    def test_workspace_models_include_inference_config(self):
+        payload = WorkspaceCreateRequest.model_validate(
+            {
+                "name": "Team Alpha",
+                "plan": "team",
+                "inference_config": {
+                    "mode": "managed_provider",
+                    "provider": "openai",
+                },
+            }
+        )
+
+        assert payload.inference_config is not None
+        assert payload.inference_config.mode.value == "managed_provider"
+        assert payload.inference_config.provider.value == "openai"
+        assert "inference_config" in WorkspaceResponse.model_json_schema()["properties"]
 
 
 @pytest.mark.skipif(
@@ -163,6 +181,7 @@ class TestWorkspaceRoutesIntegration:
         assert len(payload) == 1
         assert payload[0]["plan"] == "personal"
         assert payload[0]["seat_limit"] == 1
+        assert payload[0]["inference_config"]["mode"] == "managed_provider"
         assert payload[0]["current_user_role"] == "owner"
 
         entitlements_response = await client.get(
@@ -194,6 +213,7 @@ class TestWorkspaceRoutesIntegration:
         payload = response.json()
         assert len(payload) == 1
         assert payload[0]["plan"] == "personal"
+        assert payload[0]["inference_config"]["mode"] == "managed_provider"
 
         membership_count = await async_session.scalar(
             select(func.count())
@@ -252,6 +272,7 @@ class TestWorkspaceRoutesIntegration:
             headers=owner_headers,
         )
         assert create_response.status_code == 201
+        assert create_response.json()["inference_config"]["mode"] == "managed_provider"
         workspace_id = create_response.json()["id"]
 
         add_response = await client.post(

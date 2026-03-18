@@ -15,11 +15,13 @@ import openai
 from anthropic import AsyncAnthropic
 
 from .contracts import (
+    BYOProviderConfig,
     EvalCase,
     EvalCaseResult,
     EvalResult,
     EvalSpec,
     InferenceMessage,
+    ManagedProviderConfig,
     ModelRequest,
     ModelResponse,
     PlaybookRecord,
@@ -263,6 +265,22 @@ def _is_reasoning_model(model: str) -> bool:
     return model.startswith(("gpt-5", "o1", "o3", "o4"))
 
 
+def _request_with_metadata(
+    request: ModelRequest, extra_metadata: Mapping[str, Any]
+) -> ModelRequest:
+    return ModelRequest(
+        model=request.model,
+        messages=request.messages,
+        max_tokens=request.max_tokens,
+        temperature=request.temperature,
+        inference_config=request.inference_config,
+        metadata={
+            **request.metadata,
+            **{key: value for key, value in extra_metadata.items() if value is not None},
+        },
+    )
+
+
 class OpenAIInferenceProvider:
     """Call OpenAI-compatible chat completion APIs directly."""
 
@@ -409,6 +427,21 @@ class DirectInferenceGateway:
         self._default_provider = default_provider
 
     async def call(self, request: ModelRequest) -> ModelResponse:
+        if isinstance(request.inference_config, ManagedProviderConfig):
+            raise ValueError(
+                "DirectInferenceGateway does not support managed_provider mode. "
+                "Use RoutedInferenceGateway with a managed gateway."
+            )
+        if isinstance(request.inference_config, BYOProviderConfig):
+            request = _request_with_metadata(
+                request,
+                {
+                    "provider": request.inference_config.provider,
+                    "api_key": request.inference_config.api_key,
+                    "base_url": request.inference_config.base_url,
+                    "organization": request.inference_config.organization,
+                },
+            )
         provider_name = self._resolve_provider(request)
         provider = self._providers.get(provider_name)
         if provider is None:
@@ -421,6 +454,9 @@ class DirectInferenceGateway:
         return response
 
     def _resolve_provider(self, request: ModelRequest) -> str:
+        config = request.inference_config
+        if isinstance(config, BYOProviderConfig) and config.provider:
+            return config.provider
         provider = request.metadata.get("provider")
         if isinstance(provider, str) and provider:
             return provider
@@ -430,6 +466,38 @@ class DirectInferenceGateway:
         if model.startswith(("gpt-", "o1", "o3", "o4")):
             return "openai"
         return self._default_provider
+
+
+class RoutedInferenceGateway:
+    """Route inference requests between BYO and ACE-managed gateway paths."""
+
+    def __init__(
+        self,
+        *,
+        byo_gateway: Any | None = None,
+        managed_gateway: Any | None = None,
+    ):
+        self._byo_gateway = byo_gateway or DirectInferenceGateway()
+        self._managed_gateway = managed_gateway
+
+    async def call(self, request: ModelRequest) -> ModelResponse:
+        config = request.inference_config
+        if isinstance(config, ManagedProviderConfig):
+            if self._managed_gateway is None:
+                raise ValueError(
+                    "Managed provider mode was selected but no managed gateway is configured."
+                )
+            managed_request = _request_with_metadata(
+                request,
+                {
+                    "provider": config.provider,
+                    "gateway_id": config.gateway_id,
+                    "workspace_id": config.workspace_id,
+                },
+            )
+            return await self._managed_gateway.call(managed_request)
+
+        return await self._byo_gateway.call(request)
 
 
 class LocalEvalRunner:
@@ -539,5 +607,6 @@ __all__ = [
     "LocalEvalRunner",
     "LocalPlaybookStore",
     "OpenAIInferenceProvider",
+    "RoutedInferenceGateway",
     "SQLitePlaybookStore",
 ]

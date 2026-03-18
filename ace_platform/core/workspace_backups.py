@@ -43,6 +43,7 @@ from ace_platform.db.models import (
     WorkspacePlan,
     WorkspaceSubscription,
     WorkspaceSubscriptionStatus,
+    get_default_workspace_inference_config,
 )
 
 WORKSPACE_BACKUP_RETENTION_COUNT = 10
@@ -132,9 +133,19 @@ def _serialize_workspace(workspace: Workspace) -> dict[str, Any]:
         "deployment_mode": workspace.deployment_mode.value,
         "seat_limit": workspace.seat_limit,
         "usage_limits": workspace.usage_limits,
+        "inference_config": workspace.inference_config,
         "created_at": isoformat_or_none(workspace.created_at),
         "updated_at": isoformat_or_none(workspace.updated_at),
     }
+
+
+def _restore_workspace_inference_config(workspace_payload: dict[str, Any]) -> dict[str, Any]:
+    plan = WorkspacePlan(workspace_payload["plan"])
+    deployment_mode = WorkspaceDeploymentMode(workspace_payload["deployment_mode"])
+    return workspace_payload.get("inference_config") or get_default_workspace_inference_config(
+        plan=plan,
+        deployment_mode=deployment_mode,
+    )
 
 
 def _serialize_entitlements(entitlements: WorkspaceEntitlement | None) -> dict[str, Any] | None:
@@ -630,6 +641,7 @@ async def restore_workspace_backup(
             deployment_mode=WorkspaceDeploymentMode(workspace_payload["deployment_mode"]),
             seat_limit=workspace_payload["seat_limit"],
             usage_limits=workspace_payload["usage_limits"],
+            inference_config=_restore_workspace_inference_config(workspace_payload),
             created_at=_parse_datetime(workspace_payload["created_at"]) or datetime.now(UTC),
             updated_at=_parse_datetime(workspace_payload["updated_at"]) or datetime.now(UTC),
         )
@@ -641,6 +653,7 @@ async def restore_workspace_backup(
         workspace.deployment_mode = WorkspaceDeploymentMode(workspace_payload["deployment_mode"])
         workspace.seat_limit = workspace_payload["seat_limit"]
         workspace.usage_limits = workspace_payload["usage_limits"]
+        workspace.inference_config = _restore_workspace_inference_config(workspace_payload)
         workspace.updated_at = _parse_datetime(workspace_payload["updated_at"]) or datetime.now(UTC)
 
     entitlements_payload = payload["entitlements"]

@@ -7,11 +7,13 @@ import pytest
 
 import ace_core
 from ace_core.contracts import (
+    BYOProviderConfig,
     EvalCase,
     EvalResult,
     EvalRunner,
     InferenceGateway,
     InferenceMessage,
+    ManagedProviderConfig,
     ModelRequest,
     ModelResponse,
     PlaybookRecord,
@@ -23,6 +25,7 @@ from ace_core.local import (
     FilesystemPlaybookStore,
     LocalEvalRunner,
     LocalPlaybookStore,
+    RoutedInferenceGateway,
     SQLitePlaybookStore,
 )
 
@@ -66,6 +69,20 @@ class PlaybookExecutionProvider:
                 "provider": self.provider_name,
                 "system_prompt": system_prompt,
             },
+        )
+
+
+class RecordingGateway:
+    def __init__(self, mode: str):
+        self.mode = mode
+        self.requests: list[ModelRequest] = []
+
+    async def call(self, request: ModelRequest) -> ModelResponse:
+        self.requests.append(request)
+        return ModelResponse(
+            model=request.model,
+            output_text=self.mode,
+            metadata={"mode": self.mode},
         )
 
 
@@ -229,6 +246,84 @@ async def test_direct_inference_gateway_routes_requests() -> None:
 
 
 @pytest.mark.asyncio
+async def test_direct_inference_gateway_applies_byo_provider_config() -> None:
+    provider = RecordingProvider("openai")
+    gateway = DirectInferenceGateway(providers={"openai": provider})
+
+    response = await gateway.call(
+        ModelRequest(
+            model="gpt-5.4",
+            messages=[InferenceMessage(role="user", content="byo request")],
+            inference_config=BYOProviderConfig(
+                provider="openai",
+                api_key="sk-byo",
+                base_url="https://example.invalid/v1",
+                organization="org_123",
+            ),
+        )
+    )
+
+    recorded_request = provider.requests[0]
+    assert response.metadata["provider"] == "openai"
+    assert recorded_request.metadata["api_key"] == "sk-byo"
+    assert recorded_request.metadata["base_url"] == "https://example.invalid/v1"
+    assert recorded_request.metadata["organization"] == "org_123"
+
+
+@pytest.mark.asyncio
+async def test_direct_inference_gateway_rejects_managed_provider_mode() -> None:
+    gateway = DirectInferenceGateway()
+
+    with pytest.raises(ValueError, match="does not support managed_provider mode"):
+        await gateway.call(
+            ModelRequest(
+                model="gpt-5.4",
+                messages=[InferenceMessage(role="user", content="managed request")],
+                inference_config=ManagedProviderConfig(provider="openai", workspace_id="ws-1"),
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_routed_inference_gateway_dispatches_to_managed_gateway() -> None:
+    byo_gateway = RecordingGateway("byo")
+    managed_gateway = RecordingGateway("managed")
+    gateway = RoutedInferenceGateway(byo_gateway=byo_gateway, managed_gateway=managed_gateway)
+
+    response = await gateway.call(
+        ModelRequest(
+            model="gpt-5.4",
+            messages=[InferenceMessage(role="user", content="managed route")],
+            inference_config=ManagedProviderConfig(
+                provider="openai",
+                gateway_id="gateway-1",
+                workspace_id="ws-1",
+            ),
+        )
+    )
+
+    assert response.output_text == "managed"
+    assert len(byo_gateway.requests) == 0
+    assert len(managed_gateway.requests) == 1
+    assert managed_gateway.requests[0].metadata["gateway_id"] == "gateway-1"
+    assert managed_gateway.requests[0].metadata["workspace_id"] == "ws-1"
+
+
+@pytest.mark.asyncio
+async def test_routed_inference_gateway_requires_managed_gateway_for_managed_mode() -> None:
+    gateway = RoutedInferenceGateway(byo_gateway=RecordingGateway("byo"))
+
+    with pytest.raises(ValueError, match="no managed gateway is configured"):
+        await gateway.call(
+            ModelRequest(
+                model="gpt-5.4",
+                messages=[InferenceMessage(role="user", content="managed route")],
+                inference_config=ManagedProviderConfig(provider="openai"),
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_local_eval_runner_scores_with_gateway_output() -> None:
     provider = RecordingProvider(
         "openai",
@@ -289,4 +384,5 @@ def test_local_runtime_is_re_exported_from_ace_core() -> None:
     assert ace_core.FilesystemPlaybookStore is FilesystemPlaybookStore
     assert ace_core.LocalEvalRunner is LocalEvalRunner
     assert ace_core.LocalPlaybookStore is LocalPlaybookStore
+    assert ace_core.RoutedInferenceGateway is RoutedInferenceGateway
     assert ace_core.SQLitePlaybookStore is SQLitePlaybookStore

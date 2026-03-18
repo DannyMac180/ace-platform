@@ -10,11 +10,15 @@ from ace_platform.db.models import (
     WorkspaceBillingProvider,
     WorkspaceDeploymentMode,
     WorkspaceEntitlement,
+    WorkspaceInferenceMode,
+    WorkspaceInferenceProvider,
     WorkspacePlan,
     WorkspaceSubscription,
     WorkspaceSubscriptionStatus,
     get_default_workspace_entitlements,
+    get_default_workspace_inference_config,
     get_workspace_plan_from_legacy_tier,
+    workspace_supports_managed_inference,
 )
 
 
@@ -36,6 +40,43 @@ def test_get_default_workspace_entitlements_by_plan():
     assert enterprise["audit_logs"] is True
 
 
+def test_get_default_workspace_inference_config_by_mode_support():
+    personal_cloud = get_default_workspace_inference_config(
+        plan=WorkspacePlan.PERSONAL,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+    )
+    enterprise_self_hosted = get_default_workspace_inference_config(
+        plan=WorkspacePlan.ENTERPRISE,
+        deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+    )
+
+    assert personal_cloud == {
+        "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }
+    assert enterprise_self_hosted == {
+        "mode": WorkspaceInferenceMode.BYO_PROVIDER.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }
+
+
+def test_workspace_supports_managed_inference_only_for_cloud_workspaces():
+    assert (
+        workspace_supports_managed_inference(
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        )
+        is True
+    )
+    assert (
+        workspace_supports_managed_inference(
+            plan=WorkspacePlan.ENTERPRISE,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+        )
+        is False
+    )
+
+
 def test_get_workspace_plan_from_legacy_tier():
     assert get_workspace_plan_from_legacy_tier(None) == WorkspacePlan.PERSONAL
     assert get_workspace_plan_from_legacy_tier("starter") == WorkspacePlan.PERSONAL
@@ -51,6 +92,10 @@ def test_workspace_models_support_all_plans_in_one_schema():
         plan=WorkspacePlan.PERSONAL,
         deployment_mode=WorkspaceDeploymentMode.CLOUD,
         seat_limit=1,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        ),
         entitlements=WorkspaceEntitlement(
             **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.PERSONAL)
         ),
@@ -68,6 +113,10 @@ def test_workspace_models_support_all_plans_in_one_schema():
         plan=WorkspacePlan.TEAM,
         deployment_mode=WorkspaceDeploymentMode.CLOUD,
         seat_limit=5,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        ),
         entitlements=WorkspaceEntitlement(
             **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.TEAM)
         ),
@@ -88,6 +137,10 @@ def test_workspace_models_support_all_plans_in_one_schema():
         plan=WorkspacePlan.ENTERPRISE,
         deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
         seat_limit=25,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.ENTERPRISE,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+        ),
         entitlements=WorkspaceEntitlement(
             **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.ENTERPRISE)
         ),
@@ -101,14 +154,17 @@ def test_workspace_models_support_all_plans_in_one_schema():
 
     assert personal.subscription is not None
     assert personal.subscription.status is WorkspaceSubscriptionStatus.TRIALING
+    assert personal.inference_config["mode"] == WorkspaceInferenceMode.MANAGED_PROVIDER.value
     assert team.subscription is not None
     assert team.subscription.plan_code == "team-v1"
     assert team.entitlements is not None
     assert team.entitlements.shared_workspace is True
+    assert team.inference_config["mode"] == WorkspaceInferenceMode.MANAGED_PROVIDER.value
     assert len(team.memberships) == 2
     assert enterprise.entitlements is not None
     assert enterprise.entitlements.audit_logs is True
     assert enterprise.entitlements.sso is True
+    assert enterprise.inference_config["mode"] == WorkspaceInferenceMode.BYO_PROVIDER.value
     assert enterprise.subscription is not None
     assert enterprise.subscription.status is WorkspaceSubscriptionStatus.UNPAID
 
