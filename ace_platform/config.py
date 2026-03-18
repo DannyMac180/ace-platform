@@ -44,6 +44,10 @@ class Settings(BaseSettings):
         default="",
         description="OpenAI API key for LLM calls",
     )
+    anthropic_api_key: str = Field(
+        default="",
+        description="Anthropic API key for managed inference and direct calls",
+    )
     playbook_embedding_model: str = Field(
         default="text-embedding-3-small",
         description="Embedding model used for semantic playbook matching",
