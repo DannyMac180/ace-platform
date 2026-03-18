@@ -15,9 +15,13 @@ from ace_platform.db.models import (
     Workspace,
     WorkspaceDeploymentMode,
     WorkspaceEntitlement,
+    WorkspaceInferenceMode,
+    WorkspaceInferenceProvider,
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
+    get_default_workspace_inference_config,
+    workspace_supports_managed_inference,
 )
 
 MANAGER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN}
@@ -41,7 +45,9 @@ def normalize_workspace_settings(
     plan: WorkspacePlan,
     deployment_mode: WorkspaceDeploymentMode,
     seat_limit: int | None,
-) -> tuple[WorkspacePlan, WorkspaceDeploymentMode, int]:
+    inference_config: dict | None,
+    keep_unsupported_managed_mode: bool = False,
+) -> tuple[WorkspacePlan, WorkspaceDeploymentMode, int, dict[str, str]]:
     """Normalize and validate workspace settings."""
     resolved_seat_limit = seat_limit if seat_limit is not None else 1
     if resolved_seat_limit < 1:
@@ -50,7 +56,57 @@ def normalize_workspace_settings(
     if plan == WorkspacePlan.PERSONAL:
         resolved_seat_limit = 1
 
-    return plan, deployment_mode, resolved_seat_limit
+    resolved_inference_config = normalize_workspace_inference_config(
+        plan=plan,
+        deployment_mode=deployment_mode,
+        inference_config=inference_config,
+        keep_unsupported_managed_mode=keep_unsupported_managed_mode,
+    )
+
+    return plan, deployment_mode, resolved_seat_limit, resolved_inference_config
+
+
+def normalize_workspace_inference_config(
+    *,
+    plan: WorkspacePlan,
+    deployment_mode: WorkspaceDeploymentMode,
+    inference_config: dict | None,
+    keep_unsupported_managed_mode: bool = False,
+) -> dict[str, str]:
+    """Normalize and validate the workspace inference configuration."""
+
+    default_config = get_default_workspace_inference_config(
+        plan=plan,
+        deployment_mode=deployment_mode,
+    )
+    raw_config = inference_config or default_config
+
+    raw_mode = raw_config.get("mode", default_config["mode"])
+    raw_provider = raw_config.get("provider", default_config["provider"])
+
+    try:
+        mode = WorkspaceInferenceMode(raw_mode)
+    except ValueError as exc:
+        raise ValueError(f"Unsupported workspace inference mode: {raw_mode}") from exc
+
+    try:
+        provider = WorkspaceInferenceProvider(raw_provider)
+    except ValueError as exc:
+        raise ValueError(f"Unsupported workspace inference provider: {raw_provider}") from exc
+
+    if mode == WorkspaceInferenceMode.MANAGED_PROVIDER and not workspace_supports_managed_inference(
+        plan=plan,
+        deployment_mode=deployment_mode,
+    ):
+        if keep_unsupported_managed_mode:
+            mode = WorkspaceInferenceMode.BYO_PROVIDER
+        else:
+            raise ValueError("ACE-managed inference is not supported for this workspace")
+
+    return {
+        "mode": mode.value,
+        "provider": provider.value,
+    }
 
 
 async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspace]:
@@ -179,12 +235,14 @@ async def create_workspace(
     plan: WorkspacePlan,
     deployment_mode: WorkspaceDeploymentMode,
     seat_limit: int | None,
+    inference_config: dict | None = None,
 ) -> Workspace:
     """Create a workspace and the creator's owner membership."""
-    plan, deployment_mode, seat_limit = normalize_workspace_settings(
+    plan, deployment_mode, seat_limit, inference_config = normalize_workspace_settings(
         plan=plan,
         deployment_mode=deployment_mode,
         seat_limit=seat_limit,
+        inference_config=inference_config,
     )
 
     workspace = Workspace(
@@ -192,6 +250,7 @@ async def create_workspace(
         plan=plan,
         deployment_mode=deployment_mode,
         seat_limit=seat_limit,
+        inference_config=inference_config,
     )
     db.add(workspace)
     await db.flush()
@@ -229,6 +288,7 @@ async def bootstrap_workspace_for_user(
         plan=WorkspacePlan.PERSONAL,
         deployment_mode=WorkspaceDeploymentMode.CLOUD,
         seat_limit=1,
+        inference_config=None,
     )
     return workspace, True
 
@@ -241,16 +301,21 @@ async def update_workspace(
     plan: WorkspacePlan | None = None,
     deployment_mode: WorkspaceDeploymentMode | None = None,
     seat_limit: int | None = None,
+    inference_config: dict | None = None,
 ) -> Workspace:
     """Update mutable workspace fields."""
     previous_plan = workspace.plan
     next_plan = plan or workspace.plan
     next_deployment_mode = deployment_mode or workspace.deployment_mode
     requested_seat_limit = seat_limit if seat_limit is not None else workspace.seat_limit
-    next_plan, next_deployment_mode, next_seat_limit = normalize_workspace_settings(
-        plan=next_plan,
-        deployment_mode=next_deployment_mode,
-        seat_limit=requested_seat_limit,
+    next_plan, next_deployment_mode, next_seat_limit, next_inference_config = (
+        normalize_workspace_settings(
+            plan=next_plan,
+            deployment_mode=next_deployment_mode,
+            seat_limit=requested_seat_limit,
+            inference_config=inference_config or workspace.inference_config,
+            keep_unsupported_managed_mode=inference_config is None,
+        )
     )
 
     member_count = await count_workspace_members(db, workspace.id)
@@ -264,6 +329,7 @@ async def update_workspace(
     workspace.plan = next_plan
     workspace.deployment_mode = next_deployment_mode
     workspace.seat_limit = next_seat_limit
+    workspace.inference_config = next_inference_config
 
     if workspace.entitlements is None:
         workspace.entitlements = WorkspaceEntitlement(

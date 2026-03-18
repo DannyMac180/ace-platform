@@ -106,6 +106,20 @@ class WorkspaceDeploymentMode(str, enum.Enum):
     SELF_HOSTED = "self_hosted"
 
 
+class WorkspaceInferenceMode(str, enum.Enum):
+    """How a workspace resolves model inference."""
+
+    BYO_PROVIDER = "byo_provider"
+    MANAGED_PROVIDER = "managed_provider"
+
+
+class WorkspaceInferenceProvider(str, enum.Enum):
+    """Supported provider identifiers for workspace inference configuration."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
 class MembershipRole(str, enum.Enum):
     """Role for a user inside a workspace."""
 
@@ -176,6 +190,40 @@ def get_default_workspace_entitlements(plan: WorkspacePlan) -> dict[str, bool]:
     """Return the default feature flags for a workspace plan."""
 
     return dict(WORKSPACE_PLAN_ENTITLEMENTS[plan])
+
+
+def workspace_supports_managed_inference(
+    *,
+    plan: WorkspacePlan,
+    deployment_mode: WorkspaceDeploymentMode,
+) -> bool:
+    """Return whether a workspace can use ACE-managed inference."""
+
+    return (
+        deployment_mode == WorkspaceDeploymentMode.CLOUD
+        and get_default_workspace_entitlements(plan)["managed_inference"]
+    )
+
+
+def get_default_workspace_inference_config(
+    *,
+    plan: WorkspacePlan,
+    deployment_mode: WorkspaceDeploymentMode,
+) -> dict[str, str]:
+    """Return the default workspace inference configuration."""
+
+    mode = (
+        WorkspaceInferenceMode.MANAGED_PROVIDER
+        if workspace_supports_managed_inference(
+            plan=plan,
+            deployment_mode=deployment_mode,
+        )
+        else WorkspaceInferenceMode.BYO_PROVIDER
+    )
+    return {
+        "mode": mode.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }
 
 
 def get_workspace_plan_from_legacy_tier(subscription_tier: str | None) -> WorkspacePlan:
@@ -349,6 +397,7 @@ class Workspace(Base):
     )
     seat_limit: Mapped[int] = mapped_column(Integer, nullable=False)
     usage_limits: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    inference_config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

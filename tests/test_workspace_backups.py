@@ -41,6 +41,7 @@ from ace_platform.db.models import (
     UserOAuthAccount,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceInferenceMode,
     WorkspacePlan,
 )
 
@@ -309,6 +310,10 @@ class TestWorkspaceBackups:
         assert restored_user.stripe_default_payment_method_id == "pm_test"
         assert restored_workspace is not None
         assert restored_workspace.name == "Backup Workspace"
+        assert (
+            restored_workspace.inference_config["mode"]
+            == WorkspaceInferenceMode.MANAGED_PROVIDER.value
+        )
         assert restored_workspace.entitlements is not None
         assert restored_workspace.entitlements.hosted_backups is True
         assert restored_playbooks[0].name == "Workspace Playbook"

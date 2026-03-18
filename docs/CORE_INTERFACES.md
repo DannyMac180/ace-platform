@@ -33,6 +33,8 @@ making `ace_core` depend on hosted-only services.
 - `InferenceGateway`
   - `call(request)` accepts a portable `ModelRequest`
   - returns a normalized `ModelResponse`
+  - `ModelRequest.inference_config` can explicitly select either the BYO path
+    or the ACE-managed path
 - `EvalRunner`
   - `run(spec)` executes an `EvalSpec`
   - returns an aggregate `EvalResult`
@@ -48,6 +50,10 @@ The dataclasses in `ace_core.contracts` are intentionally narrow:
   cursor-based sync APIs.
 - `InferenceMessage`, `ModelRequest`, `ModelResponse`, and `TokenUsage`
   normalize direct-provider and managed-gateway inference paths.
+- `BYOProviderConfig` carries caller-managed routing data such as provider name,
+  API key, base URL, and organization.
+- `ManagedProviderConfig` carries ACE-managed routing data such as provider
+  name, workspace scope, or a managed gateway identifier.
 - `EvalCase`, `EvalSpec`, `EvalCaseResult`, and `EvalResult` let local and
   hosted eval runners report the same shape.
 - `Feature` enumerates the entitlement flags from Section 8 of
@@ -62,6 +68,11 @@ Local implementations can satisfy the contracts with:
 - direct provider `InferenceGateway`
 - a local `EvalRunner`
 - static or config-based `Entitlements`
+
+`ace_core.local.RoutedInferenceGateway` can dispatch a request to either a
+direct BYO gateway or a managed gateway based on `request.inference_config`.
+`DirectInferenceGateway` remains the BYO implementation and raises a clear
+error if a managed-only config is sent to it directly.
 
 The current production local adapter surface lives in `ace_core.local` and is
 mirrored in `packages/ace-core/src/ace_core/` for the extracted package path.

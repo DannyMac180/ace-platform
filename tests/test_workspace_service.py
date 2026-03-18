@@ -14,13 +14,17 @@ from ace_platform.core.workspaces import (
     create_workspace,
     delete_workspace,
     list_user_workspaces,
+    normalize_workspace_inference_config,
     remove_workspace_membership,
+    update_workspace,
 )
 from ace_platform.db.models import (
     Base,
     User,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceInferenceMode,
+    WorkspaceInferenceProvider,
     WorkspacePlan,
     WorkspaceRole,
 )
@@ -88,6 +92,10 @@ class TestWorkspaceService:
         assert workspace.plan == WorkspacePlan.PERSONAL
         assert workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD
         assert workspace.seat_limit == 1
+        assert workspace.inference_config == {
+            "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+            "provider": WorkspaceInferenceProvider.OPENAI.value,
+        }
 
         workspaces = await list_user_workspaces(async_session, user.id)
         assert len(workspaces) == 1
@@ -125,6 +133,34 @@ class TestWorkspaceService:
                 user=teammate,
                 role=WorkspaceRole.MEMBER,
             )
+
+    async def test_update_workspace_falls_back_to_byo_when_managed_becomes_unsupported(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "inference-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Inference Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        await async_session.commit()
+
+        await update_workspace(
+            async_session,
+            workspace,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+        )
+        await async_session.commit()
+
+        assert workspace.inference_config == {
+            "mode": WorkspaceInferenceMode.BYO_PROVIDER.value,
+            "provider": WorkspaceInferenceProvider.OPENAI.value,
+        }
 
     async def test_remove_membership_rejects_last_workspace(self, async_session: AsyncSession):
         owner = await self._create_user(async_session, "remove-owner@example.com")
@@ -168,3 +204,15 @@ class TestWorkspaceService:
         ).scalar_one()
         with pytest.raises(ValueError, match="without any workspace"):
             await delete_workspace(async_session, refreshed_workspace)
+
+
+def test_normalize_workspace_inference_config_rejects_unsupported_managed_mode():
+    with pytest.raises(ValueError, match="ACE-managed inference is not supported"):
+        normalize_workspace_inference_config(
+            plan=WorkspacePlan.ENTERPRISE,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+            inference_config={
+                "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+                "provider": WorkspaceInferenceProvider.OPENAI.value,
+            },
+        )
