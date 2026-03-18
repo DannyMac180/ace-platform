@@ -15,6 +15,7 @@ from uuid import UUID
 import sentry_sdk
 from sqlalchemy import select
 
+from ace_platform.config import DEFAULT_EVOLUTION_MODEL
 from ace_platform.core.evolution import EvolutionService, OutcomeData
 from ace_platform.core.metrics import (
     decrement_active_jobs,
@@ -99,10 +100,10 @@ def process_evolution_job(self, job_id: str) -> dict:
             # Record success metrics
             duration = time.time() - start_time
             token_total = 0
-            model = "gpt-5.2"  # Default model
+            model = DEFAULT_EVOLUTION_MODEL
             if job.token_totals:
                 token_total = job.token_totals.get("total_tokens", 0)
-                model = job.token_totals.get("model", "gpt-5.2")
+                model = job.token_totals.get("model", DEFAULT_EVOLUTION_MODEL)
 
             observe_evolution(
                 status="completed",
