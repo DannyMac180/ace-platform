@@ -21,6 +21,7 @@ from ace_platform.db.models import (
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
+    WorkspaceSyncTombstone,
 )
 from ace_platform.db.session import (
     AsyncSessionLocal,
@@ -42,6 +43,7 @@ __all__ = [
     "User",
     "Workspace",
     "WorkspaceMembership",
+    "WorkspaceSyncTombstone",
     "Playbook",
     "PlaybookVersion",
     "Outcome",
