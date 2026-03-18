@@ -3,11 +3,31 @@
 
 import os
 
-TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
-TEST_DATABASE_URL_ASYNC = "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test"
+DEFAULT_TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
 
-os.environ["DATABASE_URL"] = TEST_DATABASE_URL_SYNC
-os.environ["DATABASE_URL_ASYNC"] = TEST_DATABASE_URL_ASYNC
+
+def _derive_async_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return database_url
+
+
+TEST_DATABASE_URL_SYNC = (
+    os.environ.get("TEST_DATABASE_URL_SYNC")
+    or os.environ.get("TEST_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or DEFAULT_TEST_DATABASE_URL_SYNC
+)
+TEST_DATABASE_URL_ASYNC = (
+    os.environ.get("TEST_DATABASE_URL_ASYNC")
+    or os.environ.get("DATABASE_URL_ASYNC")
+    or _derive_async_database_url(TEST_DATABASE_URL_SYNC)
+)
+
+os.environ.setdefault("DATABASE_URL", TEST_DATABASE_URL_SYNC)
+os.environ.setdefault("DATABASE_URL_ASYNC", TEST_DATABASE_URL_ASYNC)
 
 import httpx
 import pytest
