@@ -171,7 +171,9 @@ def serialize_playbook_snapshot(playbook: Playbook, workspace: Workspace) -> Por
     ]
 
     current_version_id = str(playbook.current_version_id) if playbook.current_version_id else None
-    current_version_number = playbook.current_version.version_number if playbook.current_version else None
+    current_version_number = (
+        playbook.current_version.version_number if playbook.current_version else None
+    )
 
     return PortablePlaybook(
         id=str(playbook.id),
@@ -339,7 +341,6 @@ def _parse_uuid(value: str | None, *, field_name: str) -> UUID:
 
 def _portable_version_fingerprint(version: PortablePlaybookVersion) -> dict[str, Any]:
     return {
-        "id": version.id,
         "version_number": version.version_number,
         "content": version.content,
         "bullet_count": version.bullet_count,
@@ -364,9 +365,6 @@ def _portable_playbook_fingerprint(playbook: PortablePlaybook) -> dict[str, Any]
         "name": playbook.name,
         "description": playbook.description,
         "status": playbook.status,
-        "source": playbook.source,
-        "scope_kind": playbook.scope.kind,
-        "current_version_id": playbook.current_version_id,
         "current_version_number": playbook.current_version_number,
         "versions": [
             _portable_version_fingerprint(version)
@@ -392,7 +390,11 @@ def is_retry_of_current_playbook_state(
 ) -> bool:
     """Return whether an incoming playbook upsert already matches server state."""
 
-    if current_event is None or current_event.operation != "upsert" or current_event.payload is None:
+    if (
+        current_event is None
+        or current_event.operation != "upsert"
+        or current_event.payload is None
+    ):
         return False
     return _portable_playbook_fingerprint(current_event.payload) == _portable_playbook_fingerprint(
         incoming_payload
@@ -405,7 +407,9 @@ async def _build_current_server_event(
     owner_user_id: UUID,
     playbook_id: UUID,
 ) -> HostedSyncEvent | None:
-    playbook = await load_workspace_playbook(db, owner_user_id=owner_user_id, playbook_id=playbook_id)
+    playbook = await load_workspace_playbook(
+        db, owner_user_id=owner_user_id, playbook_id=playbook_id
+    )
     if playbook is not None:
         return build_playbook_sync_event(playbook, workspace)
 
@@ -427,7 +431,9 @@ async def _assert_playbook_base_is_current(
     playbook_id: UUID,
     base_updated_at: datetime | None,
 ) -> None:
-    playbook = await load_workspace_playbook(db, owner_user_id=owner_user_id, playbook_id=playbook_id)
+    playbook = await load_workspace_playbook(
+        db, owner_user_id=owner_user_id, playbook_id=playbook_id
+    )
     if playbook is not None:
         current_updated_at = compute_playbook_sync_updated_at(playbook)
         if base_updated_at is None:
@@ -478,7 +484,9 @@ async def apply_playbook_sync_upsert(
     if entity_id != str(playbook_id):
         raise ValueError("entity_id must match payload.id for playbook sync.")
 
-    current_server_event = await _build_current_server_event(db, workspace, owner_user_id, playbook_id)
+    current_server_event = await _build_current_server_event(
+        db, workspace, owner_user_id, playbook_id
+    )
     if is_retry_of_current_playbook_state(current_server_event, payload):
         return current_server_event
 
@@ -491,7 +499,10 @@ async def apply_playbook_sync_upsert(
         base_updated_at=base_updated_at,
     )
 
-    playbook = await load_workspace_playbook(db, owner_user_id=owner_user_id, playbook_id=playbook_id)
+    playbook = await load_workspace_playbook(
+        db, owner_user_id=owner_user_id, playbook_id=playbook_id
+    )
+    playbook_was_created = playbook is None
     if playbook is None:
         playbook_kwargs = {
             "id": playbook_id,
@@ -514,8 +525,9 @@ async def apply_playbook_sync_upsert(
 
     await clear_playbook_tombstone(db, workspace.id, playbook_id)
 
-    versions_by_number = {version.version_number: version for version in playbook.versions}
-    versions_by_id = {str(version.id): version for version in playbook.versions}
+    existing_versions = [] if playbook_was_created else list(playbook.versions)
+    versions_by_number = {version.version_number: version for version in existing_versions}
+    versions_by_id = {str(version.id): version for version in existing_versions}
     for portable_version in sorted(payload.versions, key=lambda item: item.version_number):
         version = None
         if portable_version.id is not None:
@@ -538,7 +550,8 @@ async def apply_playbook_sync_upsert(
             version = PlaybookVersion(**version_kwargs)
             db.add(version)
             await db.flush()
-            playbook.versions.append(version)
+            if not playbook_was_created:
+                playbook.versions.append(version)
 
         version.content = portable_version.content
         version.bullet_count = portable_version.bullet_count
@@ -546,7 +559,8 @@ async def apply_playbook_sync_upsert(
         versions_by_number[version.version_number] = version
         versions_by_id[str(version.id)] = version
 
-    outcomes_by_id = {str(outcome.id): outcome for outcome in playbook.outcomes}
+    existing_outcomes = [] if playbook_was_created else list(playbook.outcomes)
+    outcomes_by_id = {str(outcome.id): outcome for outcome in existing_outcomes}
     for portable_trace in payload.traces:
         trace_id = _parse_uuid(portable_trace.id, field_name="trace.id")
         outcome = outcomes_by_id.get(str(trace_id))
@@ -566,7 +580,8 @@ async def apply_playbook_sync_upsert(
             outcome = Outcome(**outcome_kwargs)
             db.add(outcome)
             await db.flush()
-            playbook.outcomes.append(outcome)
+            if not playbook_was_created:
+                playbook.outcomes.append(outcome)
             outcomes_by_id[str(trace_id)] = outcome
             continue
 
@@ -593,7 +608,9 @@ async def apply_playbook_sync_upsert(
     )
     await db.flush()
 
-    refreshed = await load_workspace_playbook(db, owner_user_id=owner_user_id, playbook_id=playbook.id)
+    refreshed = await load_workspace_playbook(
+        db, owner_user_id=owner_user_id, playbook_id=playbook.id
+    )
     if refreshed is None:
         raise RuntimeError("Synced playbook disappeared before it could be reloaded.")
     return build_playbook_sync_event(refreshed, workspace)
@@ -612,7 +629,9 @@ async def apply_playbook_sync_delete(
     owner_user_id = ensure_personal_sync_workspace(workspace)
     playbook_id = _parse_uuid(entity_id, field_name="entity_id")
 
-    current_server_event = await _build_current_server_event(db, workspace, owner_user_id, playbook_id)
+    current_server_event = await _build_current_server_event(
+        db, workspace, owner_user_id, playbook_id
+    )
     if current_server_event is not None and current_server_event.operation == "delete":
         return current_server_event
 
@@ -625,7 +644,9 @@ async def apply_playbook_sync_delete(
         base_updated_at=base_updated_at,
     )
 
-    playbook = await load_workspace_playbook(db, owner_user_id=owner_user_id, playbook_id=playbook_id)
+    playbook = await load_workspace_playbook(
+        db, owner_user_id=owner_user_id, playbook_id=playbook_id
+    )
     tombstone = await record_playbook_tombstone(db, workspace.id, playbook_id)
     if playbook is not None:
         await db.delete(playbook)

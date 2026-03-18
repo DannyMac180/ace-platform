@@ -200,7 +200,9 @@ class TestWorkspaceSyncRoutesIntegration:
         assert len(second_payload["events"]) == 1
         synced_playbook = second_payload["events"][0]["payload"]
         assert len(synced_playbook["traces"]) == 1
-        assert synced_playbook["traces"][0]["task_description"] == "Validated the workspace sync path"
+        assert (
+            synced_playbook["traces"][0]["task_description"] == "Validated the workspace sync path"
+        )
 
     async def test_push_updates_playbook_and_rejects_stale_snapshot(
         self,
@@ -216,13 +218,18 @@ class TestWorkspaceSyncRoutesIntegration:
 
         create_response = await client.post(
             "/playbooks",
-            json={"name": "Before Sync Push", "initial_content": "[pb-2] helpful=1 harmful=0 :: Seed"},
+            json={
+                "name": "Before Sync Push",
+                "initial_content": "[pb-2] helpful=1 harmful=0 :: Seed",
+            },
             headers=headers,
         )
         assert create_response.status_code == 201
         playbook_id = create_response.json()["id"]
 
-        pull_response = await client.get(f"/v1/workspaces/{workspace_id}/sync/pull", headers=headers)
+        pull_response = await client.get(
+            f"/v1/workspaces/{workspace_id}/sync/pull", headers=headers
+        )
         assert pull_response.status_code == 200
         original_event = pull_response.json()["events"][0]
         original_snapshot = original_event["payload"]

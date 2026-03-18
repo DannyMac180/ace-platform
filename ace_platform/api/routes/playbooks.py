@@ -51,8 +51,6 @@ from ace_platform.core.playbooks import (
     import_playbook_bundle as ingest_portable_playbook_bundle,
 )
 from ace_platform.core.rate_limit import rate_limit_outcome
-from ace_platform.core.workspace_sync import record_playbook_tombstone
-from ace_platform.core.workspaces import get_personal_workspace_for_user
 from ace_platform.core.validation import (
     MAX_NOTES_SIZE,
     MAX_PLAYBOOK_CONTENT_SIZE,
@@ -61,6 +59,8 @@ from ace_platform.core.validation import (
     MAX_REASONING_TRACE_SIZE,
     MAX_TASK_DESCRIPTION_SIZE,
 )
+from ace_platform.core.workspace_sync import record_playbook_tombstone
+from ace_platform.core.workspaces import get_personal_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,

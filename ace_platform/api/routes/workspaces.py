@@ -217,7 +217,11 @@ class WorkspaceSyncPushEventRequest(BaseModel):
             raise ValueError("payload is required for upsert events")
         if self.operation == "delete" and self.payload is not None:
             raise ValueError("payload must be omitted for delete events")
-        if self.payload is not None and self.payload.id is not None and self.payload.id != self.entity_id:
+        if (
+            self.payload is not None
+            and self.payload.id is not None
+            and self.payload.id != self.entity_id
+        ):
             raise ValueError("payload.id must match entity_id")
         return self
 
