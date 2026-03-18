@@ -9,7 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -45,17 +45,24 @@ from ace_platform.core.workspace_sync import (
 )
 from ace_platform.core.workspaces import (
     MANAGER_ROLES,
+    accept_workspace_invitation,
     add_workspace_member,
     bootstrap_workspace_for_user,
     create_workspace,
+    create_workspace_invitation,
     delete_workspace,
     get_default_workspace_for_user,
+    get_workspace_by_id,
     get_workspace_for_user,
+    get_workspace_invitation_by_id,
     get_workspace_membership,
     get_workspace_membership_by_id,
+    list_user_workspace_invitations,
     list_user_workspaces,
+    list_workspace_invitations,
     list_workspace_memberships,
     remove_workspace_membership,
+    revoke_workspace_invitation,
     update_workspace,
     update_workspace_membership_role,
 )
@@ -69,6 +76,7 @@ from ace_platform.db.models import (
     WorkspaceDeploymentMode,
     WorkspaceInferenceMode,
     WorkspaceInferenceProvider,
+    WorkspaceInvitation,
     WorkspacePlan,
     WorkspaceRole,
 )
@@ -159,6 +167,26 @@ class WorkspaceMembershipResponse(BaseModel):
     user_id: UUID
     user_email: str
     role: WorkspaceRole
+
+
+class WorkspaceInvitationCreateRequest(BaseModel):
+    """Request body for inviting a workspace member."""
+
+    email: EmailStr = Field(..., max_length=255)
+    role: WorkspaceRole = Field(default=WorkspaceRole.MEMBER)
+
+
+class WorkspaceInvitationResponse(BaseModel):
+    """Serialized workspace invitation."""
+
+    id: UUID
+    workspace_id: UUID
+    workspace_name: str
+    invited_email: str
+    role: WorkspaceRole
+    invited_by_user_id: UUID
+    invited_by_email: str
+    created_at: datetime
 
 
 class WorkspaceBootstrapResponse(BaseModel):
@@ -448,6 +476,20 @@ def _serialize_membership(membership) -> WorkspaceMembershipResponse:
     )
 
 
+def _serialize_invitation(invitation: WorkspaceInvitation) -> WorkspaceInvitationResponse:
+    """Serialize a workspace invitation."""
+    return WorkspaceInvitationResponse(
+        id=invitation.id,
+        workspace_id=invitation.workspace_id,
+        workspace_name=invitation.workspace.name,
+        invited_email=invitation.invited_email,
+        role=invitation.role,
+        invited_by_user_id=invitation.invited_by_user_id,
+        invited_by_email=invitation.invited_by_user.email,
+        created_at=invitation.created_at,
+    )
+
+
 async def _resolve_entitlements_workspace(
     db: AsyncSession,
     current_user: User,
@@ -537,6 +579,17 @@ def _ensure_manager(membership) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Workspace owner or admin role required",
+        )
+
+
+def _ensure_owner(membership) -> None:
+    """Require an owner workspace role."""
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    if membership.role != WorkspaceRole.OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace owner role required",
         )
 
 
@@ -897,7 +950,7 @@ async def delete_workspace_membership_route(
 ) -> None:
     """Remove a member from a workspace."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
+    _ensure_owner(membership)
 
     target_membership = await get_workspace_membership_by_id(db, workspace_id, membership_id)
     if target_membership is None:
@@ -909,6 +962,166 @@ async def delete_workspace_membership_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     await db.commit()
+
+
+@router.get(
+    "/workspaces/{workspace_id}/invitations",
+    response_model=list[WorkspaceInvitationResponse],
+)
+@router.get(
+    "/v1/workspaces/{workspace_id}/invitations",
+    response_model=list[WorkspaceInvitationResponse],
+    include_in_schema=False,
+)
+async def list_workspace_invitations_route(
+    workspace_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[WorkspaceInvitationResponse]:
+    """List pending invitations for a workspace."""
+    membership = await _require_workspace_membership(db, workspace_id, current_user)
+    _ensure_owner(membership)
+    invitations = await list_workspace_invitations(db, workspace_id)
+    return [_serialize_invitation(invitation) for invitation in invitations]
+
+
+@router.post(
+    "/workspaces/{workspace_id}/invitations",
+    response_model=WorkspaceInvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@router.post(
+    "/v1/workspaces/{workspace_id}/invitations",
+    response_model=WorkspaceInvitationResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+)
+async def create_workspace_invitation_route(
+    workspace_id: UUID,
+    payload: WorkspaceInvitationCreateRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> WorkspaceInvitationResponse:
+    """Create a pending invitation for a workspace."""
+    membership = await _require_workspace_membership(db, workspace_id, current_user)
+    _ensure_owner(membership)
+
+    workspace = await get_workspace_by_id(db, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    try:
+        invitation = await create_workspace_invitation(
+            db,
+            workspace=workspace,
+            invited_by_user=current_user,
+            invited_email=payload.email,
+            role=payload.role,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+    refreshed = await get_workspace_invitation_by_id(db, workspace_id, invitation.id)
+    if refreshed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+    return _serialize_invitation(refreshed)
+
+
+@router.delete(
+    "/workspaces/{workspace_id}/invitations/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+@router.delete(
+    "/v1/workspaces/{workspace_id}/invitations/{invitation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    include_in_schema=False,
+)
+async def delete_workspace_invitation_route(
+    workspace_id: UUID,
+    invitation_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> None:
+    """Cancel a pending workspace invitation."""
+    membership = await _require_workspace_membership(db, workspace_id, current_user)
+    _ensure_owner(membership)
+
+    invitation = await get_workspace_invitation_by_id(db, workspace_id, invitation_id)
+    if invitation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    try:
+        await revoke_workspace_invitation(
+            db,
+            invitation=invitation,
+            revoked_by_user_id=current_user.id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+
+
+@router.get(
+    "/workspace-invitations",
+    response_model=list[WorkspaceInvitationResponse],
+)
+@router.get(
+    "/v1/workspace-invitations",
+    response_model=list[WorkspaceInvitationResponse],
+    include_in_schema=False,
+)
+async def list_user_workspace_invitations_route(
+    db: DbSession,
+    current_user: CurrentUser,
+) -> list[WorkspaceInvitationResponse]:
+    """List pending invitations addressed to the current user."""
+    invitations = await list_user_workspace_invitations(db, current_user.email)
+    return [_serialize_invitation(invitation) for invitation in invitations]
+
+
+@router.post(
+    "/workspace-invitations/{invitation_id}/accept",
+    response_model=WorkspaceMembershipResponse,
+)
+@router.post(
+    "/v1/workspace-invitations/{invitation_id}/accept",
+    response_model=WorkspaceMembershipResponse,
+    include_in_schema=False,
+)
+async def accept_workspace_invitation_route(
+    invitation_id: UUID,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> WorkspaceMembershipResponse:
+    """Accept a pending invitation for the authenticated user."""
+    result = await db.execute(
+        select(WorkspaceInvitation)
+        .where(
+            WorkspaceInvitation.id == invitation_id,
+            WorkspaceInvitation.invited_email == current_user.email.lower(),
+        )
+        .options(
+            selectinload(WorkspaceInvitation.workspace),
+            selectinload(WorkspaceInvitation.invited_by_user),
+        )
+    )
+    invitation = result.scalar_one_or_none()
+    if invitation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invitation not found")
+
+    try:
+        membership = await accept_workspace_invitation(
+            db,
+            invitation=invitation,
+            user=current_user,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+    return _serialize_membership(membership)
 
 
 @router.get(

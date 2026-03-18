@@ -36,6 +36,10 @@ import type {
   User,
   VersionCreate,
   WorkspaceEntitlements,
+  WorkspaceInvitation,
+  WorkspaceMembership,
+  WorkspaceRole,
+  WorkspaceSummary,
 } from '../types';
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
@@ -396,6 +400,52 @@ export const hostedEvalRunsApi = {
 };
 
 export const workspacesApi = {
+  list: async (): Promise<WorkspaceSummary[]> => {
+    const response = await api.get<WorkspaceSummary[]>('/workspaces');
+    return response.data;
+  },
+
+  listMemberships: async (workspaceId: string): Promise<WorkspaceMembership[]> => {
+    const response = await api.get<WorkspaceMembership[]>(`/workspaces/${workspaceId}/memberships`);
+    return response.data;
+  },
+
+  removeMembership: async (workspaceId: string, membershipId: string): Promise<void> => {
+    await api.delete(`/workspaces/${workspaceId}/memberships/${membershipId}`);
+  },
+
+  listInvitations: async (workspaceId: string): Promise<WorkspaceInvitation[]> => {
+    const response = await api.get<WorkspaceInvitation[]>(`/workspaces/${workspaceId}/invitations`);
+    return response.data;
+  },
+
+  createInvitation: async (
+    workspaceId: string,
+    data: { email: string; role: WorkspaceRole }
+  ): Promise<WorkspaceInvitation> => {
+    const response = await api.post<WorkspaceInvitation>(
+      `/workspaces/${workspaceId}/invitations`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteInvitation: async (workspaceId: string, invitationId: string): Promise<void> => {
+    await api.delete(`/workspaces/${workspaceId}/invitations/${invitationId}`);
+  },
+
+  listMyInvitations: async (): Promise<WorkspaceInvitation[]> => {
+    const response = await api.get<WorkspaceInvitation[]>('/workspace-invitations');
+    return response.data;
+  },
+
+  acceptInvitation: async (invitationId: string): Promise<WorkspaceMembership> => {
+    const response = await api.post<WorkspaceMembership>(
+      `/workspace-invitations/${invitationId}/accept`
+    );
+    return response.data;
+  },
+
   getEntitlements: async (): Promise<WorkspaceEntitlements> => {
     const response = await api.get<WorkspaceEntitlements>(
       `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/entitlements`

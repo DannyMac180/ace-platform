@@ -69,6 +69,10 @@ class TestWorkspaceRoutesUnit:
         assert "/workspaces/{workspace_id}" in routes
         assert "/workspaces/{workspace_id}/memberships" in routes
         assert "/workspaces/{workspace_id}/memberships/{membership_id}" in routes
+        assert "/workspaces/{workspace_id}/invitations" in routes
+        assert "/workspaces/{workspace_id}/invitations/{invitation_id}" in routes
+        assert "/workspace-invitations" in routes
+        assert "/workspace-invitations/{invitation_id}/accept" in routes
         assert "/v1/workspaces/{workspace_id}/sync/pull" in routes
         assert "/v1/workspaces/{workspace_id}/sync/push" in routes
 
@@ -181,6 +185,7 @@ class TestWorkspaceRoutesIntegration:
         )
         async_session.add(user)
         await async_session.commit()
+        await async_session.refresh(user)
         return {"user": user, "token": create_access_token(user.id)}
 
     async def test_register_bootstraps_personal_workspace(self, client):
@@ -384,3 +389,118 @@ class TestWorkspaceRoutesIntegration:
             "leave at least one user without any workspace"
             in delete_workspace_response.json()["error"]["message"]
         )
+
+    async def test_workspace_invitation_acceptance_and_owner_removal(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="owner-invite@example.com")
+
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+        assert (
+            await client.post("/workspaces/bootstrap", headers=owner_headers)
+        ).status_code == 200
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Team Invite Flow", "plan": "team", "seat_limit": 3},
+            headers=owner_headers,
+        )
+        assert create_response.status_code == 201
+        workspace_id = create_response.json()["id"]
+
+        invite_response = await client.post(
+            f"/workspaces/{workspace_id}/invitations",
+            json={"email": "pending-invite@example.com", "role": "member"},
+            headers=owner_headers,
+        )
+        assert invite_response.status_code == 201
+        invitation_id = invite_response.json()["id"]
+
+        pending_user = await self._create_user(async_session, email="pending-invite@example.com")
+        pending_headers = {"Authorization": f"Bearer {pending_user['token']}"}
+        assert (
+            await client.post("/workspaces/bootstrap", headers=pending_headers)
+        ).status_code == 200
+
+        my_invitations_response = await client.get(
+            "/workspace-invitations",
+            headers=pending_headers,
+        )
+        assert my_invitations_response.status_code == 200
+        assert [item["id"] for item in my_invitations_response.json()] == [invitation_id]
+
+        accept_response = await client.post(
+            f"/workspace-invitations/{invitation_id}/accept",
+            headers=pending_headers,
+        )
+        assert accept_response.status_code == 200
+        assert accept_response.json()["role"] == "member"
+        membership_id = accept_response.json()["id"]
+
+        memberships_response = await client.get(
+            f"/workspaces/{workspace_id}/memberships",
+            headers=owner_headers,
+        )
+        assert memberships_response.status_code == 200
+        assert len(memberships_response.json()) == 2
+
+        remove_response = await client.delete(
+            f"/workspaces/{workspace_id}/memberships/{membership_id}",
+            headers=owner_headers,
+        )
+        assert remove_response.status_code == 204
+
+    async def test_non_owner_cannot_invite_or_remove_members(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="owner-guard@example.com")
+        teammate = await self._create_user(async_session, email="teammate-guard@example.com")
+
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+        teammate_headers = {"Authorization": f"Bearer {teammate['token']}"}
+
+        assert (
+            await client.post("/workspaces/bootstrap", headers=owner_headers)
+        ).status_code == 200
+        assert (
+            await client.post("/workspaces/bootstrap", headers=teammate_headers)
+        ).status_code == 200
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Team Guard", "plan": "team", "seat_limit": 3},
+            headers=owner_headers,
+        )
+        assert create_response.status_code == 201
+        workspace_id = create_response.json()["id"]
+
+        invite_response = await client.post(
+            f"/workspaces/{workspace_id}/invitations",
+            json={"email": "teammate-guard@example.com", "role": "member"},
+            headers=owner_headers,
+        )
+        assert invite_response.status_code == 201
+        invitation_id = invite_response.json()["id"]
+
+        accept_response = await client.post(
+            f"/workspace-invitations/{invitation_id}/accept",
+            headers=teammate_headers,
+        )
+        assert accept_response.status_code == 200
+
+        forbidden_invite = await client.post(
+            f"/workspaces/{workspace_id}/invitations",
+            json={"email": "blocked@example.com", "role": "member"},
+            headers=teammate_headers,
+        )
+        assert forbidden_invite.status_code == 403
+
+        forbidden_remove = await client.delete(
+            f"/workspaces/{workspace_id}/memberships/{owner['user'].id}",
+            headers=teammate_headers,
+        )
+        assert forbidden_remove.status_code == 403

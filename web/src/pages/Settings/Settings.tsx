@@ -1,9 +1,15 @@
 import { useState, useEffect, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { accountApi, api, authApi } from '../../utils/api';
+import { accountApi, api, authApi, workspacesApi } from '../../utils/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import type {
+  WorkspaceInvitation,
+  WorkspaceMembership,
+  WorkspaceRole,
+  WorkspaceSummary,
+} from '../../types';
 import styles from './Settings.module.css';
 
 interface LinkedAccounts {
@@ -16,6 +22,16 @@ interface OAuthProviders {
   google: boolean;
   github: boolean;
 }
+
+interface InviteDraft {
+  email: string;
+  role: WorkspaceRole;
+}
+
+const DEFAULT_INVITE_DRAFT: InviteDraft = {
+  email: '',
+  role: 'member',
+};
 
 export function Settings() {
   const { user, refreshUser, logout } = useAuth();
@@ -38,6 +54,13 @@ export function Settings() {
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [workspaceLoading, setWorkspaceLoading] = useState(true);
+  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [membershipsByWorkspace, setMembershipsByWorkspace] = useState<Record<string, WorkspaceMembership[]>>({});
+  const [invitationsByWorkspace, setInvitationsByWorkspace] = useState<Record<string, WorkspaceInvitation[]>>({});
+  const [pendingInvitations, setPendingInvitations] = useState<WorkspaceInvitation[]>([]);
+  const [inviteDrafts, setInviteDrafts] = useState<Record<string, InviteDraft>>({});
+  const [workspaceAction, setWorkspaceAction] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,6 +81,141 @@ export function Settings() {
     };
     fetchData();
   }, []);
+
+  const loadWorkspaceData = async () => {
+    setWorkspaceLoading(true);
+
+    try {
+      const [allWorkspaces, myInvitations] = await Promise.all([
+        workspacesApi.list(),
+        workspacesApi.listMyInvitations(),
+      ]);
+      const teamWorkspaces = allWorkspaces.filter((workspace) => workspace.plan !== 'personal');
+      const membershipEntries = await Promise.all(
+        teamWorkspaces.map(async (workspace) => [
+          workspace.id,
+          await workspacesApi.listMemberships(workspace.id),
+        ] as const)
+      );
+      const invitationEntries = await Promise.all(
+        teamWorkspaces.map(async (workspace) => {
+          if (workspace.current_user_role !== 'owner') {
+            return [workspace.id, []] as const;
+          }
+          return [workspace.id, await workspacesApi.listInvitations(workspace.id)] as const;
+        })
+      );
+
+      setWorkspaces(teamWorkspaces);
+      setMembershipsByWorkspace(Object.fromEntries(membershipEntries));
+      setInvitationsByWorkspace(Object.fromEntries(invitationEntries));
+      setPendingInvitations(myInvitations);
+      setInviteDrafts((prev) =>
+        Object.fromEntries(
+          teamWorkspaces.map((workspace) => [
+            workspace.id,
+            prev[workspace.id] ?? { ...DEFAULT_INVITE_DRAFT },
+          ])
+        )
+      );
+    } catch {
+      setError('Failed to load workspace membership data. Please refresh and try again.');
+    } finally {
+      setWorkspaceLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadWorkspaceData();
+  }, []);
+
+  const updateInviteDraft = (
+    workspaceId: string,
+    updates: Partial<InviteDraft>
+  ) => {
+    setInviteDrafts((prev) => ({
+      ...prev,
+      [workspaceId]: {
+        ...(prev[workspaceId] ?? DEFAULT_INVITE_DRAFT),
+        ...updates,
+      },
+    }));
+  };
+
+  const handleCreateInvitation = async (workspaceId: string) => {
+    const draft = inviteDrafts[workspaceId] ?? DEFAULT_INVITE_DRAFT;
+    if (!draft.email.trim()) {
+      setError('Invitation email is required.');
+      return;
+    }
+
+    setWorkspaceAction(`invite:${workspaceId}`);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await workspacesApi.createInvitation(workspaceId, {
+        email: draft.email.trim(),
+        role: draft.role,
+      });
+      setSuccess(`Invitation sent to ${draft.email.trim().toLowerCase()}.`);
+      updateInviteDraft(workspaceId, { ...DEFAULT_INVITE_DRAFT });
+      await loadWorkspaceData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to send invitation. Please try again.'));
+    } finally {
+      setWorkspaceAction(null);
+    }
+  };
+
+  const handleCancelInvitation = async (workspaceId: string, invitation: WorkspaceInvitation) => {
+    setWorkspaceAction(`cancel:${invitation.id}`);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await workspacesApi.deleteInvitation(workspaceId, invitation.id);
+      setSuccess(`Cancelled the invitation for ${invitation.invited_email}.`);
+      await loadWorkspaceData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to cancel invitation. Please try again.'));
+    } finally {
+      setWorkspaceAction(null);
+    }
+  };
+
+  const handleAcceptInvitation = async (invitation: WorkspaceInvitation) => {
+    setWorkspaceAction(`accept:${invitation.id}`);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await workspacesApi.acceptInvitation(invitation.id);
+      setSuccess(`Joined ${invitation.workspace_name}.`);
+      await loadWorkspaceData();
+      await refreshUser();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to accept invitation. Please try again.'));
+    } finally {
+      setWorkspaceAction(null);
+    }
+  };
+
+  const handleRemoveMember = async (workspaceId: string, membership: WorkspaceMembership) => {
+    setWorkspaceAction(`remove:${membership.id}`);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await workspacesApi.removeMembership(workspaceId, membership.id);
+      setSuccess(`Removed ${membership.user_email} from the workspace.`);
+      await loadWorkspaceData();
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Failed to remove member. Please try again.'));
+    } finally {
+      setWorkspaceAction(null);
+    }
+  };
 
   const handleSetPassword = async (newPassword: string) => {
     const res = await authApi.setPassword(newPassword);
@@ -198,6 +356,9 @@ export function Settings() {
   const showOAuthSection = providers && (providers.google || providers.github);
   const hasSubscription = user?.subscription_tier && user?.subscription_status === 'active';
   const hasPassword = linkedAccounts?.has_password ?? true;
+  const teamWorkspaces = workspaces;
+  const showWorkspaceSection =
+    workspaceLoading || pendingInvitations.length > 0 || teamWorkspaces.length > 0;
 
   return (
     <div className={styles.container}>
@@ -259,6 +420,175 @@ export function Settings() {
           )}
         </div>
       </section>
+
+      {showWorkspaceSection && (
+        <section className={styles.section}>
+          <h2>Workspace Members</h2>
+          <p className={styles.sectionDescription}>
+            Manage team workspace invitations, accept inbound invites, and remove members when needed.
+          </p>
+
+          {workspaceLoading ? (
+            <div className={styles.card}>
+              <div className={styles.loading}>Loading workspace membership data...</div>
+            </div>
+          ) : (
+            <div className={styles.workspaceStack}>
+              {pendingInvitations.length > 0 && (
+                <div className={styles.card}>
+                  <div className={styles.workspaceSectionHeader}>
+                    <div>
+                      <h3>Pending invitations for you</h3>
+                      <p>Accept an invite with the account that matches the invited email.</p>
+                    </div>
+                  </div>
+                  <div className={styles.workspaceRows}>
+                    {pendingInvitations.map((invitation) => (
+                      <div key={invitation.id} className={styles.workspaceRow}>
+                        <div className={styles.workspaceRowBody}>
+                          <strong>{invitation.workspace_name}</strong>
+                          <span>
+                            {invitation.invited_by_email} invited {invitation.invited_email} as {invitation.role}
+                          </span>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => void handleAcceptInvitation(invitation)}
+                          isLoading={workspaceAction === `accept:${invitation.id}`}
+                        >
+                          Accept
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {teamWorkspaces.map((workspace) => {
+                const memberships = membershipsByWorkspace[workspace.id] ?? [];
+                const invitations = invitationsByWorkspace[workspace.id] ?? [];
+                const draft = inviteDrafts[workspace.id] ?? DEFAULT_INVITE_DRAFT;
+                const isOwner = workspace.current_user_role === 'owner';
+
+                return (
+                  <div key={workspace.id} className={styles.card}>
+                    <div className={styles.workspaceSectionHeader}>
+                      <div>
+                        <h3>{workspace.name}</h3>
+                        <p>
+                          {workspace.plan} workspace • your role: {workspace.current_user_role} • {workspace.member_count} members
+                        </p>
+                      </div>
+                      <span className={styles.badge}>{workspace.plan}</span>
+                    </div>
+
+                    {isOwner && (
+                      <form
+                        className={styles.inviteForm}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleCreateInvitation(workspace.id);
+                        }}
+                      >
+                        <Input
+                          label="Invite by email"
+                          name={`invite-email-${workspace.id}`}
+                          type="email"
+                          value={draft.email}
+                          onChange={(event) =>
+                            updateInviteDraft(workspace.id, { email: event.target.value })
+                          }
+                          placeholder="teammate@example.com"
+                          required
+                        />
+                        <label className={styles.inlineField}>
+                          Role
+                          <select
+                            value={draft.role}
+                            onChange={(event) =>
+                              updateInviteDraft(workspace.id, {
+                                role: event.target.value as WorkspaceRole,
+                              })
+                            }
+                          >
+                            <option value="member">Member</option>
+                            <option value="reviewer">Reviewer</option>
+                            <option value="admin">Admin</option>
+                            <option value="owner">Owner</option>
+                          </select>
+                        </label>
+                        <Button
+                          type="submit"
+                          isLoading={workspaceAction === `invite:${workspace.id}`}
+                          disabled={!draft.email.trim()}
+                        >
+                          Send invite
+                        </Button>
+                      </form>
+                    )}
+
+                    <div className={styles.workspaceBlock}>
+                      <h4>Members</h4>
+                      <div className={styles.workspaceRows}>
+                        {memberships.map((membership) => {
+                          const isSelf =
+                            membership.user_email.toLowerCase() === (user?.email ?? '').toLowerCase();
+                          return (
+                            <div key={`${workspace.id}:${membership.id}`} className={styles.workspaceRow}>
+                              <div className={styles.workspaceRowBody}>
+                                <strong>{membership.user_email}</strong>
+                                <span>{membership.role}{isSelf ? ' • you' : ''}</span>
+                              </div>
+                              {isOwner && !isSelf ? (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => void handleRemoveMember(workspace.id, membership)}
+                                  isLoading={workspaceAction === `remove:${membership.id}`}
+                                >
+                                  Remove
+                                </Button>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {isOwner && (
+                      <div className={styles.workspaceBlock}>
+                        <h4>Pending invites</h4>
+                        {invitations.length > 0 ? (
+                          <div className={styles.workspaceRows}>
+                            {invitations.map((invitation) => (
+                              <div key={invitation.id} className={styles.workspaceRow}>
+                                <div className={styles.workspaceRowBody}>
+                                  <strong>{invitation.invited_email}</strong>
+                                  <span>{invitation.role} • invited by {invitation.invited_by_email}</span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  onClick={() => void handleCancelInvitation(workspace.id, invitation)}
+                                  isLoading={workspaceAction === `cancel:${invitation.id}`}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className={styles.emptyState}>No pending invitations.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Linked Accounts Section */}
       {showOAuthSection && (

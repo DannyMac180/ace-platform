@@ -48,6 +48,124 @@
   padding: 1.5rem;
 }
 
+.workspaceStack {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.workspaceSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.workspaceSectionHeader h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.workspaceSectionHeader p {
+  margin: 0.35rem 0 0;
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+.inviteForm {
+  display: grid;
+  grid-template-columns: minmax(0, 1.8fr) minmax(140px, 0.8fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 1rem;
+}
+
+.inlineField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.inlineField select {
+  min-height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  padding: 0 0.75rem;
+  font-family: var(--font-body);
+}
+
+.workspaceBlock {
+  margin-top: 1rem;
+}
+
+.workspaceBlock h4 {
+  margin: 0 0 0.75rem;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.workspaceRows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.workspaceRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.workspaceRowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.workspaceRowBody strong {
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.workspaceRowBody span {
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+}
+
+.emptyState {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 0.9rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
 .field {
   display: flex;
   justify-content: space-between;
@@ -396,4 +514,33 @@
   color: var(--text-secondary);
   font-size: 0.9rem;
   margin: 0;
+}
+
+@media (max-width: 720px) {
+  .container {
+    padding: 1.25rem;
+  }
+
+  .inviteForm {
+    grid-template-columns: 1fr;
+  }
+
+  .workspaceSectionHeader,
+  .workspaceRow,
+  .dangerRow,
+  .provider,
+  .field {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .field,
+  .provider {
+    gap: 0.75rem;
+  }
+
+  .fieldActions,
+  .verificationStatus {
+    flex-wrap: wrap;
+  }
 }
