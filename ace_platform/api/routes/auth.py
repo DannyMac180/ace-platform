@@ -35,6 +35,7 @@ from ace_platform.core.audit import (
     audit_email_verified,
     audit_login_failure,
     audit_login_success,
+    audit_logout,
     audit_password_change,
     audit_password_reset_complete,
     audit_password_reset_request,
@@ -84,6 +85,7 @@ from ace_platform.db.models import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+hosted_router = APIRouter(prefix="/v1", tags=["Authentication"])
 
 
 # =============================================================================
@@ -388,6 +390,15 @@ async def register(
         429: {"description": "Rate limit exceeded or too many failed attempts"},
     },
 )
+@hosted_router.post(
+    "/auth/login",
+    response_model=TokenResponse,
+    summary="Login with email and password",
+    responses={
+        401: {"description": "Invalid credentials"},
+        429: {"description": "Rate limit exceeded or too many failed attempts"},
+    },
+)
 async def login(
     request: UserLoginRequest,
     http_request: Request,
@@ -465,7 +476,42 @@ async def login(
 
 
 @router.post(
+    "/logout",
+    response_model=MessageResponse,
+    summary="Logout current user",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@hosted_router.post(
+    "/auth/logout",
+    response_model=MessageResponse,
+    summary="Logout current user",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def logout(
+    request: Request,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Record logout for the authenticated user."""
+    await audit_logout(db, user.id, request)
+    await db.commit()
+    return MessageResponse(message="Logged out")
+
+
+@router.post(
     "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh access token",
+    responses={
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
+@hosted_router.post(
+    "/auth/refresh",
     response_model=TokenResponse,
     summary="Refresh access token",
     responses={
@@ -511,6 +557,14 @@ async def refresh_token(
 
 
 @router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Get current user info",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@hosted_router.get(
     "/me",
     response_model=UserResponse,
     summary="Get current user info",

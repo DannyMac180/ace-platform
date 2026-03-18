@@ -306,8 +306,13 @@ class TestAuthRoutesIntegration:
         routes = [route.path for route in app.routes]
         assert "/auth/register" in routes
         assert "/auth/login" in routes
+        assert "/auth/logout" in routes
         assert "/auth/refresh" in routes
         assert "/auth/me" in routes
+        assert "/v1/auth/login" in routes
+        assert "/v1/auth/logout" in routes
+        assert "/v1/auth/refresh" in routes
+        assert "/v1/me" in routes
 
     def test_register_missing_fields(self, client):
         """Test registration with missing fields."""
@@ -356,9 +361,29 @@ class TestAuthRoutesIntegration:
         response = client.post("/auth/login", json={})
         assert response.status_code == 422
 
+    def test_v1_login_missing_fields(self, client):
+        """Test hosted login alias with missing fields."""
+        response = client.post("/v1/auth/login", json={})
+        assert response.status_code == 422
+
+    def test_logout_without_auth(self, client):
+        """Test logout requires authentication."""
+        response = client.post("/auth/logout")
+        assert response.status_code == 401
+
+    def test_v1_logout_without_auth(self, client):
+        """Test hosted logout alias requires authentication."""
+        response = client.post("/v1/auth/logout")
+        assert response.status_code == 401
+
     def test_me_without_auth(self, client):
         """Test /me endpoint without authentication."""
         response = client.get("/auth/me")
+        assert response.status_code == 401
+
+    def test_v1_me_without_auth(self, client):
+        """Test hosted /me alias without authentication."""
+        response = client.get("/v1/me")
         assert response.status_code == 401
 
     def test_me_with_invalid_token(self, client):
@@ -369,15 +394,36 @@ class TestAuthRoutesIntegration:
         )
         assert response.status_code == 401
 
+    def test_v1_me_with_invalid_token(self, client):
+        """Test hosted /me alias with invalid token."""
+        response = client.get(
+            "/v1/me",
+            headers={"Authorization": "Bearer invalid.token"},
+        )
+        assert response.status_code == 401
+
     def test_refresh_missing_token(self, client):
         """Test refresh without token."""
         response = client.post("/auth/refresh", json={})
+        assert response.status_code == 422
+
+    def test_v1_refresh_missing_token(self, client):
+        """Test hosted refresh alias without token."""
+        response = client.post("/v1/auth/refresh", json={})
         assert response.status_code == 422
 
     def test_refresh_invalid_token(self, client):
         """Test refresh with invalid token."""
         response = client.post(
             "/auth/refresh",
+            json={"refresh_token": "invalid.token"},
+        )
+        assert response.status_code == 401
+
+    def test_v1_refresh_invalid_token(self, client):
+        """Test hosted refresh alias with invalid token."""
+        response = client.post(
+            "/v1/auth/refresh",
             json={"refresh_token": "invalid.token"},
         )
         assert response.status_code == 401
