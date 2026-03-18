@@ -28,6 +28,7 @@ from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -446,6 +447,12 @@ async def _restore_playbooks(
             name=payload["name"],
             description=payload["description"],
             status=PlaybookStatus(payload["status"]),
+            review_status=PlaybookReviewStatus(
+                payload.get("review_status", PlaybookReviewStatus.DRAFT.value)
+            ),
+            review_status_updated_at=_parse_datetime(payload.get("review_status_updated_at"))
+            or datetime.now(UTC),
+            review_history=list(payload.get("review_history") or []),
             source=PlaybookSource(payload["source"]),
             created_at=_parse_datetime(payload["created_at"]) or datetime.now(UTC),
             updated_at=_parse_datetime(payload["updated_at"]) or datetime.now(UTC),
