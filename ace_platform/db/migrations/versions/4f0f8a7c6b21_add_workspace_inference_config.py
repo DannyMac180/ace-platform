@@ -29,7 +29,7 @@ def upgrade() -> None:
         """
         UPDATE workspaces
         SET inference_config = CASE
-            WHEN deployment_mode = 'cloud' THEN
+            WHEN deployment_mode = 'CLOUD' THEN
                 '{"mode":"managed_provider","provider":"openai"}'::jsonb
             ELSE
                 '{"mode":"byo_provider","provider":"openai"}'::jsonb
