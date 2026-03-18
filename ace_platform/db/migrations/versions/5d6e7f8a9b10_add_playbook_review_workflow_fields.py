@@ -65,8 +65,8 @@ def upgrade() -> None:
         """
         UPDATE playbooks
         SET review_status = CASE
-            WHEN status = 'archived' THEN 'archived'
-            ELSE 'approved'
+            WHEN lower(status::text) = 'archived' THEN 'archived'::playbookreviewstatus
+            ELSE 'approved'::playbookreviewstatus
         END,
             review_status_updated_at = COALESCE(updated_at, created_at, now()),
             review_history = '[]'::jsonb
