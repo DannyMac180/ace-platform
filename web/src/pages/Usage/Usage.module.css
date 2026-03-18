@@ -201,6 +201,12 @@
   background: linear-gradient(180deg, #f59e0b, #d97706);
 }
 
+.bar.usage {
+  width: 100%;
+  max-width: 40px;
+  background: linear-gradient(180deg, var(--accent-primary), var(--gold-primary));
+}
+
 .bar:hover {
   opacity: 0.8;
   box-shadow: 0 0 12px currentColor;
@@ -255,6 +261,54 @@
 
 .legendDot.running {
   background: #f59e0b;
+}
+
+.legendDot.usage {
+  background: var(--accent-primary);
+}
+
+/* Account Summary */
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.accountCard {
+  min-height: 220px;
+}
+
+.accountList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.accountMetric {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.accountMetric:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.accountLabel {
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.accountValue {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: right;
 }
 
 /* Playbook List */
