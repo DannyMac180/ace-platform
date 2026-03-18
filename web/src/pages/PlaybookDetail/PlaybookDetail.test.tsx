@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getVersions: vi.fn(),
   getOutcomes: vi.fn(),
   getEvolutions: vi.fn(),
+  triggerHostedEval: vi.fn(),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -29,6 +30,9 @@ vi.mock('../../utils/api', () => ({
     getVersions: mocks.getVersions,
     getOutcomes: mocks.getOutcomes,
     getEvolutions: mocks.getEvolutions,
+  },
+  hostedEvalRunsApi: {
+    trigger: mocks.triggerHostedEval,
   },
 }));
 

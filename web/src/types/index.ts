@@ -116,6 +116,35 @@ export interface EvolutionJob {
   completed_at: string | null;
 }
 
+export interface HostedEvalRunVersion {
+  id: string;
+  version_number: number;
+  created_at: string;
+  diff_summary: string | null;
+}
+
+export interface HostedEvalRun {
+  id: string;
+  workspace_id: string;
+  playbook_id: string;
+  playbook_name: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  outcomes_processed: number;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  ace_core_version: string | null;
+  token_totals: Record<string, unknown> | null;
+  has_changes: boolean | null;
+  from_version: HostedEvalRunVersion | null;
+  to_version: HostedEvalRunVersion | null;
+}
+
+export interface TriggerHostedEvalRunResponse extends HostedEvalRun {
+  is_new: boolean;
+}
+
 export interface UsageSummary {
   start_date: string;
   end_date: string;

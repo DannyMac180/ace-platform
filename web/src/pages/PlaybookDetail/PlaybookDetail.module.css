@@ -670,6 +670,7 @@
 .evolutionFooter {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-sm);
   font-size: 0.8125rem;
   color: var(--text-tertiary);
@@ -677,6 +678,26 @@
   padding-top: var(--space-md);
   border-top: 1px solid var(--border-subtle);
   font-style: italic;
+}
+
+.evolutionMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.evolutionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--gold-primary);
+  text-decoration: none;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.evolutionLink:hover {
+  color: var(--gold-dark);
 }
 
 /* Empty & Loading States */

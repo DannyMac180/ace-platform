@@ -1,25 +1,31 @@
-"""Workspace service and entitlement routes."""
+"""Workspace, sync, hosted eval, and entitlement routes."""
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from ace_core.portability import PortablePlaybook
-from ace_platform.api.auth import PaidUser, RequiredUser
+from ace_platform.api.auth import PaidUser, RequiredUser, require_capability
 from ace_platform.api.deps import get_db
 from ace_platform.core.entitlements import (
     WorkspaceEntitlementsSnapshot,
     get_workspace_id,
     resolve_workspace_entitlements,
+)
+from ace_platform.core.limits import (
+    check_can_evolve,
+    get_effective_tier_for_limits,
+    is_user_trialing,
 )
 from ace_platform.core.workspace_sync import (
     WorkspaceSyncConflictError,
@@ -46,6 +52,10 @@ from ace_platform.core.workspaces import (
     update_workspace_membership_role,
 )
 from ace_platform.db.models import (
+    EvolutionJob,
+    EvolutionJobStatus,
+    Playbook,
+    PlaybookVersion,
     User,
     Workspace,
     WorkspaceDeploymentMode,
@@ -57,6 +67,7 @@ router = APIRouter(tags=["workspaces"])
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = RequiredUser
+HostedEvalUser = Annotated[User, Depends(require_capability("hosted_evals"))]
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -125,6 +136,47 @@ class WorkspaceBootstrapResponse(BaseModel):
 
     created: bool
     workspaces: list[WorkspaceResponse]
+
+
+class HostedEvalRunRequest(BaseModel):
+    """Request body for launching a hosted eval run."""
+
+    playbook_id: UUID
+
+
+class HostedEvalRunVersionResponse(BaseModel):
+    """Serialized playbook version metadata for a hosted eval run."""
+
+    id: UUID
+    version_number: int
+    created_at: str
+    diff_summary: str | None = None
+
+
+class HostedEvalRunResponse(BaseModel):
+    """Serialized hosted eval run detail."""
+
+    id: UUID
+    workspace_id: str
+    playbook_id: UUID
+    playbook_name: str
+    status: EvolutionJobStatus
+    outcomes_processed: int
+    error_message: str | None
+    created_at: str
+    started_at: str | None
+    completed_at: str | None
+    ace_core_version: str | None = None
+    token_totals: dict[str, Any] | None = None
+    has_changes: bool | None = None
+    from_version: HostedEvalRunVersionResponse | None = None
+    to_version: HostedEvalRunVersionResponse | None = None
+
+
+class TriggerHostedEvalRunResponse(HostedEvalRunResponse):
+    """Hosted eval launch response."""
+
+    is_new: bool
 
 
 class WorkspaceFeatureAccessResponse(BaseModel):
@@ -430,6 +482,103 @@ async def _resolve_user(
     if target_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return target_user
+
+
+def _serialize_eval_version(version: PlaybookVersion | None) -> HostedEvalRunVersionResponse | None:
+    """Serialize version metadata for a hosted eval response."""
+    if version is None:
+        return None
+
+    return HostedEvalRunVersionResponse(
+        id=version.id,
+        version_number=version.version_number,
+        created_at=version.created_at.isoformat(),
+        diff_summary=version.diff_summary,
+    )
+
+
+def _serialize_hosted_eval_run(
+    workspace_id: str,
+    job: EvolutionJob,
+    *,
+    is_new: bool | None = None,
+) -> HostedEvalRunResponse | TriggerHostedEvalRunResponse:
+    """Serialize one hosted eval run detail payload."""
+    resolved_to_version = job.to_version or job.created_version
+    payload = {
+        "id": job.id,
+        "workspace_id": workspace_id,
+        "playbook_id": job.playbook_id,
+        "playbook_name": job.playbook.name,
+        "status": job.status,
+        "outcomes_processed": job.outcomes_processed,
+        "error_message": job.error_message,
+        "created_at": job.created_at.isoformat(),
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "ace_core_version": job.ace_core_version,
+        "token_totals": job.token_totals,
+        "has_changes": resolved_to_version is not None if job.completed_at else None,
+        "from_version": _serialize_eval_version(job.from_version),
+        "to_version": _serialize_eval_version(resolved_to_version),
+    }
+    if is_new is not None:
+        return TriggerHostedEvalRunResponse(**payload, is_new=is_new)
+    return HostedEvalRunResponse(**payload)
+
+
+async def _resolve_hosted_eval_workspace(
+    db: AsyncSession,
+    current_user: User,
+    workspace_id: str,
+) -> str:
+    """Resolve a supported hosted eval workspace identifier."""
+    workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
+    if workspace is not None and workspace.plan != WorkspacePlan.PERSONAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hosted eval runs are currently only supported for personal workspaces.",
+        )
+
+    return str(workspace.id) if workspace is not None else get_workspace_id(current_user)
+
+
+async def _get_hosted_eval_playbook(
+    db: AsyncSession,
+    current_user: User,
+    playbook_id: UUID,
+) -> Playbook:
+    """Load a playbook for the current hosted personal user."""
+    playbook = await db.get(Playbook, playbook_id)
+    if playbook is None or playbook.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playbook not found")
+    return playbook
+
+
+async def _get_hosted_eval_run_or_404(
+    db: AsyncSession,
+    current_user: User,
+    run_id: UUID,
+) -> EvolutionJob:
+    """Load one hosted eval run for the current user."""
+    result = await db.execute(
+        select(EvolutionJob)
+        .join(Playbook)
+        .where(
+            EvolutionJob.id == run_id,
+            Playbook.user_id == current_user.id,
+        )
+        .options(
+            selectinload(EvolutionJob.playbook),
+            selectinload(EvolutionJob.from_version),
+            selectinload(EvolutionJob.to_version),
+            selectinload(EvolutionJob.created_version),
+        )
+    )
+    job = result.scalar_one_or_none()
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval run not found")
+    return job
 
 
 @router.get("/workspaces", response_model=list[WorkspaceResponse])
@@ -796,3 +945,92 @@ async def get_workspace_entitlements(
     workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
     snapshot = await resolve_workspace_entitlements(db, current_user)
     return _to_response(snapshot, workspace)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/evals/run",
+    response_model=TriggerHostedEvalRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@router.post(
+    "/workspaces/{workspace_id}/evals/run",
+    response_model=TriggerHostedEvalRunResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    include_in_schema=False,
+)
+async def trigger_hosted_eval_run(
+    workspace_id: str,
+    payload: HostedEvalRunRequest,
+    request: Request,
+    db: DbSession,
+    current_user: HostedEvalUser,
+) -> TriggerHostedEvalRunResponse:
+    """Launch a hosted eval run for a personal workspace."""
+    from ace_platform.core.evolution_jobs import trigger_evolution_async
+    from ace_platform.core.rate_limit import rate_limit_evolution
+
+    if not current_user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required to trigger hosted eval runs.",
+        )
+
+    resolved_workspace_id = await _resolve_hosted_eval_workspace(db, current_user, workspace_id)
+    playbook = await _get_hosted_eval_playbook(db, current_user, payload.playbook_id)
+
+    await rate_limit_evolution(request, str(playbook.id))
+
+    effective_tier = get_effective_tier_for_limits(current_user)
+    can_proceed, error_message = await check_can_evolve(
+        db,
+        current_user.id,
+        effective_tier,
+        has_payment_method=current_user.has_payment_method,
+        is_trialing=is_user_trialing(current_user),
+    )
+    if not can_proceed:
+        detail = error_message
+        if is_user_trialing(current_user):
+            detail = (
+                "You've reached the hosted eval limit for your free trial. "
+                "Subscribe to a paid plan to unlock more hosted eval runs. "
+                "Visit your account settings to view plans and upgrade."
+            )
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=detail,
+        )
+
+    try:
+        trigger_result = await trigger_evolution_async(db, playbook.id)
+        await db.commit()
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    job = await _get_hosted_eval_run_or_404(db, current_user, trigger_result.job_id)
+    return _serialize_hosted_eval_run(
+        resolved_workspace_id,
+        job,
+        is_new=trigger_result.is_new,
+    )
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/evals/{run_id}",
+    response_model=HostedEvalRunResponse,
+)
+@router.get(
+    "/workspaces/{workspace_id}/evals/{run_id}",
+    response_model=HostedEvalRunResponse,
+    include_in_schema=False,
+)
+async def get_hosted_eval_run(
+    workspace_id: str,
+    run_id: UUID,
+    db: DbSession,
+    current_user: HostedEvalUser,
+) -> HostedEvalRunResponse:
+    """Return hosted eval run detail for a personal workspace."""
+    resolved_workspace_id = await _resolve_hosted_eval_workspace(db, current_user, workspace_id)
+    job = await _get_hosted_eval_run_or_404(db, current_user, run_id)
+    return _serialize_hosted_eval_run(resolved_workspace_id, job)
