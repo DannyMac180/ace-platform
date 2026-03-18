@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AxiosError } from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { billingApi, playbooksApi } from '../../utils/api';
+import { billingApi, playbooksApi, workspacesApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { trackAcquisitionEvent } from '../../lib/analytics';
 import { getTrialDisclosureVariant, type TrialDisclosureVariant } from '../../lib/experiments';
@@ -20,8 +20,15 @@ import {
   AlertCircle,
   Search,
   Filter,
+  Users,
+  Copy,
 } from 'lucide-react';
-import type { PlaybookListItem, PlaybookCreate } from '../../types';
+import type {
+  PlaybookListItem,
+  PlaybookCreate,
+  WorkspaceSharedPlaybook,
+  WorkspaceSummary,
+} from '../../types';
 import styles from './Dashboard.module.css';
 
 export function Dashboard() {
@@ -39,6 +46,30 @@ export function Dashboard() {
     user?.subscription_status === 'active' &&
     !!user.subscription_tier &&
     user.subscription_tier !== 'free';
+  const workspacesQuery = useQuery({
+    queryKey: ['workspaces', isAuthenticated],
+    queryFn: () => workspacesApi.list(),
+    enabled: !isAuthLoading && isAuthenticated,
+  });
+  const registryWorkspace =
+    workspacesQuery.data?.find((workspace) => workspace.plan !== 'personal') ?? null;
+  const registryWorkspaceId = registryWorkspace?.id ?? 'me';
+  const entitlementsQuery = useQuery({
+    queryKey: ['workspace-entitlements', registryWorkspaceId],
+    queryFn: () => workspacesApi.getEntitlements(registryWorkspaceId),
+    enabled: !isAuthLoading && isAuthenticated && hasPaidAccess,
+  });
+  const sharedRegistryEnabled =
+    entitlementsQuery.data?.entitlements.shared_workspace === true;
+  const sharedPlaybooksQuery = useQuery({
+    queryKey: ['workspace-shared-playbooks', registryWorkspaceId],
+    queryFn: () => workspacesApi.listSharedPlaybooks(registryWorkspaceId, 1, 24),
+    enabled:
+      !isAuthLoading &&
+      isAuthenticated &&
+      hasPaidAccess &&
+      sharedRegistryEnabled,
+  });
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['playbooks', statusFilter, isAuthenticated, hasPaidAccess],
@@ -80,9 +111,38 @@ export function Dashboard() {
     },
   });
 
+  const reuseMutation = useMutation({
+    mutationFn: (playbookId: string) => workspacesApi.reuseSharedPlaybook(registryWorkspaceId, playbookId),
+    onSuccess: (playbook) => {
+      queryClient.invalidateQueries({ queryKey: ['playbooks'] });
+      setMutationError(null);
+      setIsLimitError(false);
+      navigate(`/playbooks/${playbook.id}`);
+    },
+    onError: (err: unknown) => {
+      const axiosErr = err as AxiosError<{ detail?: string; error?: { message?: string } }>;
+      const status = axiosErr?.response?.status;
+      const message =
+        axiosErr?.response?.data?.detail ||
+        axiosErr?.response?.data?.error?.message;
+      if (status === 402 && message) {
+        setMutationError(message);
+        setIsLimitError(true);
+      } else {
+        setMutationError(message || 'Failed to reuse shared playbook. Please try again.');
+        setIsLimitError(false);
+      }
+    },
+  });
+
   const filteredPlaybooks = data?.items.filter((pb) =>
     pb.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  const filteredSharedPlaybooks = sharedPlaybooksQuery.data?.items.filter((playbook) =>
+    playbook.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  const showSharedRegistry =
+    sharedRegistryEnabled && statusFilter !== 'paused' && statusFilter !== 'archived';
 
   // Check if trial user is at playbook limit
   const isOnTrial = !!user?.trial_ends_at && new Date(user.trial_ends_at) > new Date();
@@ -164,6 +224,16 @@ export function Dashboard() {
             &times;
           </button>
         </div>
+      )}
+
+      {showSharedRegistry && (
+        <SharedRegistrySection
+          workspace={registryWorkspace}
+          isLoading={sharedPlaybooksQuery.isLoading || entitlementsQuery.isLoading}
+          playbooks={filteredSharedPlaybooks ?? []}
+          onReuse={(playbookId) => reuseMutation.mutate(playbookId)}
+          activeReusePlaybookId={reuseMutation.isPending ? reuseMutation.variables : null}
+        />
       )}
 
       {/* Content */}
@@ -317,6 +387,115 @@ function PlaybookCard({ playbook }: { playbook: PlaybookListItem }) {
         </div>
       </Card>
     </Link>
+  );
+}
+
+function SharedRegistrySection({
+  workspace,
+  isLoading,
+  playbooks,
+  onReuse,
+  activeReusePlaybookId,
+}: {
+  workspace: WorkspaceSummary | null;
+  isLoading: boolean;
+  playbooks: WorkspaceSharedPlaybook[];
+  onReuse: (playbookId: string) => void;
+  activeReusePlaybookId: string | null;
+}) {
+  return (
+    <section className={styles.section}>
+      <div className={styles.sectionHeader}>
+        <div>
+          <span className={styles.sectionEyebrow}>Shared Registry</span>
+          <h2>Approved team playbooks</h2>
+          <p>
+            {workspace
+              ? `Browse approved playbooks from ${workspace.name} and copy them into your library.`
+              : 'Browse approved team playbooks and copy them into your library.'}
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className={styles.sectionState}>
+          <div className={styles.spinner} />
+          <span>Loading shared registry...</span>
+        </div>
+      ) : playbooks.length === 0 ? (
+        <div className={styles.sectionState}>
+          <Users size={20} />
+          <span>No approved team playbooks are shared yet.</span>
+        </div>
+      ) : (
+        <div className={styles.grid}>
+          {playbooks.map((playbook) => (
+            <SharedPlaybookCard
+              key={playbook.id}
+              playbook={playbook}
+              onReuse={onReuse}
+              isReusing={activeReusePlaybookId === playbook.id}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SharedPlaybookCard({
+  playbook,
+  onReuse,
+  isReusing,
+}: {
+  playbook: WorkspaceSharedPlaybook;
+  onReuse: (playbookId: string) => void;
+  isReusing: boolean;
+}) {
+  return (
+    <Card variant="default" className={styles.card}>
+      <div className={styles.cardHeader}>
+        <div className={styles.cardIcon}>
+          <Users size={20} />
+        </div>
+        <span className={styles.ownerBadge}>
+          {playbook.is_owned_by_current_user ? 'You' : playbook.owner.email}
+        </span>
+      </div>
+
+      <span className={styles.cardEyebrow}>Approved team playbook</span>
+      <h3 className={styles.cardTitle}>{playbook.name}</h3>
+      {playbook.description && (
+        <p className={styles.cardDescription}>{playbook.description}</p>
+      )}
+
+      <div className={styles.cardMeta}>
+        <div className={styles.metaItem}>
+          <GitBranch size={14} />
+          <span>{playbook.version_count} versions</span>
+        </div>
+        <div className={styles.metaItem}>
+          <Copy size={14} />
+          <span>{playbook.is_owned_by_current_user ? 'Already yours' : 'Ready to reuse'}</span>
+        </div>
+      </div>
+
+      <div className={styles.sharedCardActions}>
+        <div className={styles.cardFooter}>
+          <Clock size={14} />
+          <span>Updated {formatRelativeTime(playbook.updated_at)}</span>
+        </div>
+        <Button
+          size="sm"
+          variant={playbook.is_owned_by_current_user ? 'ghost' : 'secondary'}
+          onClick={() => onReuse(playbook.id)}
+          isLoading={isReusing}
+          disabled={playbook.is_owned_by_current_user}
+        >
+          {playbook.is_owned_by_current_user ? 'In your library' : 'Reuse'}
+        </Button>
+      </div>
+    </Card>
   );
 }
 

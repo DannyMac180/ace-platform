@@ -118,6 +118,55 @@
   box-shadow: 0 0 0 3px var(--gold-glow);
 }
 
+.section {
+  margin-bottom: var(--space-2xl);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.sectionHeader h2 {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  margin: var(--space-xs) 0;
+  color: var(--text-primary);
+}
+
+.sectionHeader p {
+  margin: 0;
+  color: var(--text-secondary);
+  max-width: 44rem;
+}
+
+.sectionEyebrow,
+.cardEyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-family: var(--font-display);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-primary);
+}
+
+.sectionState {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
 /* Grid */
 .grid {
   display: grid;
@@ -245,10 +294,26 @@
   line-height: 1.6;
 }
 
+.ownerBadge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 14rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cardMeta {
   display: flex;
   gap: var(--space-lg);
   margin-bottom: var(--space-md);
+  flex-wrap: wrap;
 }
 
 .metaItem {
@@ -268,6 +333,13 @@
   padding-top: var(--space-md);
   border-top: 1px solid var(--border-subtle);
   font-style: italic;
+}
+
+.sharedCardActions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
 }
 
 /* Loading & Error */

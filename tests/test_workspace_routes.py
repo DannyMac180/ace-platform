@@ -2,6 +2,8 @@
 """Tests for workspace tenancy routes."""
 
 import os
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import uuid4
 
 DEFAULT_TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
@@ -32,11 +34,13 @@ os.environ.setdefault("DATABASE_URL_ASYNC", TEST_DATABASE_URL_ASYNC)
 
 import httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from ace_platform.api.auth import require_paid_access
 from ace_platform.api.deps import get_db
 from ace_platform.api.routes.workspaces import WorkspaceCreateRequest, WorkspaceResponse
 from ace_platform.core.security import create_access_token, hash_password
@@ -69,6 +73,8 @@ class TestWorkspaceRoutesUnit:
         assert "/workspaces/{workspace_id}" in routes
         assert "/workspaces/{workspace_id}/memberships" in routes
         assert "/workspaces/{workspace_id}/memberships/{membership_id}" in routes
+        assert "/v1/workspaces/{workspace_id}/playbooks/shared" in routes
+        assert "/v1/workspaces/{workspace_id}/playbooks/shared/{playbook_id}/reuse" in routes
         assert "/v1/workspaces/{workspace_id}/sync/pull" in routes
         assert "/v1/workspaces/{workspace_id}/sync/push" in routes
 
@@ -82,6 +88,14 @@ class TestWorkspaceRoutesUnit:
 
     def test_workspace_sync_pull_requires_auth(self, client):
         response = client.get(f"/v1/workspaces/{uuid4()}/sync/pull")
+        assert response.status_code == 401
+
+    def test_workspace_shared_playbooks_requires_auth(self, client):
+        response = client.get("/v1/workspaces/me/playbooks/shared")
+        assert response.status_code == 401
+
+    def test_reuse_shared_workspace_playbook_requires_auth(self, client):
+        response = client.post(f"/v1/workspaces/me/playbooks/shared/{uuid4()}/reuse")
         assert response.status_code == 401
 
     def test_workspace_models_include_inference_config(self):
@@ -100,6 +114,141 @@ class TestWorkspaceRoutesUnit:
         assert payload.inference_config.mode.value == "managed_provider"
         assert payload.inference_config.provider.value == "openai"
         assert "inference_config" in WorkspaceResponse.model_json_schema()["properties"]
+
+
+class TestSharedRegistryRoutesUnit:
+    """Focused tests for shared playbook registry route serialization."""
+
+    @pytest.fixture
+    def app(self):
+        from ace_platform.api.routes.workspaces import router
+
+        app = FastAPI()
+        app.include_router(router)
+
+        class _DbStub:
+            async def commit(self):
+                return None
+
+            async def refresh(self, *_args, **_kwargs):
+                return None
+
+        async def override_db():
+            yield _DbStub()
+
+        async def override_paid_access():
+            return SimpleNamespace(
+                id=uuid4(),
+                subscription_status="active",
+                subscription_tier="starter",
+            )
+
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[require_paid_access] = override_paid_access
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return TestClient(app)
+
+    def test_shared_registry_route_serializes_owner_metadata(self, client, monkeypatch):
+        from ace_platform.api.routes import workspaces as workspace_routes
+
+        current_user_id = uuid4()
+
+        async def override_paid_access():
+            return SimpleNamespace(
+                id=current_user_id,
+                subscription_status="active",
+                subscription_tier="starter",
+            )
+
+        client.app.dependency_overrides[require_paid_access] = override_paid_access
+
+        async def fake_require_workspace(*_args, **_kwargs):
+            return SimpleNamespace(id=uuid4())
+
+        async def fake_list_shared(*_args, **_kwargs):
+            owner = SimpleNamespace(id=uuid4(), email="owner@example.com")
+            playbook = SimpleNamespace(
+                id=uuid4(),
+                name="Registry Playbook",
+                description="Shared guidance",
+                status="active",
+                source="user_created",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                versions=[object()],
+                outcomes=[object(), object()],
+                user=owner,
+                user_id=owner.id,
+            )
+            return [playbook], 1
+
+        monkeypatch.setattr(
+            workspace_routes,
+            "_require_shared_registry_workspace",
+            fake_require_workspace,
+        )
+        monkeypatch.setattr(
+            workspace_routes,
+            "list_shared_workspace_playbooks",
+            fake_list_shared,
+        )
+
+        response = client.get("/v1/workspaces/me/playbooks/shared")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["items"][0]["owner"]["email"] == "owner@example.com"
+        assert payload["items"][0]["version_count"] == 1
+        assert payload["items"][0]["outcome_count"] == 2
+
+    def test_reuse_shared_registry_route_returns_copied_playbook(self, client, monkeypatch):
+        from ace_platform.api.routes import workspaces as workspace_routes
+
+        playbook_id = uuid4()
+        copied_version_id = uuid4()
+
+        async def fake_require_workspace(*_args, **_kwargs):
+            return SimpleNamespace(id=uuid4())
+
+        async def fake_reuse(*_args, **_kwargs):
+            return SimpleNamespace(
+                id=playbook_id,
+                name="Copied Playbook",
+                description="Copied from team registry",
+                status="active",
+                source="imported",
+                created_at=datetime.now(timezone.utc),
+                updated_at=datetime.now(timezone.utc),
+                current_version_id=copied_version_id,
+                current_version=SimpleNamespace(
+                    id=copied_version_id,
+                    version_number=1,
+                    content="- copied",
+                    bullet_count=1,
+                    created_at=datetime.now(timezone.utc),
+                ),
+            )
+
+        monkeypatch.setattr(
+            workspace_routes,
+            "_require_shared_registry_workspace",
+            fake_require_workspace,
+        )
+        monkeypatch.setattr(
+            workspace_routes,
+            "reuse_shared_workspace_playbook",
+            fake_reuse,
+        )
+
+        response = client.post(f"/v1/workspaces/me/playbooks/shared/{playbook_id}/reuse")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["id"] == str(playbook_id)
+        assert payload["current_version"]["id"] == str(copied_version_id)
 
 
 @pytest.mark.skipif(
