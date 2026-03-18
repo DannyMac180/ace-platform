@@ -24,6 +24,7 @@ from ace_platform.core.workspaces import (
     bootstrap_workspace_for_user,
     create_workspace,
     delete_workspace,
+    get_default_workspace_for_user,
     get_workspace_for_user,
     get_workspace_membership,
     get_workspace_membership_by_id,
@@ -224,7 +225,7 @@ async def _resolve_entitlements_workspace(
 ) -> Workspace | None:
     """Resolve a concrete workspace id for entitlement lookups."""
     if workspace_id in {"personal", "me", get_workspace_id(current_user)}:
-        return None
+        return await get_default_workspace_for_user(db, current_user.id)
 
     try:
         parsed_workspace_id = UUID(workspace_id)
@@ -249,14 +250,15 @@ def _to_response(
 ) -> WorkspaceEntitlementsResponse:
     """Serialize the core entitlement snapshot into the route response model."""
     entitlements_source = workspace.entitlements if workspace is not None else None
-    feature_values = {
-        field_name: (
-            bool(getattr(entitlements_source, field_name))
-            if entitlements_source is not None
-            else bool(getattr(snapshot.entitlements, field_name))
+    feature_values: dict[str, bool] = {}
+    for field_name in ENTITLEMENT_FIELDS:
+        if entitlements_source is None:
+            feature_values[field_name] = bool(getattr(snapshot.entitlements, field_name))
+            continue
+
+        feature_values[field_name] = (
+            bool(getattr(entitlements_source, field_name)) and snapshot.access.has_feature_access
         )
-        for field_name in ENTITLEMENT_FIELDS
-    }
 
     workspace_id = snapshot.workspace_id
     plan = snapshot.plan

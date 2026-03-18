@@ -68,6 +68,17 @@ async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspac
     return list(result.scalars().unique().all())
 
 
+async def get_default_workspace_for_user(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Workspace | None:
+    """Return the user's default workspace for personal entry points."""
+    workspaces = await list_user_workspaces(db, user_id)
+    if not workspaces:
+        return None
+    return workspaces[0]
+
+
 async def get_workspace_for_user(
     db: AsyncSession,
     workspace_id: UUID,
