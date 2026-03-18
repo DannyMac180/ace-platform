@@ -58,7 +58,7 @@ export function PlaybookDetail() {
     mutationFn: () => playbooksApi.delete(id!),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['playbooks'] });
-      navigate('/dashboard');
+      navigate('/playbooks');
     },
   });
 
@@ -92,8 +92,8 @@ export function PlaybookDetail() {
         <div className={styles.error}>
           <AlertCircle size={24} />
           <span>Failed to load playbook</span>
-          <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-            Back to Dashboard
+          <Button variant="secondary" onClick={() => navigate('/playbooks')}>
+            Back to Playbooks
           </Button>
         </div>
       </div>
@@ -110,7 +110,7 @@ export function PlaybookDetail() {
     <div className={styles.container}>
       {/* Header */}
       <div className={styles.header}>
-        <Link to="/dashboard" className={styles.backLink}>
+        <Link to="/playbooks" className={styles.backLink}>
           <ArrowLeft size={20} />
           <span>Back to Playbooks</span>
         </Link>

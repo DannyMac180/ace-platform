@@ -1,25 +1,23 @@
 import { AxiosError } from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { evolutionsApi } from '../../utils/api';
+import { useNavigate } from 'react-router-dom';
+import { usageApi } from '../../utils/api';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  Activity,
+  BarChart3,
   BookOpen,
-  CheckCircle,
-  XCircle,
+  Coins,
+  CreditCard,
   TrendingUp,
   AlertCircle,
-  Clock,
 } from 'lucide-react';
 import type {
-  EvolutionSummary,
-  DailyEvolution,
-  PlaybookEvolutionStats,
-  RecentEvolution,
+  UsageSummary,
+  DailyUsage,
+  PlaybookUsage,
 } from '../../types';
 import styles from './Usage.module.css';
-import { useNavigate } from 'react-router-dom';
 
 export function Usage() {
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -28,187 +26,173 @@ export function Usage() {
     !!user.subscription_tier &&
     user.subscription_tier !== 'free';
 
-  const summaryQuery = useQuery<EvolutionSummary>({
-    queryKey: ['evolution-summary'],
-    queryFn: evolutionsApi.getSummary,
+  const summaryQuery = useQuery<UsageSummary>({
+    queryKey: ['usage-summary'],
+    queryFn: usageApi.getSummary,
     enabled: !isAuthLoading && hasPaidAccess,
   });
 
-  const dailyQuery = useQuery<DailyEvolution[]>({
-    queryKey: ['evolution-daily'],
-    queryFn: () => evolutionsApi.getDaily(30),
+  const dailyQuery = useQuery<DailyUsage[]>({
+    queryKey: ['usage-daily'],
+    queryFn: () => usageApi.getDaily(30),
     enabled: !isAuthLoading && hasPaidAccess,
   });
 
-  const playbookQuery = useQuery<PlaybookEvolutionStats[]>({
-    queryKey: ['evolution-by-playbook'],
-    queryFn: () => evolutionsApi.getByPlaybook(5),
+  const playbookQuery = useQuery<PlaybookUsage[]>({
+    queryKey: ['usage-by-playbook'],
+    queryFn: usageApi.getByPlaybook,
     enabled: !isAuthLoading && hasPaidAccess,
   });
 
-  const recentQuery = useQuery<RecentEvolution[]>({
-    queryKey: ['evolution-recent'],
-    queryFn: () => evolutionsApi.getRecent(10),
-    enabled: !isAuthLoading && hasPaidAccess,
-  });
-
-  const queryErrors = [
-    summaryQuery.error,
-    dailyQuery.error,
-    playbookQuery.error,
-    recentQuery.error,
-  ];
+  const queryErrors = [summaryQuery.error, dailyQuery.error, playbookQuery.error];
   const hasSubscriptionError = queryErrors.some(
     (err) => err instanceof AxiosError && err.response?.status === 402
   );
-  const isLoading =
-    isAuthLoading ||
-    summaryQuery.isLoading ||
-    dailyQuery.isLoading ||
-    playbookQuery.isLoading ||
-    recentQuery.isLoading;
-  const isError =
-    summaryQuery.isError || dailyQuery.isError || playbookQuery.isError || recentQuery.isError;
+  const isLoading = isAuthLoading || summaryQuery.isLoading || dailyQuery.isLoading || playbookQuery.isLoading;
+  const isError = summaryQuery.isError || dailyQuery.isError || playbookQuery.isError;
 
-  const summary = summaryQuery.data;
-  const dailyEvolutions = dailyQuery.data;
-  const playbookStats = playbookQuery.data;
-  const recentEvolutions = recentQuery.data;
-
-  const hasAnyData = summary && summary.total_evolutions > 0;
+  const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const dailyUsage = dailyQuery.data ?? [];
+  const playbookUsage = playbookQuery.data ?? [];
+  const totalCost = toNumber(summary.total_cost_usd);
 
   const handleRetry = () => {
-    summaryQuery.refetch();
-    dailyQuery.refetch();
-    playbookQuery.refetch();
-    recentQuery.refetch();
+    void summaryQuery.refetch();
+    void dailyQuery.refetch();
+    void playbookQuery.refetch();
   };
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1>Usage Activity</h1>
-        <p>Track your evolution runs and playbook activity</p>
+        <h1>Usage</h1>
+        <p>Monitor hosted requests, token consumption, and plan readiness</p>
+      </div>
+
+      <div className={styles.accountGrid}>
+        <Card variant="default" padding="lg" className={styles.accountCard}>
+          <div className={styles.chartHeader}>
+            <h3>Current Plan</h3>
+          </div>
+          <div className={styles.accountList}>
+            <AccountMetric label="Tier" value={formatTier(user?.subscription_tier)} />
+            <AccountMetric label="Status" value={formatStatus(user?.subscription_status)} />
+            <AccountMetric
+              label="Trial"
+              value={user?.trial_ends_at ? formatTrial(user.trial_ends_at) : 'No active trial'}
+            />
+          </div>
+        </Card>
+
+        <Card variant="default" padding="lg" className={styles.accountCard}>
+          <div className={styles.chartHeader}>
+            <h3>Account Readiness</h3>
+          </div>
+          <div className={styles.accountList}>
+            <AccountMetric
+              label="Payment Method"
+              value={user?.has_payment_method ? 'On file' : 'Not on file'}
+            />
+            <AccountMetric
+              label="Email Verification"
+              value={user?.email_verified ? 'Verified' : 'Pending verification'}
+            />
+            <AccountMetric label="Dashboard Access" value={hasPaidAccess ? 'Active' : 'Upgrade required'} />
+          </div>
+        </Card>
       </div>
 
       {isLoading ? (
         <div className={styles.loading}>
           <div className={styles.spinner} />
-          <span>Loading activity data...</span>
+          <span>Loading usage data...</span>
         </div>
       ) : !hasPaidAccess || hasSubscriptionError ? (
         <SubscriptionState />
       ) : isError ? (
         <ErrorState onRetry={handleRetry} />
-      ) : !hasAnyData ? (
-        <EmptyState />
       ) : (
         <>
-          {/* Summary Cards */}
           <div className={styles.summaryGrid}>
             <SummaryCard
-              icon={<Activity />}
-              label="Total Evolutions"
-              value={summary.total_evolutions.toString()}
+              icon={<BarChart3 />}
+              label="Total Requests"
+              value={formatInteger(summary.total_requests)}
               color="primary"
             />
             <SummaryCard
-              icon={<CheckCircle />}
-              label="Successful"
-              value={summary.completed_evolutions.toString()}
-              color="success"
-            />
-            <SummaryCard
-              icon={<XCircle />}
-              label="Failed"
-              value={summary.failed_evolutions.toString()}
-              color="error"
+              icon={<Coins />}
+              label="Total Tokens"
+              value={formatInteger(summary.total_tokens)}
+              color="primary"
             />
             <SummaryCard
               icon={<TrendingUp />}
-              label="Success Rate"
-              value={`${Math.round(summary.success_rate * 100)}%`}
+              label="Estimated Spend"
+              value={formatCurrency(totalCost)}
               color="success"
+            />
+            <SummaryCard
+              icon={<BookOpen />}
+              label="Active Playbooks"
+              value={formatInteger(playbookUsage.length)}
+              color="primary"
             />
           </div>
 
-          {/* Main Content Grid */}
           <div className={styles.contentGrid}>
-            {/* Evolution Activity Chart */}
             <Card variant="default" padding="lg" className={styles.chartCard}>
               <div className={styles.chartHeader}>
-                <h3>Evolution Activity</h3>
+                <h3>Daily Usage</h3>
                 <span className={styles.chartPeriod}>Last 30 days</span>
               </div>
               <div className={styles.chart}>
-                {dailyEvolutions && dailyEvolutions.length > 0 ? (
-                  <EvolutionChart data={dailyEvolutions} />
+                {dailyUsage.length > 0 ? (
+                  <UsageChart data={dailyUsage} />
                 ) : (
                   <div className={styles.noData}>
                     <AlertCircle size={24} />
-                    <span>No evolution data available</span>
+                    <span>No usage recorded yet</span>
                   </div>
                 )}
               </div>
               <div className={styles.chartLegend}>
                 <span className={styles.legendItem}>
-                  <span className={`${styles.legendDot} ${styles.completed}`} />
-                  Completed
-                </span>
-                <span className={styles.legendItem}>
-                  <span className={`${styles.legendDot} ${styles.failed}`} />
-                  Failed
-                </span>
-                <span className={styles.legendItem}>
-                  <span className={`${styles.legendDot} ${styles.running}`} />
-                  Running
+                  <span className={`${styles.legendDot} ${styles.usage}`} />
+                  Total tokens per day
                 </span>
               </div>
             </Card>
 
-            {/* Playbook Activity */}
             <Card variant="default" padding="lg" className={styles.playbookCard}>
               <div className={styles.chartHeader}>
-                <h3>Playbook Activity</h3>
+                <h3>Usage by Playbook</h3>
               </div>
               <div className={styles.playbookList}>
-                {playbookStats && playbookStats.length > 0 ? (
-                  playbookStats.map((stats) => (
-                    <PlaybookActivityItem key={stats.playbook_id} stats={stats} />
+                {playbookUsage.length > 0 ? (
+                  playbookUsage.map((entry) => (
+                    <UsagePlaybookItem
+                      key={entry.playbook_id}
+                      entry={entry}
+                      totalTokens={summary.total_tokens}
+                    />
                   ))
                 ) : (
                   <div className={styles.noData}>
                     <BookOpen size={24} />
-                    <span>No playbook activity</span>
+                    <span>No playbook usage yet</span>
                   </div>
                 )}
               </div>
             </Card>
           </div>
 
-          {/* Recent Activity Timeline */}
-          {recentEvolutions && recentEvolutions.length > 0 && (
-            <Card variant="default" padding="lg" className={styles.timelineCard}>
-              <div className={styles.chartHeader}>
-                <h3>Recent Activity</h3>
-              </div>
-              <div className={styles.timeline}>
-                {recentEvolutions.map((evolution) => (
-                  <RecentActivityItem key={evolution.id} evolution={evolution} />
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Period Info */}
-          {summary && (
-            <div className={styles.periodInfo}>
-              <span>
-                Showing data from {new Date(summary.start_date).toLocaleDateString()} to{' '}
-                {new Date(summary.end_date).toLocaleDateString()}
-              </span>
-            </div>
-          )}
+          <div className={styles.periodInfo}>
+            <span>
+              Showing data from {new Date(summary.start_date).toLocaleDateString()} to{' '}
+              {new Date(summary.end_date).toLocaleDateString()}
+            </span>
+          </div>
         </>
       )}
     </div>
@@ -234,61 +218,34 @@ function SummaryCard({ icon, label, value, color }: SummaryCardProps) {
   );
 }
 
-function EvolutionChart({ data }: { data: DailyEvolution[] }) {
-  // Show last 14 days
+function UsageChart({ data }: { data: DailyUsage[] }) {
   const chartData = data.slice(-14);
 
   if (chartData.length === 0) {
     return null;
   }
 
-  const maxEvolutions = Math.max(...chartData.map((d) => d.total_evolutions), 1);
+  const maxTokens = Math.max(...chartData.map((day) => day.total_tokens), 1);
 
   return (
     <div className={styles.barChart}>
       {chartData.map((day, index) => {
-        const completedHeight = maxEvolutions > 0 ? (day.completed / maxEvolutions) * 100 : 0;
-        const failedHeight = maxEvolutions > 0 ? (day.failed / maxEvolutions) * 100 : 0;
-        const runningHeight = maxEvolutions > 0 ? (day.running / maxEvolutions) * 100 : 0;
+        const usageHeight = maxTokens > 0 ? (day.total_tokens / maxTokens) * 100 : 0;
         const date = new Date(day.date);
         const dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' });
 
         return (
           <div key={day.date} className={styles.barColumn}>
             <div className={styles.barWrapper}>
-              {day.total_evolutions > 0 ? (
-                <div className={styles.stackedBar}>
-                  {day.completed > 0 && (
-                    <div
-                      className={`${styles.bar} ${styles.completed}`}
-                      style={{
-                        height: `${completedHeight}%`,
-                        animationDelay: `${index * 50}ms`,
-                      }}
-                      title={`${day.completed} completed`}
-                    />
-                  )}
-                  {day.failed > 0 && (
-                    <div
-                      className={`${styles.bar} ${styles.failed}`}
-                      style={{
-                        height: `${failedHeight}%`,
-                        animationDelay: `${index * 50 + 25}ms`,
-                      }}
-                      title={`${day.failed} failed`}
-                    />
-                  )}
-                  {day.running > 0 && (
-                    <div
-                      className={`${styles.bar} ${styles.running}`}
-                      style={{
-                        height: `${runningHeight}%`,
-                        animationDelay: `${index * 50 + 50}ms`,
-                      }}
-                      title={`${day.running} running`}
-                    />
-                  )}
-                </div>
+              {day.total_tokens > 0 ? (
+                <div
+                  className={`${styles.bar} ${styles.usage}`}
+                  style={{
+                    height: `${usageHeight}%`,
+                    animationDelay: `${index * 50}ms`,
+                  }}
+                  title={`${formatInteger(day.total_tokens)} tokens`}
+                />
               ) : (
                 <div className={styles.emptyBar} />
               )}
@@ -301,111 +258,41 @@ function EvolutionChart({ data }: { data: DailyEvolution[] }) {
   );
 }
 
-function PlaybookActivityItem({ stats }: { stats: PlaybookEvolutionStats }) {
+function UsagePlaybookItem({
+  entry,
+  totalTokens,
+}: {
+  entry: PlaybookUsage;
+  totalTokens: number;
+}) {
   const navigate = useNavigate();
-
-  const handleClick = () => {
-    navigate(`/playbooks/${stats.playbook_id}`);
-  };
-
-  const timeSince = stats.last_evolution_at
-    ? formatTimeAgo(new Date(stats.last_evolution_at))
-    : 'Never';
+  const tokenShare =
+    totalTokens > 0 ? `${Math.round((entry.total_tokens / totalTokens) * 100)}% of total tokens` : 'No usage yet';
 
   return (
-    <div className={styles.playbookItem} onClick={handleClick}>
+    <div className={styles.playbookItem} onClick={() => navigate(`/playbooks/${entry.playbook_id}`)}>
       <div className={styles.playbookIcon}>
         <BookOpen size={16} />
       </div>
       <div className={styles.playbookInfo}>
-        <span className={styles.playbookName}>{stats.playbook_name}</span>
+        <span className={styles.playbookName}>{entry.playbook_name}</span>
         <span className={styles.playbookStats}>
-          {stats.total_evolutions} evolution{stats.total_evolutions !== 1 ? 's' : ''} ·{' '}
-          {Math.round(stats.success_rate * 100)}% success
+          {formatInteger(entry.request_count)} request{entry.request_count !== 1 ? 's' : ''} ·{' '}
+          {formatInteger(entry.total_tokens)} tokens
         </span>
-        <span className={styles.playbookLastRun}>Last run: {timeSince}</span>
+        <span className={styles.playbookLastRun}>
+          {tokenShare} · {formatCurrency(toNumber(entry.cost_usd))}
+        </span>
       </div>
     </div>
   );
 }
 
-function RecentActivityItem({ evolution }: { evolution: RecentEvolution }) {
-  const navigate = useNavigate();
-
-  const handleClick = () => {
-    navigate(`/playbooks/${evolution.playbook_id}/evolutions/${evolution.id}`);
-  };
-
-  const getStatusIcon = () => {
-    switch (evolution.status) {
-      case 'completed':
-        return <CheckCircle size={20} className={styles.statusIconSuccess} />;
-      case 'failed':
-        return <XCircle size={20} className={styles.statusIconError} />;
-      case 'running':
-        return <Clock size={20} className={styles.statusIconRunning} />;
-      case 'queued':
-        return <Clock size={20} className={styles.statusIconQueued} />;
-    }
-  };
-
-  const getStatusText = () => {
-    switch (evolution.status) {
-      case 'completed':
-        return 'evolved successfully';
-      case 'failed':
-        return 'evolution failed';
-      case 'running':
-        return 'evolution running';
-      case 'queued':
-        return 'evolution queued';
-    }
-  };
-
-  const timeSince = evolution.started_at ? formatTimeAgo(new Date(evolution.started_at)) : 'Unknown';
-
-  const versionText =
-    evolution.from_version_number && evolution.to_version_number
-      ? ` · v${evolution.from_version_number} → v${evolution.to_version_number}`
-      : '';
-
+function AccountMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className={styles.timelineItem} onClick={handleClick}>
-      <div className={styles.timelineIcon}>{getStatusIcon()}</div>
-      <div className={styles.timelineContent}>
-        <div className={styles.timelineHeader}>
-          <span className={styles.timelinePlaybook}>{evolution.playbook_name}</span>
-          <span className={styles.timelineStatus}>{getStatusText()}</span>
-        </div>
-        <div className={styles.timelineMeta}>
-          {timeSince} · {evolution.outcomes_processed} outcome
-          {evolution.outcomes_processed !== 1 ? 's' : ''} processed
-          {versionText}
-        </div>
-        {evolution.error_message && (
-          <div className={styles.timelineError}>Error: {evolution.error_message}</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EmptyState() {
-  const navigate = useNavigate();
-
-  return (
-    <div className={styles.emptyState}>
-      <div className={styles.emptyIcon}>
-        <Activity size={48} />
-      </div>
-      <h2>No Evolution Runs Yet</h2>
-      <p>
-        Your playbooks haven't evolved yet. Record at least 5 outcomes to a playbook and
-        trigger evolution via the API or MCP tools to see activity here.
-      </p>
-      <button className={styles.emptyButton} onClick={() => navigate('/dashboard')}>
-        Go to Playbooks
-      </button>
+    <div className={styles.accountMetric}>
+      <span className={styles.accountLabel}>{label}</span>
+      <span className={styles.accountValue}>{value}</span>
     </div>
   );
 }
@@ -416,10 +303,10 @@ function SubscriptionState() {
   return (
     <div className={styles.emptyState}>
       <div className={styles.emptyIcon}>
-        <AlertCircle size={48} />
+        <CreditCard size={48} />
       </div>
       <h2>Start Your Free Trial</h2>
-      <p>Start your free trial to view usage activity and evolution analytics.</p>
+      <p>Usage insights unlock after you start a paid plan or trial for your hosted personal account.</p>
       <button className={styles.emptyButton} onClick={() => navigate('/pricing')}>
         Start Free Trial
       </button>
@@ -433,10 +320,8 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
       <div className={styles.emptyIcon}>
         <AlertCircle size={48} />
       </div>
-      <h2>Couldn&apos;t Load Activity</h2>
-      <p>
-        Something went wrong while loading your usage activity. Please try again.
-      </p>
+      <h2>Couldn&apos;t Load Usage</h2>
+      <p>Something went wrong while loading usage data. Please try again.</p>
       <button className={styles.emptyButton} onClick={onRetry}>
         Retry
       </button>
@@ -444,33 +329,68 @@ function ErrorState({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function formatTimeAgo(date: Date): string {
+const EMPTY_SUMMARY: UsageSummary = {
+  start_date: new Date().toISOString(),
+  end_date: new Date().toISOString(),
+  total_requests: 0,
+  total_prompt_tokens: 0,
+  total_completion_tokens: 0,
+  total_tokens: 0,
+  total_cost_usd: 0,
+};
+
+function formatInteger(value: number) {
+  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatTier(tier: string | null | undefined) {
+  if (!tier) {
+    return 'Free';
+  }
+
+  return tier.charAt(0).toUpperCase() + tier.slice(1);
+}
+
+function formatStatus(status: string | undefined) {
+  if (!status || status === 'none') {
+    return 'Not subscribed';
+  }
+
+  return status
+    .split('_')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function formatTrial(trialEndsAt: string) {
+  const endDate = new Date(trialEndsAt);
+  if (Number.isNaN(endDate.getTime())) {
+    return 'Unknown';
+  }
+
   const now = new Date();
-  const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-  if (diffInSeconds < 60) {
-    return 'just now';
+  if (endDate <= now) {
+    return 'Expired';
   }
 
-  const diffInMinutes = Math.floor(diffInSeconds / 60);
-  if (diffInMinutes < 60) {
-    return `${diffInMinutes} minute${diffInMinutes !== 1 ? 's' : ''} ago`;
+  const daysRemaining = Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} remaining`;
+}
+
+function toNumber(value: string | number) {
+  if (typeof value === 'number') {
+    return value;
   }
 
-  const diffInHours = Math.floor(diffInMinutes / 60);
-  if (diffInHours < 24) {
-    return `${diffInHours} hour${diffInHours !== 1 ? 's' : ''} ago`;
-  }
-
-  const diffInDays = Math.floor(diffInHours / 24);
-  if (diffInDays < 7) {
-    return `${diffInDays} day${diffInDays !== 1 ? 's' : ''} ago`;
-  }
-
-  const diffInWeeks = Math.floor(diffInDays / 7);
-  if (diffInWeeks < 4) {
-    return `${diffInWeeks} week${diffInWeeks !== 1 ? 's' : ''} ago`;
-  }
-
-  return date.toLocaleDateString();
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

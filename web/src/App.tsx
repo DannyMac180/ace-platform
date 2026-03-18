@@ -9,6 +9,7 @@ import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword/ResetPassword';
+import { Activity } from './pages/Activity/Activity';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { PlaybookDetail } from './pages/PlaybookDetail/PlaybookDetail';
 import { HostedEvalRunDetail } from './pages/HostedEvalRunDetail/HostedEvalRunDetail';
@@ -156,6 +157,22 @@ function AppRoutes() {
       {/* Protected routes - accessible by all authenticated users */}
       <Route
         path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Navigate to="/activity" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/activity"
+        element={
+          <ProtectedRoute>
+            <Activity />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/playbooks"
         element={
           <ProtectedRoute>
             <Dashboard />
