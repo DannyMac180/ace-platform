@@ -1,18 +1,21 @@
-"""Workspace service, hosted eval, and entitlement routes."""
+"""Workspace, sync, hosted eval, and entitlement routes."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from ace_platform.api.auth import RequiredUser, require_capability
+from ace_core.portability import PortablePlaybook
+from ace_platform.api.auth import PaidUser, RequiredUser, require_capability
 from ace_platform.api.deps import get_db
 from ace_platform.core.entitlements import (
     WorkspaceEntitlementsSnapshot,
@@ -24,12 +27,21 @@ from ace_platform.core.limits import (
     get_effective_tier_for_limits,
     is_user_trialing,
 )
+from ace_platform.core.workspace_sync import (
+    WorkspaceSyncConflictError,
+    apply_playbook_sync_delete,
+    apply_playbook_sync_upsert,
+    encode_sync_cursor,
+    ensure_personal_sync_workspace,
+    list_workspace_sync_events,
+)
 from ace_platform.core.workspaces import (
     MANAGER_ROLES,
     add_workspace_member,
     bootstrap_workspace_for_user,
     create_workspace,
     delete_workspace,
+    get_default_workspace_for_user,
     get_workspace_for_user,
     get_workspace_membership,
     get_workspace_membership_by_id,
@@ -220,6 +232,74 @@ class WorkspaceAccessResponse(BaseModel):
     is_trialing: bool
 
 
+class WorkspaceSyncEventResponse(BaseModel):
+    """Serialized sync event returned from push/pull APIs."""
+
+    id: str
+    entity_type: Literal["playbook"]
+    entity_id: str
+    operation: Literal["upsert", "delete"]
+    occurred_at: datetime
+    payload: PortablePlaybook | None = None
+
+
+class WorkspaceSyncConflictResponse(BaseModel):
+    """One rejected pushed sync event."""
+
+    event_id: str
+    entity_type: Literal["playbook"]
+    entity_id: str
+    message: str
+    server_event: WorkspaceSyncEventResponse | None = None
+
+
+class WorkspaceSyncPushEventRequest(BaseModel):
+    """One event pushed from a client workspace replica."""
+
+    id: str = Field(..., min_length=1, max_length=255)
+    entity_type: Literal["playbook"] = "playbook"
+    entity_id: str = Field(..., min_length=1, max_length=64)
+    operation: Literal["upsert", "delete"]
+    payload: PortablePlaybook | None = None
+    base_updated_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_event_shape(self) -> WorkspaceSyncPushEventRequest:
+        """Require the right payload shape for each sync mutation."""
+        if self.operation == "upsert" and self.payload is None:
+            raise ValueError("payload is required for upsert events")
+        if self.operation == "delete" and self.payload is not None:
+            raise ValueError("payload must be omitted for delete events")
+        if (
+            self.payload is not None
+            and self.payload.id is not None
+            and self.payload.id != self.entity_id
+        ):
+            raise ValueError("payload.id must match entity_id")
+        return self
+
+
+class WorkspaceSyncPushRequest(BaseModel):
+    """Batch push request for hosted workspace sync."""
+
+    events: list[WorkspaceSyncPushEventRequest] = Field(default_factory=list)
+
+
+class WorkspaceSyncPullResponse(BaseModel):
+    """Cursor-based pull response for hosted workspace sync."""
+
+    events: list[WorkspaceSyncEventResponse]
+    next_cursor: str | None = None
+
+
+class WorkspaceSyncPushResponse(BaseModel):
+    """Push result including any explicit conflicts."""
+
+    applied_events: list[WorkspaceSyncEventResponse]
+    conflicts: list[WorkspaceSyncConflictResponse]
+    next_cursor: str | None = None
+
+
 ENTITLEMENT_FIELDS = (
     "cloud_sync",
     "hosted_backups",
@@ -276,7 +356,7 @@ async def _resolve_entitlements_workspace(
 ) -> Workspace | None:
     """Resolve a concrete workspace id for entitlement lookups."""
     if workspace_id in {"personal", "me", get_workspace_id(current_user)}:
-        return None
+        return await get_default_workspace_for_user(db, current_user.id)
 
     try:
         parsed_workspace_id = UUID(workspace_id)
@@ -301,14 +381,15 @@ def _to_response(
 ) -> WorkspaceEntitlementsResponse:
     """Serialize the core entitlement snapshot into the route response model."""
     entitlements_source = workspace.entitlements if workspace is not None else None
-    feature_values = {
-        field_name: (
-            bool(getattr(entitlements_source, field_name))
-            if entitlements_source is not None
-            else bool(getattr(snapshot.entitlements, field_name))
+    feature_values: dict[str, bool] = {}
+    for field_name in ENTITLEMENT_FIELDS:
+        if entitlements_source is None:
+            feature_values[field_name] = bool(getattr(snapshot.entitlements, field_name))
+            continue
+
+        feature_values[field_name] = (
+            bool(getattr(entitlements_source, field_name)) and snapshot.access.has_feature_access
         )
-        for field_name in ENTITLEMENT_FIELDS
-    }
 
     workspace_id = snapshot.workspace_id
     plan = snapshot.plan
@@ -370,6 +451,19 @@ async def _require_workspace_membership(
     if membership is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
     return membership
+
+
+def _serialize_sync_event(event) -> WorkspaceSyncEventResponse:
+    """Convert a service-level sync event into the API response model."""
+
+    return WorkspaceSyncEventResponse(
+        id=event.id,
+        entity_type=event.entity_type,
+        entity_id=event.entity_id,
+        operation=event.operation,
+        occurred_at=event.occurred_at,
+        payload=event.payload,
+    )
 
 
 async def _resolve_user(
@@ -710,6 +804,127 @@ async def delete_workspace_membership_route(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     await db.commit()
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/sync/pull",
+    response_model=WorkspaceSyncPullResponse,
+)
+@router.get(
+    "/workspaces/{workspace_id}/sync/pull",
+    response_model=WorkspaceSyncPullResponse,
+    include_in_schema=False,
+)
+async def pull_workspace_sync_route(
+    workspace_id: UUID,
+    db: DbSession,
+    current_user: PaidUser,
+    cursor: str | None = Query(default=None),
+) -> WorkspaceSyncPullResponse:
+    """Pull sync events for a hosted personal workspace."""
+
+    workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    try:
+        ensure_personal_sync_workspace(workspace)
+        events, next_cursor = await list_workspace_sync_events(db, workspace, cursor=cursor)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return WorkspaceSyncPullResponse(
+        events=[_serialize_sync_event(event) for event in events],
+        next_cursor=next_cursor,
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/sync/push",
+    response_model=WorkspaceSyncPushResponse,
+)
+@router.post(
+    "/workspaces/{workspace_id}/sync/push",
+    response_model=WorkspaceSyncPushResponse,
+    include_in_schema=False,
+)
+async def push_workspace_sync_route(
+    workspace_id: UUID,
+    payload: WorkspaceSyncPushRequest,
+    db: DbSession,
+    current_user: PaidUser,
+):
+    """Push a batch of playbook sync mutations into a hosted personal workspace."""
+
+    workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    try:
+        ensure_personal_sync_workspace(workspace)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    applied_events = []
+    conflicts = []
+    for event in payload.events:
+        try:
+            if event.operation == "upsert":
+                applied = await apply_playbook_sync_upsert(
+                    db,
+                    workspace,
+                    event_id=event.id,
+                    entity_id=event.entity_id,
+                    payload=event.payload,
+                    base_updated_at=event.base_updated_at,
+                )
+            else:
+                applied = await apply_playbook_sync_delete(
+                    db,
+                    workspace,
+                    event_id=event.id,
+                    entity_id=event.entity_id,
+                    base_updated_at=event.base_updated_at,
+                )
+            applied_events.append(applied)
+        except WorkspaceSyncConflictError as exc:
+            conflicts.append(
+                WorkspaceSyncConflictResponse(
+                    event_id=exc.event_id,
+                    entity_type=exc.entity_type,
+                    entity_id=exc.entity_id,
+                    message=exc.message,
+                    server_event=(
+                        _serialize_sync_event(exc.server_event)
+                        if exc.server_event is not None
+                        else None
+                    ),
+                )
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+
+    next_cursor = None
+    if applied_events:
+        latest_event = max(
+            applied_events,
+            key=lambda item: (item.occurred_at, item.entity_type, item.entity_id),
+        )
+        next_cursor = encode_sync_cursor(latest_event.cursor_token)
+
+    response = WorkspaceSyncPushResponse(
+        applied_events=[_serialize_sync_event(event) for event in applied_events],
+        conflicts=conflicts,
+        next_cursor=next_cursor,
+    )
+    if conflicts:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=response.model_dump(mode="json"),
+        )
+    return response
 
 
 @router.get(

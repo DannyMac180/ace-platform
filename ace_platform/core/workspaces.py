@@ -68,6 +68,17 @@ async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspac
     return list(result.scalars().unique().all())
 
 
+async def get_default_workspace_for_user(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Workspace | None:
+    """Return the user's default workspace for personal entry points."""
+    workspaces = await list_user_workspaces(db, user_id)
+    if not workspaces:
+        return None
+    return workspaces[0]
+
+
 async def get_workspace_for_user(
     db: AsyncSession,
     workspace_id: UUID,
@@ -87,6 +98,29 @@ async def get_workspace_for_user(
         )
     )
     return result.scalars().unique().one_or_none()
+
+
+async def get_personal_workspace_for_user(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Workspace | None:
+    """Return the user's default hosted personal workspace, if present."""
+
+    result = await db.execute(
+        select(Workspace)
+        .join(WorkspaceMembership)
+        .where(
+            WorkspaceMembership.user_id == user_id,
+            Workspace.plan == WorkspacePlan.PERSONAL,
+            Workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD,
+        )
+        .options(
+            selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
+            selectinload(Workspace.entitlements),
+        )
+        .order_by(Workspace.created_at.asc(), Workspace.id.asc())
+    )
+    return result.scalars().unique().first()
 
 
 async def get_workspace_membership(

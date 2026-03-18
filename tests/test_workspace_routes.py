@@ -2,6 +2,7 @@
 """Tests for workspace tenancy routes."""
 
 import os
+from uuid import uuid4
 
 TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
 TEST_DATABASE_URL_ASYNC = "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test"
@@ -47,6 +48,8 @@ class TestWorkspaceRoutesUnit:
         assert "/workspaces/{workspace_id}" in routes
         assert "/workspaces/{workspace_id}/memberships" in routes
         assert "/workspaces/{workspace_id}/memberships/{membership_id}" in routes
+        assert "/v1/workspaces/{workspace_id}/sync/pull" in routes
+        assert "/v1/workspaces/{workspace_id}/sync/push" in routes
 
     def test_workspace_list_requires_auth(self, client):
         response = client.get("/workspaces")
@@ -54,6 +57,10 @@ class TestWorkspaceRoutesUnit:
 
     def test_workspace_create_requires_auth(self, client):
         response = client.post("/workspaces", json={"name": "Team Alpha", "plan": "team"})
+        assert response.status_code == 401
+
+    def test_workspace_sync_pull_requires_auth(self, client):
+        response = client.get(f"/v1/workspaces/{uuid4()}/sync/pull")
         assert response.status_code == 401
 
 
@@ -157,6 +164,16 @@ class TestWorkspaceRoutesIntegration:
         assert payload[0]["plan"] == "personal"
         assert payload[0]["seat_limit"] == 1
         assert payload[0]["current_user_role"] == "owner"
+
+        entitlements_response = await client.get(
+            "/v1/workspaces/me/entitlements",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert entitlements_response.status_code == 200
+        entitlement_payload = entitlements_response.json()
+        assert entitlement_payload["workspace_id"] == payload[0]["id"]
+        assert entitlement_payload["plan"] == "personal"
+        assert entitlement_payload["seat_limit"] == 1
 
     async def test_existing_user_without_workspace_is_bootstrapped_on_first_workspace_request(
         self,

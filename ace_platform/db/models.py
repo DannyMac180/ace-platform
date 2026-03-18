@@ -514,6 +514,45 @@ class WorkspaceEntitlement(Base):
         return f"<WorkspaceEntitlement {self.workspace_id}>"
 
 
+class WorkspaceSyncTombstone(Base):
+    """Delete tombstone used to propagate playbook removals through workspace sync."""
+
+    __tablename__ = "workspace_sync_tombstones"
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), primary_key=True)
+    entity_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace")
+
+    __table_args__ = (
+        Index(
+            "ix_workspace_sync_tombstones_workspace_deleted_at",
+            "workspace_id",
+            "deleted_at",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WorkspaceSyncTombstone workspace={self.workspace_id} "
+            f"entity={self.entity_type}:{self.entity_id}>"
+        )
+
+
 class Playbook(Base):
     """User playbook with version tracking."""
 
