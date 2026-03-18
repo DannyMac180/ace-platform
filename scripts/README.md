@@ -28,6 +28,7 @@ You also need:
 - `LINEAR_API_KEY` in your shell
 - `codex` on your `PATH`
 - `mise` installed
+- a Linear token that resolves to workspace `danmac` and a project attached to team `DAN`
 
 #### Usage
 
@@ -36,11 +37,22 @@ You also need:
 ```
 
 The script starts the dashboard at `http://127.0.0.1:4000/` by default.
+Before launch, it validates that `LINEAR_API_KEY` points at the expected Linear
+workspace and that the configured workflow project belongs to the expected team.
+By default this repo expects workspace URL key `danmac` and team key `DAN`.
 
 Override the port with:
 
 ```bash
 SYMPHONY_PORT=4001 ./scripts/run-symphony.sh
+```
+
+If you intentionally need to repoint the guard for another workspace or team:
+
+```bash
+SYMPHONY_LINEAR_WORKSPACE_URL_KEY=your-workspace \
+SYMPHONY_LINEAR_TEAM_KEY=ENG \
+./scripts/run-symphony.sh
 ```
 
 ## Load Testing
