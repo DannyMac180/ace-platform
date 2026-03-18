@@ -8,13 +8,16 @@ These tests verify:
 4. Response schema validation
 """
 
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
-from fastapi import status
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
+from ace_platform.api.routes import admin as admin_routes
 from ace_platform.api.routes.admin import (
     AdminUserItem,
     AuditEventItem,
@@ -22,8 +25,13 @@ from ace_platform.api.routes.admin import (
     DailySignupResponse,
     PlatformStatsResponse,
     TopUserResponse,
+    WorkspaceBackupItem,
+    WorkspaceBackupRestoreResponse,
     build_conversion_funnel_response,
+    create_workspace_backup,
     get_conversion_funnel,
+    list_workspace_backups,
+    restore_workspace_backup,
 )
 
 
@@ -258,8 +266,6 @@ class TestAdminSchemas:
 
     def test_audit_event_item_null_user(self):
         """Test audit event with null user (e.g. failed login for non-existent user)."""
-        from datetime import datetime, timezone
-
         now = datetime.now(timezone.utc)
         item = AuditEventItem(
             id=str(uuid4()),
@@ -273,6 +279,168 @@ class TestAdminSchemas:
         )
         assert item.user_id is None
         assert item.user_email is None
+
+    def test_workspace_backup_item(self):
+        """Test workspace backup response schema."""
+        now = datetime.now(timezone.utc)
+        item = WorkspaceBackupItem(
+            id=str(uuid4()),
+            workspace_id=str(uuid4()),
+            owner_user_id=str(uuid4()),
+            trigger_source="scheduled",
+            created_at=now,
+            restored_at=None,
+            backup_size_bytes=512,
+            playbook_count=1,
+        )
+        assert item.trigger_source == "scheduled"
+        assert item.backup_size_bytes == 512
+
+    def test_workspace_backup_restore_response(self):
+        """Test workspace restore response schema."""
+        response = WorkspaceBackupRestoreResponse(
+            backup_id=str(uuid4()),
+            workspace_id=str(uuid4()),
+            restored_playbooks=1,
+            restored_usage_records=2,
+            restored_api_keys=1,
+            restored_oauth_accounts=1,
+        )
+        assert response.restored_playbooks == 1
+        assert response.restored_usage_records == 2
+        assert response.restored_api_keys == 1
+
+
+class TestAdminBackupRoutes:
+    """Unit tests for hosted backup admin route helpers."""
+
+    @pytest.mark.asyncio
+    async def test_list_workspace_backups_returns_service_metadata(self, monkeypatch):
+        workspace_id = uuid4()
+        created_at = datetime.now(timezone.utc)
+
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "get_restoreable_personal_workspace",
+            AsyncMock(return_value=SimpleNamespace(id=workspace_id)),
+        )
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "list_workspace_backups",
+            AsyncMock(
+                return_value=[
+                    SimpleNamespace(
+                        id=uuid4(),
+                        workspace_id=workspace_id,
+                        owner_user_id=uuid4(),
+                        trigger_source="scheduled",
+                        created_at=created_at,
+                        restored_at=None,
+                        backup_size_bytes=128,
+                        payload={"account_export": {"playbooks": [{}, {}]}},
+                    )
+                ]
+            ),
+        )
+
+        response = await list_workspace_backups(workspace_id, _admin=object(), db=AsyncMock())
+
+        assert len(response) == 1
+        assert response[0].workspace_id == str(workspace_id)
+        assert response[0].playbook_count == 2
+
+    @pytest.mark.asyncio
+    async def test_create_workspace_backup_raises_not_found_for_missing_workspace(
+        self, monkeypatch
+    ):
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "get_restoreable_personal_workspace",
+            AsyncMock(return_value=None),
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await create_workspace_backup(uuid4(), _admin=object(), db=AsyncMock())
+
+        assert exc_info.value.status_code == status.HTTP_404_NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_create_workspace_backup_returns_created_backup(self, monkeypatch):
+        workspace_id = uuid4()
+        created_at = datetime.now(timezone.utc)
+        db = AsyncMock()
+        workspace = SimpleNamespace(id=workspace_id)
+
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "get_restoreable_personal_workspace",
+            AsyncMock(return_value=workspace),
+        )
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "create_workspace_backup_snapshot",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    id=uuid4(),
+                    workspace_id=workspace_id,
+                    owner_user_id=uuid4(),
+                    trigger_source="admin_manual",
+                    created_at=created_at,
+                    restored_at=None,
+                    backup_size_bytes=256,
+                    payload={"account_export": {"playbooks": [{}]}},
+                )
+            ),
+        )
+
+        response = await create_workspace_backup(workspace_id, _admin=object(), db=db)
+
+        assert response.trigger_source == "admin_manual"
+        assert response.backup_size_bytes == 256
+        assert response.playbook_count == 1
+
+    @pytest.mark.asyncio
+    async def test_restore_workspace_backup_returns_service_response(self, monkeypatch):
+        workspace_id = uuid4()
+        backup_id = uuid4()
+
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "get_workspace_backup",
+            AsyncMock(
+                return_value=SimpleNamespace(
+                    id=backup_id,
+                    workspace_id=workspace_id,
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            admin_routes.workspace_backup_service,
+            "restore_workspace_backup",
+            AsyncMock(
+                return_value={
+                    "backup_id": str(backup_id),
+                    "workspace_id": str(workspace_id),
+                    "restored_playbooks": 1,
+                    "restored_usage_records": 2,
+                    "restored_api_keys": 1,
+                    "restored_oauth_accounts": 1,
+                }
+            ),
+        )
+
+        response = await restore_workspace_backup(
+            workspace_id,
+            backup_id,
+            _admin=object(),
+            db=AsyncMock(),
+        )
+
+        assert response.backup_id == str(backup_id)
+        assert response.restored_playbooks == 1
+        assert response.restored_usage_records == 2
+        assert response.restored_api_keys == 1
+        assert response.restored_oauth_accounts == 1
 
 
 class TestAdminRoutesIntegration:
@@ -296,6 +464,8 @@ class TestAdminRoutesIntegration:
         assert "/admin/stats" in routes
         assert "/admin/users" in routes
         assert "/admin/users/{user_id}" in routes
+        assert "/admin/workspaces/{workspace_id}/backups" in routes
+        assert "/admin/workspaces/{workspace_id}/backups/{backup_id}/restore" in routes
         assert "/admin/signups" in routes
         assert "/admin/funnel" in routes
         assert "/admin/top-users" in routes
@@ -334,6 +504,23 @@ class TestAdminRoutesIntegration:
     def test_admin_audit_events_requires_auth(self, client):
         """Test that /admin/audit-events requires authentication (401)."""
         response = client.get("/admin/audit-events")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_admin_workspace_backups_requires_auth(self, client):
+        """Test that backup list/create routes require authentication (401)."""
+        workspace_id = uuid4()
+        assert (
+            client.get(f"/admin/workspaces/{workspace_id}/backups").status_code
+            == status.HTTP_401_UNAUTHORIZED
+        )
+        assert (
+            client.post(f"/admin/workspaces/{workspace_id}/backups").status_code
+            == status.HTTP_401_UNAUTHORIZED
+        )
+
+    def test_admin_workspace_restore_requires_auth(self, client):
+        """Test that backup restore routes require authentication (401)."""
+        response = client.post(f"/admin/workspaces/{uuid4()}/backups/{uuid4()}/restore")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_admin_stats_with_invalid_token(self, client):

@@ -9,8 +9,7 @@ This module provides endpoints for account self-service:
 import json
 import logging
 from datetime import UTC, datetime
-from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated
 
 import stripe
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -18,22 +17,14 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ace_platform.api.auth import RequiredUser
 from ace_platform.api.deps import get_db
 from ace_platform.config import get_settings
+from ace_platform.core.account_exports import build_account_export_payload, json_default
 from ace_platform.core.audit import audit_account_deleted, audit_data_exported
 from ace_platform.core.security import verify_password
-from ace_platform.db.models import (
-    ApiKey,
-    AuditEventType,
-    AuditLog,
-    AuditSeverity,
-    Playbook,
-    UsageRecord,
-    UserOAuthAccount,
-)
+from ace_platform.db.models import AuditEventType, AuditLog, AuditSeverity
 
 logger = logging.getLogger(__name__)
 
@@ -78,22 +69,6 @@ class PaginatedAuditLogResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-
-
-def _iso(dt: datetime | None) -> str | None:
-    return dt.isoformat() if dt else None
-
-
-def _uuid(value) -> str | None:
-    return str(value) if value is not None else None
-
-
-def _json_default(obj: Any) -> Any:
-    if isinstance(obj, datetime):
-        return obj.isoformat()
-    if isinstance(obj, Decimal):
-        return str(obj)
-    return str(obj)
 
 
 @router.delete("", response_model=MessageResponse)
@@ -179,176 +154,8 @@ async def export_account_data(
     current_user: CurrentUser,
 ) -> Response:
     """Export user data as a downloadable JSON file."""
-    # Playbooks and related data
-    playbooks_result = await db.execute(
-        select(Playbook)
-        .where(Playbook.user_id == current_user.id)
-        .options(
-            selectinload(Playbook.versions),
-            selectinload(Playbook.outcomes),
-            selectinload(Playbook.evolution_jobs),
-        )
-        .order_by(Playbook.created_at.desc())
-    )
-    playbooks = playbooks_result.scalars().all()
-
-    # API keys (metadata only)
-    api_keys_result = await db.execute(
-        select(ApiKey).where(ApiKey.user_id == current_user.id).order_by(ApiKey.created_at.desc())
-    )
-    api_keys = api_keys_result.scalars().all()
-
-    # OAuth accounts (metadata only)
-    oauth_result = await db.execute(
-        select(UserOAuthAccount)
-        .where(UserOAuthAccount.user_id == current_user.id)
-        .order_by(UserOAuthAccount.created_at.desc())
-    )
-    oauth_accounts = oauth_result.scalars().all()
-
-    # Usage records
-    usage_result = await db.execute(
-        select(UsageRecord)
-        .where(UsageRecord.user_id == current_user.id)
-        .order_by(UsageRecord.created_at.desc())
-    )
-    usage_records = usage_result.scalars().all()
-
-    # Recent audit logs (last 500)
-    audit_result = await db.execute(
-        select(AuditLog)
-        .where(AuditLog.user_id == current_user.id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(500)
-    )
-    audit_logs = audit_result.scalars().all()
-
-    export_data: dict[str, Any] = {
-        "exported_at": datetime.now(UTC).isoformat(),
-        "user": {
-            "id": str(current_user.id),
-            "email": current_user.email,
-            "is_active": current_user.is_active,
-            "email_verified": current_user.email_verified,
-            "subscription_tier": current_user.subscription_tier,
-            "subscription_status": current_user.subscription_status.value,
-            "subscription_current_period_end": _iso(current_user.subscription_current_period_end),
-            "has_used_trial": current_user.has_used_trial,
-            "trial_ends_at": _iso(current_user.trial_ends_at),
-            "has_payment_method": current_user.has_payment_method,
-            "stripe_customer_id": current_user.stripe_customer_id,
-            "stripe_subscription_id": current_user.stripe_subscription_id,
-            "created_at": _iso(current_user.created_at),
-            "updated_at": _iso(current_user.updated_at),
-        },
-        "playbooks": [
-            {
-                "id": str(pb.id),
-                "name": pb.name,
-                "description": pb.description,
-                "status": pb.status.value,
-                "source": pb.source.value,
-                "current_version_id": _uuid(pb.current_version_id),
-                "created_at": _iso(pb.created_at),
-                "updated_at": _iso(pb.updated_at),
-                "versions": [
-                    {
-                        "id": str(v.id),
-                        "version_number": v.version_number,
-                        "content": v.content,
-                        "bullet_count": v.bullet_count,
-                        "diff_summary": v.diff_summary,
-                        "created_by_job_id": _uuid(v.created_by_job_id),
-                        "created_at": _iso(v.created_at),
-                    }
-                    for v in pb.versions
-                ],
-                "outcomes": [
-                    {
-                        "id": str(o.id),
-                        "task_description": o.task_description,
-                        "outcome_status": o.outcome_status.value,
-                        "notes": o.notes,
-                        "reasoning_trace": o.reasoning_trace,
-                        "created_at": _iso(o.created_at),
-                        "processed_at": _iso(o.processed_at),
-                        "evolution_job_id": _uuid(o.evolution_job_id),
-                    }
-                    for o in pb.outcomes
-                ],
-                "evolutions": [
-                    {
-                        "id": str(j.id),
-                        "status": j.status.value,
-                        "from_version_id": _uuid(j.from_version_id),
-                        "to_version_id": _uuid(j.to_version_id),
-                        "outcomes_processed": j.outcomes_processed,
-                        "error_message": j.error_message,
-                        "created_at": _iso(j.created_at),
-                        "started_at": _iso(j.started_at),
-                        "completed_at": _iso(j.completed_at),
-                    }
-                    for j in pb.evolution_jobs
-                ],
-            }
-            for pb in playbooks
-        ],
-        "api_keys": [
-            {
-                "id": str(k.id),
-                "name": k.name,
-                "key_prefix": k.key_prefix,
-                "scopes": k.scopes,
-                "created_at": _iso(k.created_at),
-                "last_used_at": _iso(k.last_used_at),
-                "revoked_at": _iso(k.revoked_at),
-                "is_active": k.is_active,
-            }
-            for k in api_keys
-        ],
-        "oauth_accounts": [
-            {
-                "id": str(a.id),
-                "provider": a.provider.value,
-                "provider_user_id": a.provider_user_id,
-                "provider_email": a.provider_email,
-                "created_at": _iso(a.created_at),
-                "updated_at": _iso(a.updated_at),
-            }
-            for a in oauth_accounts
-        ],
-        "usage_records": [
-            {
-                "id": str(r.id),
-                "playbook_id": _uuid(r.playbook_id),
-                "evolution_job_id": _uuid(r.evolution_job_id),
-                "operation": r.operation,
-                "model": r.model,
-                "prompt_tokens": r.prompt_tokens,
-                "completion_tokens": r.completion_tokens,
-                "total_tokens": r.total_tokens,
-                "cost_usd": str(r.cost_usd),
-                "request_id": r.request_id,
-                "extra_data": r.extra_data,
-                "created_at": _iso(r.created_at),
-            }
-            for r in usage_records
-        ],
-        "audit_logs": [
-            {
-                "id": str(log.id),
-                "event_type": log.event_type.value,
-                "severity": log.severity.value,
-                "created_at": log.created_at.isoformat(),
-                "ip_address": log.ip_address,
-                "user_agent": log.user_agent,
-                "details": log.details,
-            }
-            for log in audit_logs
-        ],
-    }
-
-    payload = json.dumps(export_data, default=_json_default).encode("utf-8")
+    export_data = await build_account_export_payload(db, current_user)
+    payload = json.dumps(export_data, default=json_default).encode("utf-8")
 
     # Enforce a conservative max export size (25MB)
     max_bytes = 25 * 1024 * 1024
