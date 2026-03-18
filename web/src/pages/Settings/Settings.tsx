@@ -428,7 +428,7 @@ export function Settings() {
           onClose={() => setShowDeleteAccountModal(false)}
           onDelete={async (password) => {
             await accountApi.deleteAccount('DELETE', password);
-            logout();
+            await logout();
             navigate('/register', { replace: true });
           }}
         />
