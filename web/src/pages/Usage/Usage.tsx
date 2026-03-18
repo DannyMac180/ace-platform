@@ -1,21 +1,23 @@
 import { AxiosError } from 'axios';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { usageApi } from '../../utils/api';
+import { usageApi, workspacesApi } from '../../utils/api';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
 import {
-  BarChart3,
   BookOpen,
-  Coins,
+  Cpu,
   CreditCard,
+  HardDrive,
   TrendingUp,
   AlertCircle,
+  FlaskConical,
 } from 'lucide-react';
 import type {
   UsageSummary,
   DailyUsage,
   PlaybookUsage,
+  WorkspaceEntitlements,
 } from '../../types';
 import styles from './Usage.module.css';
 
@@ -31,6 +33,11 @@ export function Usage() {
     queryFn: usageApi.getSummary,
     enabled: !isAuthLoading && hasPaidAccess,
   });
+  const entitlementsQuery = useQuery<WorkspaceEntitlements>({
+    queryKey: ['workspace-entitlements', 'me'],
+    queryFn: workspacesApi.getPersonalEntitlements,
+    enabled: !isAuthLoading && hasPaidAccess,
+  });
 
   const dailyQuery = useQuery<DailyUsage[]>({
     queryKey: ['usage-daily'],
@@ -44,19 +51,34 @@ export function Usage() {
     enabled: !isAuthLoading && hasPaidAccess,
   });
 
-  const queryErrors = [summaryQuery.error, dailyQuery.error, playbookQuery.error];
+  const queryErrors = [
+    entitlementsQuery.error,
+    summaryQuery.error,
+    dailyQuery.error,
+    playbookQuery.error,
+  ];
   const hasSubscriptionError = queryErrors.some(
     (err) => err instanceof AxiosError && err.response?.status === 402
   );
-  const isLoading = isAuthLoading || summaryQuery.isLoading || dailyQuery.isLoading || playbookQuery.isLoading;
-  const isError = summaryQuery.isError || dailyQuery.isError || playbookQuery.isError;
+  const isLoading =
+    isAuthLoading ||
+    entitlementsQuery.isLoading ||
+    summaryQuery.isLoading ||
+    dailyQuery.isLoading ||
+    playbookQuery.isLoading;
+  const isError =
+    entitlementsQuery.isError || summaryQuery.isError || dailyQuery.isError || playbookQuery.isError;
 
+  const entitlements = entitlementsQuery.data ?? EMPTY_ENTITLEMENTS;
   const summary = summaryQuery.data ?? EMPTY_SUMMARY;
   const dailyUsage = dailyQuery.data ?? [];
   const playbookUsage = playbookQuery.data ?? [];
   const totalCost = toNumber(summary.total_cost_usd);
+  const usageLimits = entitlements.usage_limits;
+  const usageAlerts = buildUsageAlerts(usageLimits);
 
   const handleRetry = () => {
+    void entitlementsQuery.refetch();
     void summaryQuery.refetch();
     void dailyQuery.refetch();
     void playbookQuery.refetch();
@@ -66,7 +88,7 @@ export function Usage() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h1>Usage</h1>
-        <p>Monitor hosted requests, token consumption, and plan readiness</p>
+        <p>Monitor hosted storage, eval activity, managed inference, and plan readiness</p>
       </div>
 
       <div className={styles.accountGrid}>
@@ -113,37 +135,67 @@ export function Usage() {
         <ErrorState onRetry={handleRetry} />
       ) : (
         <>
+          {usageAlerts.length > 0 ? (
+            <Card variant="default" className={styles.alertCard}>
+              <div className={styles.alertHeader}>
+                <AlertCircle size={18} />
+                <span>Usage attention needed</span>
+              </div>
+              <div className={styles.alertList}>
+                {usageAlerts.map((alert) => (
+                  <span key={alert}>{alert}</span>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
           <div className={styles.summaryGrid}>
             <SummaryCard
-              icon={<BarChart3 />}
-              label="Total Requests"
-              value={formatInteger(summary.total_requests)}
+              icon={<HardDrive />}
+              label="Hosted Storage"
+              value={formatUsageWithLimit(
+                usageLimits.storage_bytes.current,
+                usageLimits.storage_bytes.hard_limit,
+                formatBytes
+              )}
               color="primary"
+              hint="Live hosted content across playbooks, versions, and outcomes"
             />
             <SummaryCard
-              icon={<Coins />}
-              label="Total Tokens"
-              value={formatInteger(summary.total_tokens)}
+              icon={<FlaskConical />}
+              label="Hosted Evals"
+              value={formatUsageWithLimit(
+                usageLimits.hosted_eval_runs.current,
+                usageLimits.hosted_eval_runs.hard_limit,
+                formatInteger
+              )}
               color="primary"
+              hint="Runs launched in the current billing period"
+            />
+            <SummaryCard
+              icon={<Cpu />}
+              label="Managed Inference"
+              value={formatInteger(usageLimits.managed_inference_requests.current)}
+              color="success"
+              hint={`${formatInteger(usageLimits.managed_inference_tokens.current)} tokens this period`}
             />
             <SummaryCard
               icon={<TrendingUp />}
-              label="Estimated Spend"
-              value={formatCurrency(totalCost)}
-              color="success"
-            />
-            <SummaryCard
-              icon={<BookOpen />}
-              label="Active Playbooks"
-              value={formatInteger(playbookUsage.length)}
+              label="Inference Spend"
+              value={formatUsageWithLimit(
+                toNumber(usageLimits.current_cost_usd),
+                toNullableNumber(usageLimits.monthly_cost_limit_usd),
+                formatCurrency
+              )}
               color="primary"
+              hint={`${formatCurrency(totalCost)} logged across current usage analytics`}
             />
           </div>
 
           <div className={styles.contentGrid}>
             <Card variant="default" padding="lg" className={styles.chartCard}>
               <div className={styles.chartHeader}>
-                <h3>Daily Usage</h3>
+                <h3>Daily Managed Inference</h3>
                 <span className={styles.chartPeriod}>Last 30 days</span>
               </div>
               <div className={styles.chart}>
@@ -166,7 +218,7 @@ export function Usage() {
 
             <Card variant="default" padding="lg" className={styles.playbookCard}>
               <div className={styles.chartHeader}>
-                <h3>Usage by Playbook</h3>
+                <h3>Managed Inference by Playbook</h3>
               </div>
               <div className={styles.playbookList}>
                 {playbookUsage.length > 0 ? (
@@ -204,15 +256,17 @@ interface SummaryCardProps {
   label: string;
   value: string;
   color: 'primary' | 'success' | 'error';
+  hint?: string;
 }
 
-function SummaryCard({ icon, label, value, color }: SummaryCardProps) {
+function SummaryCard({ icon, label, value, color, hint }: SummaryCardProps) {
   return (
     <Card variant="default" className={styles.summaryCard}>
       <div className={`${styles.summaryIcon} ${styles[color]}`}>{icon}</div>
       <div className={styles.summaryContent}>
         <span className={styles.summaryLabel}>{label}</span>
         <span className={styles.summaryValue}>{value}</span>
+        {hint ? <span className={styles.summaryHint}>{hint}</span> : null}
       </div>
     </Card>
   );
@@ -339,6 +393,79 @@ const EMPTY_SUMMARY: UsageSummary = {
   total_cost_usd: 0,
 };
 
+const EMPTY_ENTITLEMENTS: WorkspaceEntitlements = {
+  workspace_id: 'me',
+  plan: 'personal',
+  deployment_mode: 'cloud',
+  seat_limit: 1,
+  enabled_features: [],
+  access: {
+    subscription_tier: 'free',
+    subscription_status: 'none',
+    effective_tier: 'free',
+    has_feature_access: false,
+    is_trialing: false,
+  },
+  entitlements: {
+    cloud_sync: false,
+    hosted_backups: false,
+    managed_inference: false,
+    hosted_evals: false,
+    invite_members: false,
+    shared_workspace: false,
+    approvals: false,
+    rbac: false,
+    sso: false,
+    audit_logs: false,
+  },
+  usage_limits: {
+    monthly_evolution_runs: null,
+    current_evolution_runs: 0,
+    remaining_evolution_runs: null,
+    monthly_cost_limit_usd: null,
+    current_cost_usd: 0,
+    remaining_cost_usd: null,
+    current_total_tokens: 0,
+    max_playbooks: null,
+    storage_bytes: {
+      current: 0,
+      soft_limit: null,
+      hard_limit: null,
+      remaining_soft: null,
+      remaining_hard: null,
+      status: 'ok',
+    },
+    hosted_eval_runs: {
+      current: 0,
+      soft_limit: null,
+      hard_limit: null,
+      remaining_soft: null,
+      remaining_hard: null,
+      status: 'ok',
+    },
+    managed_inference_requests: {
+      current: 0,
+      soft_limit: null,
+      hard_limit: null,
+      remaining_soft: null,
+      remaining_hard: null,
+      status: 'ok',
+    },
+    managed_inference_tokens: {
+      current: 0,
+      soft_limit: null,
+      hard_limit: null,
+      remaining_soft: null,
+      remaining_hard: null,
+      status: 'ok',
+    },
+    warning_fields: [],
+    blocked_fields: [],
+    is_within_limits: true,
+    limit_exceeded: null,
+  },
+};
+
 function formatInteger(value: number) {
   return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
 }
@@ -350,6 +477,32 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatBytes(value: number) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let current = Math.max(value, 0);
+  let unitIndex = 0;
+
+  while (current >= 1024 && unitIndex < units.length - 1) {
+    current /= 1024;
+    unitIndex += 1;
+  }
+
+  const digits = unitIndex === 0 ? 0 : 1;
+  return `${current.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function formatUsageWithLimit(
+  current: number,
+  limit: number | null,
+  formatter: (value: number) => string
+) {
+  if (limit == null) {
+    return formatter(current);
+  }
+
+  return `${formatter(current)} / ${formatter(limit)}`;
 }
 
 function formatTier(tier: string | null | undefined) {
@@ -393,4 +546,34 @@ function toNumber(value: string | number) {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toNullableNumber(value: string | number | null) {
+  if (value == null) {
+    return null;
+  }
+
+  return toNumber(value);
+}
+
+function buildUsageAlerts(usageLimits: WorkspaceEntitlements['usage_limits']) {
+  const alerts: string[] = [];
+
+  if (usageLimits.storage_bytes.status !== 'ok') {
+    alerts.push('Hosted storage is at or above the included limit. Trim old content or upgrade.');
+  }
+
+  if (usageLimits.hosted_eval_runs.status === 'blocked') {
+    alerts.push('Hosted eval quota is exhausted for this billing period.');
+  }
+
+  const managedInferenceLimit = toNullableNumber(usageLimits.monthly_cost_limit_usd);
+  if (
+    managedInferenceLimit != null &&
+    toNumber(usageLimits.current_cost_usd) >= managedInferenceLimit
+  ) {
+    alerts.push('Managed inference spend has reached the current billing-period limit.');
+  }
+
+  return alerts;
 }

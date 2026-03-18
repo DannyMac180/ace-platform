@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ace_platform.core.metering import get_user_usage_summary
+from ace_platform.core.metering import get_user_storage_bytes, get_user_usage_summary
 from ace_platform.db.models import EvolutionJob, Playbook, UsageRecord
 
 if TYPE_CHECKING:
@@ -60,20 +60,36 @@ class TierLimits:
 
     # Per-account limits
     max_playbooks: int | None
+    storage_limit_bytes: int | None
 
     # Feature flags
     can_use_premium_models: bool
     can_export_data: bool
     priority_support: bool
 
+    @property
+    def monthly_hosted_eval_runs(self) -> int | None:
+        """Return the hosted eval allowance for the tier."""
+
+        return self.monthly_evolution_runs
+
+    @property
+    def monthly_managed_inference_cost_limit_usd(self) -> Decimal | None:
+        """Return the managed inference spend allowance for the tier."""
+
+        return self.monthly_cost_limit_usd
+
 
 # Define limits for each tier based on BILLING_DECISIONS.md
 # Spending limits match subscription price to prevent runaway costs
+MEBIBYTE = 1024 * 1024
+
 TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
     SubscriptionTier.FREE: TierLimits(
         monthly_evolution_runs=5,  # Very limited for free trial / internal use
         monthly_cost_limit_usd=Decimal("1.00"),  # Small allowance for testing
         max_playbooks=1,
+        storage_limit_bytes=5 * MEBIBYTE,
         can_use_premium_models=False,
         can_export_data=False,
         priority_support=False,
@@ -82,6 +98,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
         monthly_evolution_runs=100,
         monthly_cost_limit_usd=Decimal("9.00"),  # Matches $9/month subscription
         max_playbooks=5,
+        storage_limit_bytes=100 * MEBIBYTE,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=False,
@@ -90,6 +107,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
         monthly_evolution_runs=500,
         monthly_cost_limit_usd=Decimal("29.00"),  # Matches $29/month subscription
         max_playbooks=20,
+        storage_limit_bytes=1024 * MEBIBYTE,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=True,
@@ -98,6 +116,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
         monthly_evolution_runs=2_000,
         monthly_cost_limit_usd=Decimal("79.00"),  # Matches $79/month subscription
         max_playbooks=100,
+        storage_limit_bytes=10 * 1024 * MEBIBYTE,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=True,
@@ -106,6 +125,7 @@ TIER_LIMITS: dict[SubscriptionTier, TierLimits] = {
         monthly_evolution_runs=None,  # Unlimited
         monthly_cost_limit_usd=None,  # Unlimited
         max_playbooks=None,
+        storage_limit_bytes=None,
         can_use_premium_models=True,
         can_export_data=True,
         priority_support=True,
@@ -170,6 +190,39 @@ class UsageStatus:
     # Status flags
     is_within_limits: bool
     limit_exceeded: str | None  # Which limit was exceeded, if any
+    current_managed_inference_requests: int = 0
+    current_storage_bytes: int = 0
+    remaining_storage_bytes: int | None = None
+
+    @property
+    def current_hosted_eval_runs(self) -> int:
+        """Return hosted eval usage for the current billing period."""
+
+        return self.current_evolution_runs
+
+    @property
+    def remaining_hosted_eval_runs(self) -> int | None:
+        """Return remaining hosted eval quota for the current billing period."""
+
+        return self.remaining_evolution_runs
+
+    @property
+    def current_managed_inference_tokens(self) -> int:
+        """Return managed inference token usage for the current billing period."""
+
+        return self.current_total_tokens
+
+    @property
+    def current_managed_inference_cost_usd(self) -> Decimal:
+        """Return managed inference spend for the current billing period."""
+
+        return self.current_cost_usd
+
+    @property
+    def remaining_managed_inference_cost_usd(self) -> Decimal | None:
+        """Return remaining managed inference spend budget for the current billing period."""
+
+        return self.remaining_cost_usd
 
 
 def get_tier_limits(tier: SubscriptionTier) -> TierLimits:
@@ -230,6 +283,7 @@ async def get_user_usage_status(
 
     # Spending limits are based on metered UsageRecord cost.
     summary = await get_user_usage_summary(db, user_id, period_start, now)
+    current_storage_bytes = await get_user_storage_bytes(db, user_id)
 
     # Calculate remaining evolution runs quota
     remaining_evolution_runs = None
@@ -241,6 +295,10 @@ async def get_user_usage_status(
     remaining_cost_usd = None
     if limits.monthly_cost_limit_usd is not None:
         remaining_cost_usd = max(Decimal("0"), limits.monthly_cost_limit_usd - current_cost_usd)
+
+    remaining_storage_bytes = None
+    if limits.storage_limit_bytes is not None:
+        remaining_storage_bytes = max(0, limits.storage_limit_bytes - current_storage_bytes)
 
     # Check if within limits
     limit_exceeded = None
@@ -266,10 +324,13 @@ async def get_user_usage_status(
         tier=tier,
         limits=limits,
         current_evolution_runs=evolution_runs,
+        current_managed_inference_requests=summary.total_requests,
         current_total_tokens=summary.total_tokens,
         current_cost_usd=current_cost_usd,
+        current_storage_bytes=current_storage_bytes,
         remaining_evolution_runs=remaining_evolution_runs,
         remaining_cost_usd=remaining_cost_usd,
+        remaining_storage_bytes=remaining_storage_bytes,
         is_within_limits=is_within_limits,
         limit_exceeded=limit_exceeded,
     )

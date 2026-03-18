@@ -44,24 +44,36 @@ def _make_user(
     )
 
 
-def _usage_status(tier: SubscriptionTier) -> UsageStatus:
+def _usage_status(
+    tier: SubscriptionTier,
+    *,
+    storage_bytes: int = 0,
+    managed_inference_requests: int = 0,
+    total_tokens: int = 1234,
+    total_cost_usd: Decimal = Decimal("0.42"),
+) -> UsageStatus:
     limits = get_tier_limits(tier)
     return UsageStatus(
         tier=tier,
         limits=limits,
         current_evolution_runs=2,
-        current_total_tokens=1234,
-        current_cost_usd=Decimal("0.42"),
+        current_total_tokens=total_tokens,
+        current_cost_usd=total_cost_usd,
         remaining_evolution_runs=(
             None if limits.monthly_evolution_runs is None else limits.monthly_evolution_runs - 2
         ),
         remaining_cost_usd=(
             None
             if limits.monthly_cost_limit_usd is None
-            else limits.monthly_cost_limit_usd - Decimal("0.42")
+            else limits.monthly_cost_limit_usd - total_cost_usd
         ),
         is_within_limits=True,
         limit_exceeded=None,
+        current_managed_inference_requests=managed_inference_requests,
+        current_storage_bytes=storage_bytes,
+        remaining_storage_bytes=None
+        if limits.storage_limit_bytes is None
+        else max(0, limits.storage_limit_bytes - storage_bytes),
     )
 
 
@@ -133,7 +145,14 @@ def test_workspace_entitlements_returns_authoritative_snapshot():
     with (
         patch(
             "ace_platform.core.entitlements.get_user_usage_status",
-            new=AsyncMock(return_value=_usage_status(SubscriptionTier.STARTER)),
+            new=AsyncMock(
+                return_value=_usage_status(
+                    SubscriptionTier.STARTER,
+                    storage_bytes=4_096,
+                    managed_inference_requests=2,
+                    total_tokens=512,
+                )
+            ),
         ),
         patch(
             "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
@@ -171,7 +190,9 @@ def test_workspace_entitlements_returns_authoritative_snapshot():
     assert data["entitlements"]["cloud_sync"] is True
     assert data["entitlements"]["invite_members"] is False
     assert data["usage_limits"]["monthly_evolution_runs"] == 100
-    assert data["usage_limits"]["current_total_tokens"] == 1234
+    assert data["usage_limits"]["current_total_tokens"] == 512
+    assert data["usage_limits"]["storage_bytes"]["current"] == 4096
+    assert data["usage_limits"]["managed_inference_requests"]["current"] == 2
     assert data["usage_limits"]["is_within_limits"] is True
 
 

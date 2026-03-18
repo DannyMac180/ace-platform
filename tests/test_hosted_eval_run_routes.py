@@ -86,8 +86,8 @@ def test_get_hosted_eval_run_returns_detail_payload():
 
     with (
         patch(
-            "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
-            new=AsyncMock(return_value="me"),
+            "ace_platform.api.routes.workspaces._resolve_entitlements_workspace",
+            new=AsyncMock(return_value=SimpleNamespace(id="me", plan="personal")),
         ),
         patch(
             "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
@@ -113,8 +113,8 @@ def test_trigger_hosted_eval_run_returns_launched_run_detail():
 
     with (
         patch(
-            "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
-            new=AsyncMock(return_value="me"),
+            "ace_platform.api.routes.workspaces._resolve_entitlements_workspace",
+            new=AsyncMock(return_value=SimpleNamespace(id="me", plan="personal")),
         ),
         patch(
             "ace_platform.api.routes.workspaces._get_hosted_eval_playbook",
@@ -127,6 +127,14 @@ def test_trigger_hosted_eval_run_returns_launched_run_detail():
         patch(
             "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
             new=AsyncMock(return_value=job),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.get_workspace_usage_limits",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    hosted_eval_runs=SimpleNamespace(status="ok"),
+                )
+            ),
         ),
         patch(
             "ace_platform.core.rate_limit.rate_limit_evolution",

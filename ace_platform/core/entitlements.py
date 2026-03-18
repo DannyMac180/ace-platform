@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -11,14 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ace_platform.core.limits import (
     SubscriptionTier,
     UsageStatus,
+    get_billing_period_start,
     get_effective_tier_for_limits,
-    get_tier_limits,
     get_user_usage_status,
     is_user_trialing,
 )
-from ace_platform.db.models import SubscriptionStatus, User
+from ace_platform.core.metering import UsageCounterSummary, get_usage_counter_summary
+from ace_platform.db.models import SubscriptionStatus, User, Workspace
 
 WorkspacePlan = Literal["personal", "team", "enterprise"]
+UsageCounterStatus = Literal["ok", "warning", "blocked"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +41,18 @@ class WorkspaceFeatureAccess:
 
 
 @dataclass(frozen=True, slots=True)
+class WorkspaceUsageCounter:
+    """One counter with optional soft and hard thresholds."""
+
+    current: int
+    soft_limit: int | None
+    hard_limit: int | None
+    remaining_soft: int | None
+    remaining_hard: int | None
+    status: UsageCounterStatus
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceUsageLimits:
     """Current limits and usage envelope for one workspace."""
 
@@ -49,6 +64,12 @@ class WorkspaceUsageLimits:
     remaining_cost_usd: Decimal | None
     current_total_tokens: int
     max_playbooks: int | None
+    storage_bytes: WorkspaceUsageCounter
+    hosted_eval_runs: WorkspaceUsageCounter
+    managed_inference_requests: WorkspaceUsageCounter
+    managed_inference_tokens: WorkspaceUsageCounter
+    warning_fields: tuple[str, ...]
+    blocked_fields: tuple[str, ...]
     is_within_limits: bool
     limit_exceeded: str | None
 
@@ -165,30 +186,222 @@ def get_plan_entitlements(
     )
 
 
-def _build_usage_limits(status: UsageStatus) -> WorkspaceUsageLimits:
-    """Convert the existing usage status shape into the workspace response shape."""
+def _coerce_int(value: object) -> int | None:
+    """Convert configured limit values into integers when possible."""
+
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        return int(value)
+    return None
+
+
+def _read_workspace_usage_config(workspace: Workspace | None) -> dict:
+    """Return the workspace usage-limits config payload, if any."""
+
+    raw = getattr(workspace, "usage_limits", None)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _resolve_counter_thresholds(
+    workspace: Workspace | None,
+    key: str,
+    *,
+    default_hard: int | None = None,
+    aliases: tuple[str, ...] = (),
+) -> tuple[int | None, int | None]:
+    """Resolve soft and hard thresholds for one usage counter."""
+
+    config = _read_workspace_usage_config(workspace)
+    soft_limit = None
+    hard_limit = default_hard
+
+    for candidate in (key, *aliases):
+        raw_value = config.get(candidate)
+        if raw_value is None:
+            continue
+
+        if isinstance(raw_value, dict):
+            candidate_soft = _coerce_int(
+                raw_value.get("soft_limit", raw_value.get("warning_limit"))
+            )
+            candidate_hard = _coerce_int(raw_value.get("hard_limit"))
+            shared_limit = _coerce_int(raw_value.get("limit"))
+            if candidate_soft is None and candidate_hard is None and shared_limit is not None:
+                if default_hard is None:
+                    candidate_soft = shared_limit
+                else:
+                    candidate_hard = shared_limit
+            if candidate_soft is not None:
+                soft_limit = candidate_soft
+            if candidate_hard is not None:
+                hard_limit = candidate_hard
+            break
+
+        candidate_limit = _coerce_int(raw_value)
+        if candidate_limit is not None:
+            hard_limit = candidate_limit
+            break
+
+    if default_hard is not None and hard_limit is not None:
+        hard_limit = min(default_hard, hard_limit)
+
+    return soft_limit, hard_limit
+
+
+def _build_usage_counter(
+    *,
+    current: int,
+    soft_limit: int | None,
+    hard_limit: int | None,
+) -> WorkspaceUsageCounter:
+    """Construct one counter with derived status and remaining values."""
+
+    status: UsageCounterStatus = "ok"
+    if hard_limit is not None and current >= hard_limit:
+        status = "blocked"
+    elif soft_limit is not None and current >= soft_limit:
+        status = "warning"
+
+    return WorkspaceUsageCounter(
+        current=current,
+        soft_limit=soft_limit,
+        hard_limit=hard_limit,
+        remaining_soft=None if soft_limit is None else max(0, soft_limit - current),
+        remaining_hard=None if hard_limit is None else max(0, hard_limit - current),
+        status=status,
+    )
+
+
+async def get_workspace_usage_limits(
+    db: AsyncSession,
+    user: User,
+    *,
+    workspace: Workspace | None = None,
+    usage_status: UsageStatus | None = None,
+    include_storage: bool = True,
+) -> WorkspaceUsageLimits:
+    """Build workspace-scoped usage counters and effective limit states."""
+
+    limits_tier = get_effective_tier_for_limits(user)
+    usage_status = usage_status or await get_user_usage_status(db, user.id, limits_tier)
+
+    storage_bytes = usage_status.current_storage_bytes if include_storage else 0
+
+    managed_inference = UsageCounterSummary(
+        request_count=usage_status.current_managed_inference_requests,
+        total_tokens=usage_status.current_total_tokens,
+        total_cost_usd=usage_status.current_cost_usd,
+    )
+
+    storage_soft_limit, storage_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "storage_bytes",
+        default_hard=usage_status.limits.storage_limit_bytes,
+    )
+    eval_soft_limit, eval_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "hosted_eval_runs",
+        default_hard=usage_status.limits.monthly_evolution_runs,
+        aliases=("monthly_evolution_runs", "eval_runs"),
+    )
+    mi_request_soft_limit, mi_request_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "managed_inference_requests",
+    )
+    mi_token_soft_limit, mi_token_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "managed_inference_tokens",
+    )
+
+    storage_counter = _build_usage_counter(
+        current=storage_bytes,
+        soft_limit=storage_soft_limit,
+        hard_limit=storage_hard_limit,
+    )
+    hosted_eval_counter = _build_usage_counter(
+        current=usage_status.current_evolution_runs,
+        soft_limit=eval_soft_limit,
+        hard_limit=eval_hard_limit,
+    )
+    managed_inference_request_counter = _build_usage_counter(
+        current=managed_inference.request_count,
+        soft_limit=mi_request_soft_limit,
+        hard_limit=mi_request_hard_limit,
+    )
+    managed_inference_token_counter = _build_usage_counter(
+        current=managed_inference.total_tokens,
+        soft_limit=mi_token_soft_limit,
+        hard_limit=mi_token_hard_limit,
+    )
+
+    warning_fields = tuple(
+        name
+        for name, counter in (
+            ("storage_bytes", storage_counter),
+            ("hosted_eval_runs", hosted_eval_counter),
+            ("managed_inference_requests", managed_inference_request_counter),
+            ("managed_inference_tokens", managed_inference_token_counter),
+        )
+        if counter.status == "warning"
+    )
+
+    blocked_fields = list(
+        name
+        for name, counter in (
+            ("storage_bytes", storage_counter),
+            ("hosted_eval_runs", hosted_eval_counter),
+            ("managed_inference_requests", managed_inference_request_counter),
+            ("managed_inference_tokens", managed_inference_token_counter),
+        )
+        if counter.status == "blocked"
+    )
+    if usage_status.limit_exceeded == "monthly_cost_limit":
+        blocked_fields.append("monthly_cost_limit")
+    elif (
+        usage_status.limit_exceeded == "monthly_evolution_runs"
+        and "hosted_eval_runs" not in blocked_fields
+    ):
+        blocked_fields.append("hosted_eval_runs")
+
+    blocked_fields_tuple = tuple(dict.fromkeys(blocked_fields))
 
     return WorkspaceUsageLimits(
-        monthly_evolution_runs=status.limits.monthly_evolution_runs,
-        current_evolution_runs=status.current_evolution_runs,
-        remaining_evolution_runs=status.remaining_evolution_runs,
-        monthly_cost_limit_usd=status.limits.monthly_cost_limit_usd,
-        current_cost_usd=status.current_cost_usd,
-        remaining_cost_usd=status.remaining_cost_usd,
-        current_total_tokens=status.current_total_tokens,
-        max_playbooks=status.limits.max_playbooks,
-        is_within_limits=status.is_within_limits,
-        limit_exceeded=status.limit_exceeded,
+        monthly_evolution_runs=usage_status.limits.monthly_evolution_runs,
+        current_evolution_runs=usage_status.current_evolution_runs,
+        remaining_evolution_runs=usage_status.remaining_evolution_runs,
+        monthly_cost_limit_usd=usage_status.limits.monthly_cost_limit_usd,
+        current_cost_usd=usage_status.current_cost_usd,
+        remaining_cost_usd=usage_status.remaining_cost_usd,
+        current_total_tokens=usage_status.current_total_tokens,
+        max_playbooks=usage_status.limits.max_playbooks,
+        storage_bytes=storage_counter,
+        hosted_eval_runs=hosted_eval_counter,
+        managed_inference_requests=managed_inference_request_counter,
+        managed_inference_tokens=managed_inference_token_counter,
+        warning_fields=warning_fields,
+        blocked_fields=blocked_fields_tuple,
+        is_within_limits=usage_status.is_within_limits and not blocked_fields_tuple,
+        limit_exceeded=blocked_fields_tuple[0] if blocked_fields_tuple else None,
     )
 
 
 async def resolve_workspace_entitlements(
     db: AsyncSession,
     user: User,
+    *,
+    workspace: Workspace | None = None,
 ) -> WorkspaceEntitlementsSnapshot:
     """Build a workspace-shaped entitlement snapshot for the authenticated user."""
 
     plan = normalize_workspace_plan(user)
+    if workspace is not None:
+        plan = workspace.plan.value
+
     subscription_tier = get_subscription_tier(user)
     limits_tier = get_effective_tier_for_limits(user)
     usage_status = await get_user_usage_status(db, user.id, limits_tier)
@@ -197,13 +410,11 @@ async def resolve_workspace_entitlements(
     enabled_features = tuple(
         field.name for field in fields(WorkspaceFeatureAccess) if getattr(entitlements, field.name)
     )
-    limits = get_tier_limits(limits_tier)
-
     return WorkspaceEntitlementsSnapshot(
-        workspace_id=get_workspace_id(user),
+        workspace_id=str(workspace.id) if workspace is not None else get_workspace_id(user),
         plan=plan,
         deployment_mode="cloud",
-        seat_limit=get_seat_limit(plan),
+        seat_limit=workspace.seat_limit if workspace is not None else get_seat_limit(plan),
         entitlements=entitlements,
         enabled_features=enabled_features,
         access=WorkspaceAccessState(
@@ -213,16 +424,55 @@ async def resolve_workspace_entitlements(
             has_feature_access=feature_access_enabled,
             is_trialing=is_user_trialing(user),
         ),
-        usage_limits=WorkspaceUsageLimits(
-            monthly_evolution_runs=limits.monthly_evolution_runs,
-            current_evolution_runs=usage_status.current_evolution_runs,
-            remaining_evolution_runs=usage_status.remaining_evolution_runs,
-            monthly_cost_limit_usd=limits.monthly_cost_limit_usd,
-            current_cost_usd=usage_status.current_cost_usd,
-            remaining_cost_usd=usage_status.remaining_cost_usd,
-            current_total_tokens=usage_status.current_total_tokens,
-            max_playbooks=limits.max_playbooks,
-            is_within_limits=usage_status.is_within_limits,
-            limit_exceeded=usage_status.limit_exceeded,
+        usage_limits=await get_workspace_usage_limits(
+            db,
+            user,
+            workspace=workspace,
+            usage_status=usage_status,
         ),
     )
+
+
+async def check_workspace_managed_inference_allowed(
+    db: AsyncSession,
+    user: User,
+    *,
+    workspace: Workspace | None = None,
+) -> tuple[bool, str | None]:
+    """Return whether managed inference can proceed for the workspace."""
+
+    period_start = get_billing_period_start()
+    period_end = datetime.now(UTC)
+    managed_inference = await get_usage_counter_summary(
+        db,
+        user.id,
+        period_start,
+        period_end,
+        operation_prefixes=("managed_inference",),
+    )
+
+    request_soft_limit, request_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "managed_inference_requests",
+    )
+    token_soft_limit, token_hard_limit = _resolve_counter_thresholds(
+        workspace,
+        "managed_inference_tokens",
+    )
+
+    request_counter = _build_usage_counter(
+        current=managed_inference.request_count,
+        soft_limit=request_soft_limit,
+        hard_limit=request_hard_limit,
+    )
+    token_counter = _build_usage_counter(
+        current=managed_inference.total_tokens,
+        soft_limit=token_soft_limit,
+        hard_limit=token_hard_limit,
+    )
+
+    if request_counter.status == "blocked":
+        return False, "Workspace managed inference request limit reached."
+    if token_counter.status == "blocked":
+        return False, "Workspace managed inference token limit reached."
+    return True, None

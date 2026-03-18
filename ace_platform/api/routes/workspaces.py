@@ -20,6 +20,7 @@ from ace_platform.api.deps import get_db
 from ace_platform.core.entitlements import (
     WorkspaceEntitlementsSnapshot,
     get_workspace_id,
+    get_workspace_usage_limits,
     resolve_workspace_entitlements,
 )
 from ace_platform.core.limits import (
@@ -194,6 +195,17 @@ class WorkspaceFeatureAccessResponse(BaseModel):
     audit_logs: bool
 
 
+class WorkspaceUsageCounterResponse(BaseModel):
+    """API response model for a single workspace usage counter."""
+
+    current: int
+    soft_limit: int | None
+    hard_limit: int | None
+    remaining_soft: int | None
+    remaining_hard: int | None
+    status: Literal["ok", "warning", "blocked"]
+
+
 class WorkspaceUsageLimitsResponse(BaseModel):
     """API response model for workspace usage limits and current usage."""
 
@@ -205,6 +217,12 @@ class WorkspaceUsageLimitsResponse(BaseModel):
     remaining_cost_usd: Decimal | None
     current_total_tokens: int
     max_playbooks: int | None
+    storage_bytes: WorkspaceUsageCounterResponse
+    hosted_eval_runs: WorkspaceUsageCounterResponse
+    managed_inference_requests: WorkspaceUsageCounterResponse
+    managed_inference_tokens: WorkspaceUsageCounterResponse
+    warning_fields: list[str]
+    blocked_fields: list[str]
     is_within_limits: bool
     limit_exceeded: str | None
 
@@ -424,6 +442,40 @@ def _to_response(
             remaining_cost_usd=snapshot.usage_limits.remaining_cost_usd,
             current_total_tokens=snapshot.usage_limits.current_total_tokens,
             max_playbooks=snapshot.usage_limits.max_playbooks,
+            storage_bytes=WorkspaceUsageCounterResponse(
+                current=snapshot.usage_limits.storage_bytes.current,
+                soft_limit=snapshot.usage_limits.storage_bytes.soft_limit,
+                hard_limit=snapshot.usage_limits.storage_bytes.hard_limit,
+                remaining_soft=snapshot.usage_limits.storage_bytes.remaining_soft,
+                remaining_hard=snapshot.usage_limits.storage_bytes.remaining_hard,
+                status=snapshot.usage_limits.storage_bytes.status,
+            ),
+            hosted_eval_runs=WorkspaceUsageCounterResponse(
+                current=snapshot.usage_limits.hosted_eval_runs.current,
+                soft_limit=snapshot.usage_limits.hosted_eval_runs.soft_limit,
+                hard_limit=snapshot.usage_limits.hosted_eval_runs.hard_limit,
+                remaining_soft=snapshot.usage_limits.hosted_eval_runs.remaining_soft,
+                remaining_hard=snapshot.usage_limits.hosted_eval_runs.remaining_hard,
+                status=snapshot.usage_limits.hosted_eval_runs.status,
+            ),
+            managed_inference_requests=WorkspaceUsageCounterResponse(
+                current=snapshot.usage_limits.managed_inference_requests.current,
+                soft_limit=snapshot.usage_limits.managed_inference_requests.soft_limit,
+                hard_limit=snapshot.usage_limits.managed_inference_requests.hard_limit,
+                remaining_soft=snapshot.usage_limits.managed_inference_requests.remaining_soft,
+                remaining_hard=snapshot.usage_limits.managed_inference_requests.remaining_hard,
+                status=snapshot.usage_limits.managed_inference_requests.status,
+            ),
+            managed_inference_tokens=WorkspaceUsageCounterResponse(
+                current=snapshot.usage_limits.managed_inference_tokens.current,
+                soft_limit=snapshot.usage_limits.managed_inference_tokens.soft_limit,
+                hard_limit=snapshot.usage_limits.managed_inference_tokens.hard_limit,
+                remaining_soft=snapshot.usage_limits.managed_inference_tokens.remaining_soft,
+                remaining_hard=snapshot.usage_limits.managed_inference_tokens.remaining_hard,
+                status=snapshot.usage_limits.managed_inference_tokens.status,
+            ),
+            warning_fields=list(snapshot.usage_limits.warning_fields),
+            blocked_fields=list(snapshot.usage_limits.blocked_fields),
             is_within_limits=snapshot.usage_limits.is_within_limits,
             limit_exceeded=snapshot.usage_limits.limit_exceeded,
         ),
@@ -943,7 +995,7 @@ async def get_workspace_entitlements(
 ) -> WorkspaceEntitlementsResponse:
     """Return authoritative feature access for the caller's cloud workspace."""
     workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
-    snapshot = await resolve_workspace_entitlements(db, current_user)
+    snapshot = await resolve_workspace_entitlements(db, current_user, workspace=workspace)
     return _to_response(snapshot, workspace)
 
 
@@ -975,7 +1027,16 @@ async def trigger_hosted_eval_run(
             detail="Email verification required to trigger hosted eval runs.",
         )
 
-    resolved_workspace_id = await _resolve_hosted_eval_workspace(db, current_user, workspace_id)
+    workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
+    if workspace is not None and workspace.plan != WorkspacePlan.PERSONAL:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Hosted eval runs are currently only supported for personal workspaces.",
+        )
+
+    resolved_workspace_id = (
+        str(workspace.id) if workspace is not None else get_workspace_id(current_user)
+    )
     playbook = await _get_hosted_eval_playbook(db, current_user, payload.playbook_id)
 
     await rate_limit_evolution(request, str(playbook.id))
@@ -999,6 +1060,18 @@ async def trigger_hosted_eval_run(
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
             detail=detail,
+        )
+
+    usage_limits = await get_workspace_usage_limits(
+        db,
+        current_user,
+        workspace=workspace,
+        include_storage=False,
+    )
+    if usage_limits.hosted_eval_runs.status == "blocked":
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail="Workspace hosted eval limit reached. Adjust the workspace usage limits or upgrade the plan.",
         )
 
     try:

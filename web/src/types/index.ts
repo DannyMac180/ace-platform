@@ -172,6 +172,62 @@ export interface PlaybookUsage {
   cost_usd: string | number;
 }
 
+export interface WorkspaceUsageCounter {
+  current: number;
+  soft_limit: number | null;
+  hard_limit: number | null;
+  remaining_soft: number | null;
+  remaining_hard: number | null;
+  status: 'ok' | 'warning' | 'blocked';
+}
+
+export interface WorkspaceUsageLimits {
+  monthly_evolution_runs: number | null;
+  current_evolution_runs: number;
+  remaining_evolution_runs: number | null;
+  monthly_cost_limit_usd: string | number | null;
+  current_cost_usd: string | number;
+  remaining_cost_usd: string | number | null;
+  current_total_tokens: number;
+  max_playbooks: number | null;
+  storage_bytes: WorkspaceUsageCounter;
+  hosted_eval_runs: WorkspaceUsageCounter;
+  managed_inference_requests: WorkspaceUsageCounter;
+  managed_inference_tokens: WorkspaceUsageCounter;
+  warning_fields: string[];
+  blocked_fields: string[];
+  is_within_limits: boolean;
+  limit_exceeded: string | null;
+}
+
+export interface WorkspaceEntitlements {
+  workspace_id: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number | null;
+  enabled_features: string[];
+  access: {
+    subscription_tier: string;
+    subscription_status: string;
+    effective_tier: string;
+    has_feature_access: boolean;
+    is_trialing: boolean;
+  };
+  entitlements: {
+    cloud_sync: boolean;
+    hosted_backups: boolean;
+    managed_inference: boolean;
+    hosted_evals: boolean;
+    invite_members: boolean;
+    shared_workspace: boolean;
+    approvals: boolean;
+    rbac: boolean;
+    sso: boolean;
+    audit_logs: boolean;
+  };
+  usage_limits: WorkspaceUsageLimits;
+}
+
 // Evolution Statistics Types
 export interface EvolutionSummary {
   start_date: string;

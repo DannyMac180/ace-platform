@@ -21,10 +21,10 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.db.models import Playbook, UsageRecord, User
+from ace_platform.db.models import Outcome, Playbook, PlaybookVersion, UsageRecord, User
 
 
 @dataclass
@@ -72,6 +72,15 @@ class OperationUsage:
     request_count: int
     total_tokens: int
     cost_usd: Decimal
+
+
+@dataclass
+class UsageCounterSummary:
+    """Aggregated counters for a filtered subset of usage records."""
+
+    request_count: int
+    total_tokens: int
+    total_cost_usd: Decimal
 
 
 async def get_user_usage_summary(
@@ -376,6 +385,113 @@ async def get_billing_period_usage(
         "by_operation": by_operation,
         "by_model": by_model,
     }
+
+
+async def get_usage_counter_summary(
+    db: AsyncSession,
+    user_id: UUID,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    *,
+    operation_prefixes: tuple[str, ...] | None = None,
+) -> UsageCounterSummary:
+    """Get aggregate counters, optionally filtered by usage operation prefix."""
+
+    if end_date is None:
+        end_date = datetime.now(UTC)
+    if start_date is None:
+        start_date = end_date - timedelta(days=30)
+
+    query = select(
+        func.count(UsageRecord.id).label("request_count"),
+        func.coalesce(func.sum(UsageRecord.total_tokens), 0).label("total_tokens"),
+        func.coalesce(func.sum(UsageRecord.cost_usd), Decimal("0")).label("total_cost_usd"),
+    ).where(
+        UsageRecord.user_id == user_id,
+        UsageRecord.created_at >= start_date,
+        UsageRecord.created_at <= end_date,
+    )
+
+    if operation_prefixes:
+        query = query.where(
+            or_(*(UsageRecord.operation.like(f"{prefix}%") for prefix in operation_prefixes))
+        )
+
+    result = await db.execute(query)
+    row = result.one()
+
+    return UsageCounterSummary(
+        request_count=int(row.request_count or 0),
+        total_tokens=int(row.total_tokens or 0),
+        total_cost_usd=row.total_cost_usd or Decimal("0"),
+    )
+
+
+def _octet_length(expression):
+    """Return the UTF-8 byte length of a nullable SQL expression."""
+
+    return func.octet_length(func.coalesce(cast(expression, Text), ""))
+
+
+async def get_user_storage_bytes(
+    db: AsyncSession,
+    user_id: UUID,
+) -> int:
+    """Estimate hosted storage used by one user in bytes.
+
+    The counter focuses on primary hosted content: playbook metadata,
+    version bodies, and recorded outcomes. Managed backup snapshots are not
+    included because they are a platform retention concern rather than user
+    content the user can directly trim.
+    """
+
+    playbook_bytes_query = select(
+        func.coalesce(
+            func.sum(
+                _octet_length(Playbook.name)
+                + _octet_length(Playbook.description)
+                + _octet_length(Playbook.semantic_embedding)
+                + _octet_length(Playbook.semantic_embedding_model)
+            ),
+            0,
+        )
+    ).where(Playbook.user_id == user_id)
+    version_bytes_query = (
+        select(
+            func.coalesce(
+                func.sum(
+                    _octet_length(PlaybookVersion.content)
+                    + _octet_length(PlaybookVersion.diff_summary)
+                ),
+                0,
+            )
+        )
+        .select_from(PlaybookVersion)
+        .join(Playbook, PlaybookVersion.playbook_id == Playbook.id)
+        .where(Playbook.user_id == user_id)
+    )
+    outcome_bytes_query = (
+        select(
+            func.coalesce(
+                func.sum(
+                    _octet_length(Outcome.task_description)
+                    + _octet_length(Outcome.reasoning_trace)
+                    + _octet_length(Outcome.notes)
+                    + _octet_length(Outcome.reflection_data)
+                ),
+                0,
+            )
+        )
+        .select_from(Outcome)
+        .join(Playbook, Outcome.playbook_id == Playbook.id)
+        .where(Playbook.user_id == user_id)
+    )
+
+    playbook_bytes = int((await db.scalar(playbook_bytes_query)) or 0)
+    version_bytes = int((await db.scalar(version_bytes_query)) or 0)
+    outcome_bytes = int((await db.scalar(outcome_bytes_query)) or 0)
+
+    return playbook_bytes + version_bytes + outcome_bytes
 
 
 # =============================================================================

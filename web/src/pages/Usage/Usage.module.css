@@ -87,6 +87,35 @@
   color: var(--text-primary);
 }
 
+.summaryHint {
+  margin-top: var(--space-xs);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.alertCard {
+  margin-bottom: var(--space-xl);
+  border: 1px solid color-mix(in srgb, var(--gold-primary) 40%, var(--border-default));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--gold-primary) 10%, var(--bg-secondary)), var(--bg-secondary));
+}
+
+.alertHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.alertList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 /* Content Grid */
 .contentGrid {
   display: grid;

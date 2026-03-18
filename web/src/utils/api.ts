@@ -35,6 +35,7 @@ import type {
   UsageSummary,
   User,
   VersionCreate,
+  WorkspaceEntitlements,
 } from '../types';
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
@@ -390,6 +391,13 @@ export const hostedEvalRunsApi = {
     const response = await api.get<HostedEvalRun>(
       `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/evals/${runId}`
     );
+    return response.data;
+  },
+};
+
+export const workspacesApi = {
+  getPersonalEntitlements: async (): Promise<WorkspaceEntitlements> => {
+    const response = await api.get<WorkspaceEntitlements>('/v1/workspaces/me/entitlements');
     return response.data;
   },
 };

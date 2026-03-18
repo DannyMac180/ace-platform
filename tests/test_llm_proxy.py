@@ -8,6 +8,7 @@ These tests verify:
 """
 
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -409,3 +410,83 @@ class TestAsyncMeteredLLMClient:
             call_args = mock_async_db_session.add.call_args
             usage_record = call_args[0][0]
             assert usage_record.extra_data == extra_data
+
+    async def test_async_chat_completion_adds_workspace_id_to_extra_data(
+        self, mock_async_db_session, user_id, mock_openai_response
+    ):
+        workspace_id = uuid4()
+
+        with (
+            patch("ace_platform.core.llm_proxy.openai.AsyncOpenAI") as mock_openai,
+            patch(
+                "ace_platform.core.llm_proxy.check_workspace_managed_inference_allowed",
+                AsyncMock(return_value=(True, None)),
+            ),
+            patch.object(
+                mock_async_db_session,
+                "get",
+                AsyncMock(return_value=SimpleNamespace(id=workspace_id)),
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+            mock_openai.return_value = mock_client
+
+            client = AsyncMeteredLLMClient(
+                api_key="sk-test",
+                db_session=mock_async_db_session,
+                user_id=user_id,
+            )
+
+            await client.chat_completion(
+                model="gpt-4o",
+                messages=[{"role": "user", "content": "Hello!"}],
+                operation="managed_inference_chat",
+                workspace_id=workspace_id,
+                extra_data={"source": "test"},
+            )
+
+            usage_record = mock_async_db_session.add.call_args[0][0]
+            assert usage_record.extra_data == {
+                "source": "test",
+                "workspace_id": str(workspace_id),
+            }
+
+    async def test_async_chat_completion_blocks_managed_inference_when_limit_hit(
+        self, mock_async_db_session, user_id, mock_openai_response
+    ):
+        workspace_id = uuid4()
+
+        with (
+            patch("ace_platform.core.llm_proxy.openai.AsyncOpenAI") as mock_openai,
+            patch(
+                "ace_platform.core.llm_proxy.check_workspace_managed_inference_allowed",
+                AsyncMock(
+                    return_value=(False, "Workspace managed inference request limit reached.")
+                ),
+            ),
+            patch.object(
+                mock_async_db_session,
+                "get",
+                AsyncMock(return_value=SimpleNamespace(id=workspace_id)),
+            ),
+        ):
+            mock_client = MagicMock()
+            mock_client.chat.completions.create = AsyncMock(return_value=mock_openai_response)
+            mock_openai.return_value = mock_client
+
+            client = AsyncMeteredLLMClient(
+                api_key="sk-test",
+                db_session=mock_async_db_session,
+                user_id=user_id,
+            )
+
+            with pytest.raises(ValueError, match="request limit reached"):
+                await client.chat_completion(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": "Hello!"}],
+                    operation="managed_inference_chat",
+                    workspace_id=workspace_id,
+                )
+
+            mock_client.chat.completions.create.assert_not_called()
