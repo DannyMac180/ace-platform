@@ -91,6 +91,7 @@ Prerequisites:
 - `LINEAR_API_KEY` set in your shell
 - `codex` available in your `PATH`
 - [`mise`](https://mise.jdx.dev/) installed for the Elixir/Erlang toolchain
+- a Linear token that resolves to workspace `danmac` for this repo's default Symphony setup
 
 Local setup:
 
@@ -115,8 +116,10 @@ Notes:
 - Keep your machine-specific Symphony config in `WORKFLOW.local.md`, not by editing the tracked example.
 - `WORKFLOW.local.md` should be treated as local frontmatter overrides for the tracked example workflow.
 - `scripts/run-symphony.sh` uses the repo-local `venv/bin/symphony` launcher directly instead of relying on shell activation.
+- `scripts/run-symphony.sh` now validates that `LINEAR_API_KEY` resolves to the expected Linear workspace and that the configured project belongs to the expected team before Symphony starts.
 - The script starts the observability dashboard on `http://127.0.0.1:4000/`.
 - Override the dashboard port with `SYMPHONY_PORT=4001 ./scripts/run-symphony.sh` if needed.
+- Override the workspace/team guard only if you are intentionally repointing the setup: `SYMPHONY_LINEAR_WORKSPACE_URL_KEY=your-workspace SYMPHONY_LINEAR_TEAM_KEY=ENG ./scripts/run-symphony.sh`.
 - Local open-source Symphony development currently expects a Linear project and `LINEAR_API_KEY`.
 - If you want Symphony-created branches or PRs to push to your fork, make sure the clone URL in
   `WORKFLOW.local.md` and your local git auth are configured for that fork.
