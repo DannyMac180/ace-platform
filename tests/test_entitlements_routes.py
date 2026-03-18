@@ -21,7 +21,11 @@ from ace_platform.core.entitlements import (
     WorkspaceUsageLimits,
 )
 from ace_platform.core.limits import SubscriptionTier
-from ace_platform.db.models import SubscriptionStatus
+from ace_platform.db.models import (
+    SubscriptionStatus,
+    WorkspaceDeploymentMode,
+    WorkspacePlan,
+)
 
 
 def _make_snapshot(workspace_id: str) -> WorkspaceEntitlementsSnapshot:
@@ -70,6 +74,27 @@ def _make_snapshot(workspace_id: str) -> WorkspaceEntitlementsSnapshot:
     )
 
 
+def _make_workspace(*, workspace_id, has_entitlements: bool = True):
+    return SimpleNamespace(
+        id=workspace_id,
+        plan=WorkspacePlan.PERSONAL,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=1,
+        entitlements=SimpleNamespace(
+            cloud_sync=has_entitlements,
+            hosted_backups=has_entitlements,
+            managed_inference=has_entitlements,
+            hosted_evals=has_entitlements,
+            invite_members=False,
+            shared_workspace=False,
+            approvals=False,
+            rbac=False,
+            sso=False,
+            audit_logs=False,
+        ),
+    )
+
+
 class TestWorkspaceEntitlementsRoutes:
     @pytest.fixture
     def app(self):
@@ -109,6 +134,7 @@ class TestWorkspaceEntitlementsRoutes:
 
     def test_route_returns_entitlements_for_personal_alias(self, monkeypatch, app):
         user = SimpleNamespace(id=uuid4())
+        workspace_id = uuid4()
 
         async def override_user():
             return user
@@ -119,6 +145,10 @@ class TestWorkspaceEntitlementsRoutes:
         app.dependency_overrides[require_user] = override_user
         app.dependency_overrides[get_db] = override_db
         monkeypatch.setattr(
+            "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
+            AsyncMock(return_value=_make_workspace(workspace_id=workspace_id)),
+        )
+        monkeypatch.setattr(
             "ace_platform.api.routes.workspaces.resolve_workspace_entitlements",
             AsyncMock(return_value=_make_snapshot(str(user.id))),
         )
@@ -127,7 +157,7 @@ class TestWorkspaceEntitlementsRoutes:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.json() == {
-            "workspace_id": str(user.id),
+            "workspace_id": str(workspace_id),
             "plan": "personal",
             "deployment_mode": "cloud",
             "seat_limit": 1,
@@ -169,6 +199,55 @@ class TestWorkspaceEntitlementsRoutes:
                 "limit_exceeded": None,
             },
         }
+
+    def test_route_gates_workspace_flags_by_subscription_access(self, monkeypatch, app):
+        user = SimpleNamespace(id=uuid4())
+        workspace_id = uuid4()
+
+        async def override_user():
+            return user
+
+        async def override_db():
+            yield object()
+
+        app.dependency_overrides[require_user] = override_user
+        app.dependency_overrides[get_db] = override_db
+
+        snapshot = _make_snapshot(str(user.id))
+        snapshot = WorkspaceEntitlementsSnapshot(
+            workspace_id=snapshot.workspace_id,
+            plan=snapshot.plan,
+            deployment_mode=snapshot.deployment_mode,
+            seat_limit=snapshot.seat_limit,
+            entitlements=snapshot.entitlements,
+            enabled_features=snapshot.enabled_features,
+            access=WorkspaceAccessState(
+                subscription_tier=snapshot.access.subscription_tier,
+                subscription_status=SubscriptionStatus.NONE,
+                effective_tier=snapshot.access.effective_tier,
+                has_feature_access=False,
+                is_trialing=False,
+            ),
+            usage_limits=snapshot.usage_limits,
+        )
+
+        monkeypatch.setattr(
+            "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
+            AsyncMock(return_value=_make_workspace(workspace_id=workspace_id)),
+        )
+        monkeypatch.setattr(
+            "ace_platform.api.routes.workspaces.resolve_workspace_entitlements",
+            AsyncMock(return_value=snapshot),
+        )
+
+        response = TestClient(app).get("/v1/workspaces/me/entitlements")
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        assert payload["workspace_id"] == str(workspace_id)
+        assert payload["enabled_features"] == []
+        assert payload["entitlements"]["cloud_sync"] is False
+        assert payload["entitlements"]["managed_inference"] is False
 
 
 class TestWorkspaceEntitlementsRouteRegistration:
