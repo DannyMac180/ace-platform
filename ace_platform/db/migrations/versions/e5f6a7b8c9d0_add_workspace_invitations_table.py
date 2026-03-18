@@ -1,7 +1,7 @@
 """add workspace invitations table
 
 Revision ID: e5f6a7b8c9d0
-Revises: c4d5e6f7a8b9
+Revises: 4f0f8a7c6b21
 Create Date: 2026-03-18 08:45:00.000000
 
 """
@@ -10,10 +10,11 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "e5f6a7b8c9d0"
-down_revision: str | Sequence[str] | None = "c4d5e6f7a8b9"
+down_revision: str | Sequence[str] | None = "4f0f8a7c6b21"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -21,7 +22,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
 
-    membership_role_enum = sa.Enum(
+    membership_role_enum = postgresql.ENUM(
         "OWNER",
         "MEMBER",
         "REVIEWER",
