@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { playbooksApi } from '../../utils/api';
+import { hostedEvalRunsApi, playbooksApi } from '../../utils/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronRight,
   Sparkles,
+  ArrowUpRight,
 } from 'lucide-react';
 import { SubscriptionGate } from '../../components/SubscriptionGate';
 import type { Playbook, PlaybookVersion, PlaybookUpdate, Outcome, EvolutionJob } from '../../types';
@@ -413,11 +414,13 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
   });
 
   const triggerMutation = useMutation({
-    mutationFn: () => playbooksApi.triggerEvolution(playbookId),
-    onSuccess: () => {
+    mutationFn: () => hostedEvalRunsApi.trigger(playbookId),
+    onSuccess: (result) => {
       setTriggerError(null);
       setIsLimitError(false);
       queryClient.invalidateQueries({ queryKey: ['playbook-evolutions', playbookId] });
+      queryClient.invalidateQueries({ queryKey: ['evolution-recent'] });
+      navigate(`/playbooks/${playbookId}/evolutions/${result.id}`);
     },
     onError: (err: Error & { response?: { status?: number; data?: { detail?: string; error?: { message?: string } } } }) => {
       const message =
@@ -533,11 +536,17 @@ function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playboo
             )}
           </div>
           <div className={styles.evolutionFooter}>
-            <Clock size={14} />
-            <span>{new Date(job.created_at).toLocaleDateString()}</span>
-            {job.completed_at && (
-              <span>Completed: {new Date(job.completed_at).toLocaleTimeString()}</span>
-            )}
+            <div className={styles.evolutionMeta}>
+              <Clock size={14} />
+              <span>{new Date(job.created_at).toLocaleDateString()}</span>
+              {job.completed_at && (
+                <span>Completed: {new Date(job.completed_at).toLocaleTimeString()}</span>
+              )}
+            </div>
+            <Link to={`/playbooks/${playbookId}/evolutions/${job.id}`} className={styles.evolutionLink}>
+              <span>View run</span>
+              <ArrowUpRight size={14} />
+            </Link>
           </div>
         </Card>
       ))}

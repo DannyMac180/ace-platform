@@ -16,6 +16,7 @@ import type {
   ConversionFunnel,
   EvolutionJob,
   EvolutionSummary,
+  HostedEvalRun,
   Outcome,
   OutcomeCreate,
   PaginatedResponse,
@@ -29,6 +30,7 @@ import type {
   PlatformStats,
   RecentEvolution,
   TokenResponse,
+  TriggerHostedEvalRunResponse,
   TopUser,
   UsageSummary,
   User,
@@ -37,6 +39,7 @@ import type {
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const PERSONAL_WORKSPACE_ID = 'me';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -363,6 +366,23 @@ export const playbooksApi = {
   triggerEvolution: async (id: string): Promise<{ job_id: string; is_new: boolean; status: string }> => {
     const response = await api.post<{ job_id: string; is_new: boolean; status: string }>(
       `/playbooks/${id}/evolve`
+    );
+    return response.data;
+  },
+};
+
+export const hostedEvalRunsApi = {
+  trigger: async (playbookId: string): Promise<TriggerHostedEvalRunResponse> => {
+    const response = await api.post<TriggerHostedEvalRunResponse>(
+      `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/evals/run`,
+      { playbook_id: playbookId }
+    );
+    return response.data;
+  },
+
+  get: async (runId: string): Promise<HostedEvalRun> => {
+    const response = await api.get<HostedEvalRun>(
+      `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/evals/${runId}`
     );
     return response.data;
   },

@@ -333,7 +333,7 @@ function RecentActivityItem({ evolution }: { evolution: RecentEvolution }) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/playbooks/${evolution.playbook_id}`);
+    navigate(`/playbooks/${evolution.playbook_id}/evolutions/${evolution.id}`);
   };
 
   const getStatusIcon = () => {
