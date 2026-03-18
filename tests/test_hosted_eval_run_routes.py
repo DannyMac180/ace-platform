@@ -84,12 +84,15 @@ def test_get_hosted_eval_run_returns_detail_payload():
     job = _make_job()
     client = _make_client(user)
 
-    with patch(
-        "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
-        new=AsyncMock(return_value="me"),
-    ), patch(
-        "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
-        new=AsyncMock(return_value=job),
+    with (
+        patch(
+            "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
+            new=AsyncMock(return_value="me"),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
+            new=AsyncMock(return_value=job),
+        ),
     ):
         response = client.get(f"/v1/workspaces/me/evals/{job.id}")
 
@@ -108,24 +111,31 @@ def test_trigger_hosted_eval_run_returns_launched_run_detail():
     job = _make_job(EvolutionJobStatus.QUEUED)
     client = _make_client(user)
 
-    with patch(
-        "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
-        new=AsyncMock(return_value="me"),
-    ), patch(
-        "ace_platform.api.routes.workspaces._get_hosted_eval_playbook",
-        new=AsyncMock(return_value=SimpleNamespace(id=job.playbook_id)),
-    ), patch(
-        "ace_platform.api.routes.workspaces.check_can_evolve",
-        new=AsyncMock(return_value=(True, None)),
-    ), patch(
-        "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
-        new=AsyncMock(return_value=job),
-    ), patch(
-        "ace_platform.core.rate_limit.rate_limit_evolution",
-        new=AsyncMock(),
-    ), patch(
-        "ace_platform.core.evolution_jobs.trigger_evolution_async",
-        new=AsyncMock(return_value=SimpleNamespace(job_id=job.id, is_new=True)),
+    with (
+        patch(
+            "ace_platform.api.routes.workspaces._resolve_hosted_eval_workspace",
+            new=AsyncMock(return_value="me"),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces._get_hosted_eval_playbook",
+            new=AsyncMock(return_value=SimpleNamespace(id=job.playbook_id)),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.check_can_evolve",
+            new=AsyncMock(return_value=(True, None)),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces._get_hosted_eval_run_or_404",
+            new=AsyncMock(return_value=job),
+        ),
+        patch(
+            "ace_platform.core.rate_limit.rate_limit_evolution",
+            new=AsyncMock(),
+        ),
+        patch(
+            "ace_platform.core.evolution_jobs.trigger_evolution_async",
+            new=AsyncMock(return_value=SimpleNamespace(job_id=job.id, is_new=True)),
+        ),
     ):
         response = client.post(
             "/v1/workspaces/me/evals/run",
