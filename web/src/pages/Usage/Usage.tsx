@@ -1,6 +1,6 @@
 import { type ReactNode } from 'react';
 import { AxiosError } from 'axios';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -27,6 +27,7 @@ import styles from './Usage.module.css';
 
 export function Usage() {
   const { user, isLoading: isAuthLoading } = useAuth();
+  const queryClient = useQueryClient();
 
   const entitlementsQuery = useQuery<WorkspaceEntitlements>({
     queryKey: ['workspace-entitlements', 'me'],
@@ -52,6 +53,13 @@ export function Usage() {
     queryKey: ['usage-activity-playbooks'],
     queryFn: () => evolutionsApi.getByPlaybook(5),
     enabled: !isAuthLoading && hasFeatureAccess,
+  });
+
+  const upgradeWorkspaceMutation = useMutation({
+    mutationFn: () => workspacesApi.upgradePersonalToTeam(),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['workspace-entitlements', 'me'] });
+    },
   });
 
   const detailErrors = [summaryQuery.error, dailyQuery.error, playbookQuery.error];
@@ -195,6 +203,9 @@ export function Usage() {
         <PlanStatusCard
           entitlements={entitlements}
           hasUsedTrial={!!user?.has_used_trial}
+          isUpgradingWorkspace={upgradeWorkspaceMutation.isPending}
+          upgradeWorkspaceError={upgradeWorkspaceMutation.error}
+          onUpgradeWorkspace={() => upgradeWorkspaceMutation.mutate()}
         />
         <UsageEnvelopeCard entitlements={entitlements} />
       </div>
@@ -357,13 +368,20 @@ function ProgressMeter({
 function PlanStatusCard({
   entitlements,
   hasUsedTrial,
+  isUpgradingWorkspace,
+  upgradeWorkspaceError,
+  onUpgradeWorkspace,
 }: {
   entitlements: WorkspaceEntitlements;
   hasUsedTrial: boolean;
+  isUpgradingWorkspace: boolean;
+  upgradeWorkspaceError: Error | null;
+  onUpgradeWorkspace: () => void;
 }) {
   const navigate = useNavigate();
   const tone = resolveUsageTone(entitlements);
   const copy = getUsageCopy(entitlements, hasUsedTrial);
+  const canUpgradeWorkspace = entitlements.plan === 'personal';
 
   return (
     <Card variant="default" padding="lg" className={`${styles.noticeCard} ${styles.noticeTone} ${styles[tone]}`}>
@@ -377,6 +395,15 @@ function PlanStatusCard({
         </div>
       </div>
       <div className={styles.noticeActions}>
+        {canUpgradeWorkspace && (
+          <Button
+            variant="secondary"
+            onClick={onUpgradeWorkspace}
+            disabled={isUpgradingWorkspace}
+          >
+            {isUpgradingWorkspace ? 'Upgrading Workspace...' : 'Upgrade Workspace To Team'}
+          </Button>
+        )}
         <Button
           variant={tone === 'success' ? 'secondary' : 'primary'}
           onClick={() => navigate(copy.primaryHref)}
@@ -388,6 +415,9 @@ function PlanStatusCard({
           Review Playbooks
         </Button>
       </div>
+      {upgradeWorkspaceError && (
+        <p>{extractMutationError(upgradeWorkspaceError, 'Could not upgrade this workspace right now.')}</p>
+      )}
     </Card>
   );
 }
@@ -682,6 +712,17 @@ function getUsageCopy(entitlements: WorkspaceEntitlements, hasUsedTrial: boolean
     primaryAction: 'Review Plans',
     primaryHref: '/pricing',
   };
+}
+
+function extractMutationError(error: Error, fallback: string) {
+  if (error instanceof AxiosError) {
+    const message = error.response?.data?.error?.message;
+    if (typeof message === 'string' && message.trim()) {
+      return message;
+    }
+  }
+
+  return fallback;
 }
 
 function isApproachingLimit(current: number, total: number | null) {
