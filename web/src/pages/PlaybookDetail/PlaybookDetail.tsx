@@ -22,12 +22,59 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { SubscriptionGate } from '../../components/SubscriptionGate';
-import type { Playbook, PlaybookVersion, PlaybookUpdate, Outcome, EvolutionJob } from '../../types';
+import type {
+  Playbook,
+  PlaybookVersion,
+  PlaybookUpdate,
+  Outcome,
+  EvolutionJob,
+  PlaybookReviewActivityItem,
+} from '../../types';
 import styles from './PlaybookDetail.module.css';
 
-type TabType = 'content' | 'versions' | 'outcomes' | 'evolutions';
+type TabType = 'content' | 'versions' | 'outcomes' | 'activity' | 'evolutions';
 
-const validTabs: TabType[] = ['content', 'versions', 'outcomes', 'evolutions'];
+const validTabs: TabType[] = ['content', 'versions', 'outcomes', 'activity', 'evolutions'];
+
+function getReviewActions(
+  reviewStatus: Playbook['review_status']
+): Array<{ label: string; action: 'proposed' | 'approved' | 'returned_to_draft' | 'archived' }> {
+  switch (reviewStatus) {
+    case 'draft':
+      return [
+        { label: 'Submit for Review', action: 'proposed' },
+        { label: 'Archive', action: 'archived' },
+      ];
+    case 'proposed':
+      return [
+        { label: 'Approve', action: 'approved' },
+        { label: 'Return to Draft', action: 'returned_to_draft' },
+        { label: 'Archive', action: 'archived' },
+      ];
+    case 'approved':
+      return [
+        { label: 'Return to Draft', action: 'returned_to_draft' },
+        { label: 'Archive', action: 'archived' },
+      ];
+    case 'archived':
+      return [{ label: 'Return to Draft', action: 'returned_to_draft' }];
+  }
+}
+
+function formatReviewAction(action: PlaybookReviewActivityItem['action']) {
+  switch (action) {
+    case 'created':
+      return 'Created draft';
+    case 'proposed':
+      return 'Submitted for review';
+    case 'approved':
+      return 'Approved';
+    case 'returned_to_draft':
+      return 'Returned to draft';
+    case 'archived':
+      return 'Archived';
+  }
+}
 
 export function PlaybookDetail() {
   const { id } = useParams<{ id: string }>();
@@ -75,6 +122,20 @@ export function PlaybookDetail() {
     },
   });
 
+  const reviewMutation = useMutation({
+    mutationFn: (action: 'proposed' | 'approved' | 'returned_to_draft' | 'archived') =>
+      playbooksApi.runReviewAction(id!, { action }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['playbook', id] });
+      queryClient.invalidateQueries({ queryKey: ['playbooks'] });
+      queryClient.invalidateQueries({ queryKey: ['playbook-activity', id] });
+      setUpdateError(null);
+    },
+    onError: () => {
+      setUpdateError('Failed to update playbook review state. Please try again.');
+    },
+  });
+
   if (isAuthLoading || isLoading) {
     return (
       <div className={styles.container}>
@@ -105,6 +166,13 @@ export function PlaybookDetail() {
     paused: styles.statusPaused,
     archived: styles.statusArchived,
   };
+  const reviewStatusColors = {
+    draft: styles.statusDraft,
+    proposed: styles.statusProposed,
+    approved: styles.statusApproved,
+    archived: styles.statusArchived,
+  };
+  const reviewActions = getReviewActions(playbook.review_status);
 
   return (
     <div className={styles.container}>
@@ -118,14 +186,39 @@ export function PlaybookDetail() {
         <div className={styles.headerContent}>
           <div className={styles.titleRow}>
             <h1>{playbook.name}</h1>
-            <span className={`${styles.statusBadge} ${statusColors[playbook.status]}`}>
-              {playbook.status}
-            </span>
+            <div className={styles.badgeGroup}>
+              <span className={`${styles.statusBadge} ${reviewStatusColors[playbook.review_status]}`}>
+                {playbook.review_status}
+              </span>
+              <span className={`${styles.statusBadge} ${statusColors[playbook.status]}`}>
+                {playbook.status}
+              </span>
+            </div>
           </div>
           {playbook.description && <p className={styles.description}>{playbook.description}</p>}
+          <p className={styles.reviewMeta}>
+            Review state updated{' '}
+            {new Date(playbook.review_status_updated_at || playbook.updated_at).toLocaleString()}
+          </p>
         </div>
 
         <div className={styles.headerActions}>
+          {reviewActions.map((reviewAction) => (
+            <Button
+              key={reviewAction.action}
+              variant={
+                reviewAction.action === 'approved'
+                  ? 'primary'
+                  : reviewAction.action === 'archived'
+                    ? 'ghost'
+                    : 'secondary'
+              }
+              onClick={() => reviewMutation.mutate(reviewAction.action)}
+              isLoading={reviewMutation.isPending}
+            >
+              {reviewAction.label}
+            </Button>
+          ))}
           <SubscriptionGate featureName="playbook editing">
             <Button
               variant="secondary"
@@ -146,6 +239,13 @@ export function PlaybookDetail() {
           </SubscriptionGate>
         </div>
       </div>
+
+      {updateError && !showEditModal && (
+        <div className={styles.inlineError}>
+          <AlertCircle size={18} />
+          <span>{updateError}</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className={styles.tabs} role="tablist">
@@ -179,6 +279,16 @@ export function PlaybookDetail() {
           Outcomes
         </button>
         <button
+          className={`${styles.tab} ${activeTab === 'activity' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('activity')}
+          role="tab"
+          aria-selected={activeTab === 'activity'}
+          aria-label="Activity tab"
+        >
+          <Clock size={16} />
+          Activity
+        </button>
+        <button
           className={`${styles.tab} ${activeTab === 'evolutions' ? styles.activeTab : ''}`}
           onClick={() => setActiveTab('evolutions')}
           role="tab"
@@ -195,6 +305,7 @@ export function PlaybookDetail() {
         {activeTab === 'content' && <ContentTab playbook={playbook} playbookId={id!} />}
         {activeTab === 'versions' && <VersionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
         {activeTab === 'outcomes' && <OutcomesTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
+        {activeTab === 'activity' && <ActivityTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
         {activeTab === 'evolutions' && <EvolutionsTab playbookId={id!} isAuthLoading={isAuthLoading} isAuthenticated={isAuthenticated} />}
       </div>
 
@@ -401,6 +512,41 @@ function OutcomesTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookI
   );
 }
 
+function ActivityTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['playbook-activity', playbookId],
+    queryFn: () => playbooksApi.getActivity(playbookId),
+    enabled: !isAuthLoading && isAuthenticated,
+  });
+
+  if (isLoading) {
+    return <div className={styles.loading}><div className={styles.spinner} /></div>;
+  }
+
+  if (!data?.items.length) {
+    return <div className={styles.emptyContent}>No review activity yet.</div>;
+  }
+
+  return (
+    <div className={styles.activityList}>
+      {data.items.map((item: PlaybookReviewActivityItem) => (
+        <Card key={item.id} variant="default" className={styles.activityCard}>
+          <div className={styles.activityHeader}>
+            <span className={styles.activityAction}>{formatReviewAction(item.action)}</span>
+            <span className={styles.activityStatus}>
+              {item.from_review_status ? `${item.from_review_status} -> ` : ''}
+              {item.to_review_status}
+            </span>
+          </div>
+          <p className={styles.activityMeta}>
+            {item.actor_email || 'System'} at {new Date(item.created_at).toLocaleString()}
+          </p>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 function EvolutionsTab({ playbookId, isAuthLoading, isAuthenticated }: { playbookId: string; isAuthLoading: boolean; isAuthenticated: boolean }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -565,14 +711,17 @@ interface EditModalProps {
 function EditPlaybookModal({ playbook, onClose, onSave, isLoading, error }: EditModalProps) {
   const [name, setName] = useState(playbook.name);
   const [description, setDescription] = useState(playbook.description || '');
-  const [status, setStatus] = useState<'active' | 'paused' | 'archived'>(playbook.status);
+  const [status, setStatus] = useState<'active' | 'paused'>(
+    playbook.status === 'paused' ? 'paused' : 'active'
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSave({
       name: name !== playbook.name ? name : undefined,
       description: description !== (playbook.description || '') ? description : undefined,
-      status: status !== playbook.status ? status : undefined,
+      status:
+        playbook.status !== 'archived' && status !== playbook.status ? status : undefined,
     });
   };
 
@@ -599,18 +748,19 @@ function EditPlaybookModal({ playbook, onClose, onSave, isLoading, error }: Edit
             onChange={(e) => setDescription(e.target.value)}
             placeholder="A brief description..."
           />
-          <div className={styles.selectWrapper}>
-            <label className={styles.selectLabel}>Status</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value as 'active' | 'paused' | 'archived')}
-              className={styles.select}
-            >
-              <option value="active">Active</option>
-              <option value="paused">Paused</option>
-              <option value="archived">Archived</option>
-            </select>
-          </div>
+          {playbook.status !== 'archived' && (
+            <div className={styles.selectWrapper}>
+              <label className={styles.selectLabel}>Lifecycle Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'active' | 'paused')}
+                className={styles.select}
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+            </div>
+          )}
           <div className={styles.modalActions}>
             <Button variant="ghost" type="button" onClick={onClose}>
               Cancel

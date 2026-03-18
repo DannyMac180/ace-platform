@@ -11,6 +11,8 @@ from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewAction,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -52,6 +54,8 @@ __all__ = [
     "ApiKey",
     # Enums
     "PlaybookStatus",
+    "PlaybookReviewStatus",
+    "PlaybookReviewAction",
     "PlaybookSource",
     "OutcomeStatus",
     "EvolutionJobStatus",
