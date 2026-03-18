@@ -1,5 +1,6 @@
 """Focused tests for auth route response shaping."""
 
+import os
 from datetime import datetime, timezone
 from unittest.mock import patch
 from uuid import uuid4
@@ -15,7 +16,28 @@ from ace_platform.api.routes.auth import get_current_user
 from ace_platform.core.security import hash_password
 from ace_platform.db.models import Base, SubscriptionStatus, User
 
-TEST_DATABASE_URL_ASYNC = "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test"
+DEFAULT_TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
+
+
+def _derive_async_database_url(database_url: str) -> str:
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if database_url.startswith("postgres://"):
+        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    return database_url
+
+
+TEST_DATABASE_URL_SYNC = (
+    os.environ.get("TEST_DATABASE_URL_SYNC")
+    or os.environ.get("TEST_DATABASE_URL")
+    or os.environ.get("DATABASE_URL")
+    or DEFAULT_TEST_DATABASE_URL_SYNC
+)
+TEST_DATABASE_URL_ASYNC = (
+    os.environ.get("TEST_DATABASE_URL_ASYNC")
+    or os.environ.get("DATABASE_URL_ASYNC")
+    or _derive_async_database_url(TEST_DATABASE_URL_SYNC)
+)
 
 
 @pytest.mark.asyncio
