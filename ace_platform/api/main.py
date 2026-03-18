@@ -397,6 +397,7 @@ def _register_routes(app: FastAPI) -> None:
         account_router,
         admin_router,
         analytics_router,
+        auth_hosted_router,
         auth_router,
         billing_router,
         evolutions_router,
@@ -409,6 +410,7 @@ def _register_routes(app: FastAPI) -> None:
 
     # Include API routers
     app.include_router(auth_router)
+    app.include_router(auth_hosted_router)
     app.include_router(analytics_router)
     app.include_router(account_router)
     app.include_router(admin_router)
