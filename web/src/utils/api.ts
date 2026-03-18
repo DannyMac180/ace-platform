@@ -37,6 +37,8 @@ import type {
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const HOSTED_AUTH_BASE = '/v1/auth';
+const HOSTED_PROFILE_PATH = '/v1/me';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -99,7 +101,7 @@ api.interceptors.response.use(
         // Reuse existing refresh promise to prevent race conditions
         if (!refreshPromise) {
           refreshPromise = axios
-            .post<TokenResponse>(`${API_BASE_URL}/auth/refresh`, {
+            .post<TokenResponse>(`${API_BASE_URL}${HOSTED_AUTH_BASE}/refresh`, {
               refresh_token: currentRefreshToken,
             })
             .then((res) => res.data)
@@ -144,18 +146,22 @@ export const authApi = {
   },
 
   login: async (email: string, password: string): Promise<TokenResponse> => {
-    const response = await api.post<TokenResponse>('/auth/login', { email, password });
+    const response = await api.post<TokenResponse>(`${HOSTED_AUTH_BASE}/login`, { email, password });
     setTokens(response.data);
     return response.data;
   },
 
-  logout: () => {
-    clearTokens();
+  logout: async (): Promise<void> => {
+    try {
+      await api.post(`${HOSTED_AUTH_BASE}/logout`);
+    } finally {
+      clearTokens();
+    }
   },
 
   refresh: async (): Promise<TokenResponse> => {
     const currentRefreshToken = localStorage.getItem('refresh_token');
-    const response = await api.post<TokenResponse>('/auth/refresh', {
+    const response = await api.post<TokenResponse>(`${HOSTED_AUTH_BASE}/refresh`, {
       refresh_token: currentRefreshToken,
     });
     setTokens(response.data);
@@ -163,7 +169,7 @@ export const authApi = {
   },
 
   getMe: async (): Promise<User> => {
-    const response = await api.get<User>('/auth/me');
+    const response = await api.get<User>(HOSTED_PROFILE_PATH);
     return response.data;
   },
 

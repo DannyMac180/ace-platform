@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -121,6 +122,7 @@ def test_workspace_entitlements_requires_auth():
 def test_workspace_entitlements_returns_authoritative_snapshot():
     app = create_app()
     user = _make_user(subscription_tier="starter")
+    workspace_id = uuid4()
 
     async def override_get_db():
         yield AsyncMock()
@@ -128,16 +130,41 @@ def test_workspace_entitlements_returns_authoritative_snapshot():
     app.dependency_overrides[require_user] = lambda: user
     app.dependency_overrides[get_db] = override_get_db
 
-    with patch(
-        "ace_platform.core.entitlements.get_user_usage_status",
-        new=AsyncMock(return_value=_usage_status(SubscriptionTier.STARTER)),
+    with (
+        patch(
+            "ace_platform.core.entitlements.get_user_usage_status",
+            new=AsyncMock(return_value=_usage_status(SubscriptionTier.STARTER)),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.get_default_workspace_for_user",
+            new=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=workspace_id,
+                    plan=SimpleNamespace(value="personal"),
+                    deployment_mode=SimpleNamespace(value="cloud"),
+                    seat_limit=1,
+                    entitlements=SimpleNamespace(
+                        cloud_sync=True,
+                        hosted_backups=True,
+                        managed_inference=True,
+                        hosted_evals=True,
+                        invite_members=False,
+                        shared_workspace=False,
+                        approvals=False,
+                        rbac=False,
+                        sso=False,
+                        audit_logs=False,
+                    ),
+                )
+            ),
+        ),
     ):
         client = TestClient(app)
         response = client.get("/v1/workspaces/me/entitlements")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["workspace_id"] == str(user.id)
+    assert data["workspace_id"] == str(workspace_id)
     assert data["plan"] == "personal"
     assert data["deployment_mode"] == "cloud"
     assert data["seat_limit"] == 1

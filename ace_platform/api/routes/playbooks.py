@@ -59,6 +59,8 @@ from ace_platform.core.validation import (
     MAX_REASONING_TRACE_SIZE,
     MAX_TASK_DESCRIPTION_SIZE,
 )
+from ace_platform.core.workspace_sync import record_playbook_tombstone
+from ace_platform.core.workspaces import get_personal_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
@@ -694,6 +696,10 @@ async def delete_playbook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Playbook not found",
         )
+
+    personal_workspace = await get_personal_workspace_for_user(db, current_user.id)
+    if personal_workspace is not None:
+        await record_playbook_tombstone(db, personal_workspace.id, playbook.id)
 
     await db.delete(playbook)
     await db.commit()
