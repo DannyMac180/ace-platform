@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ace_core.contracts import InferenceMessage, ModelRequest
 from ace_core.portability import PortablePlaybook
 from ace_platform.api.auth import PaidUser, RequiredUser, require_capability
 from ace_platform.api.deps import get_db
@@ -26,6 +27,13 @@ from ace_platform.core.limits import (
     check_can_evolve,
     get_effective_tier_for_limits,
     is_user_trialing,
+)
+from ace_platform.core.logging import get_logger
+from ace_platform.core.managed_inference import (
+    ManagedInferenceConfigurationError,
+    ManagedInferenceGateway,
+    ManagedInferenceProviderError,
+    ManagedInferenceRequestError,
 )
 from ace_platform.core.workspace_sync import (
     WorkspaceSyncConflictError,
@@ -66,10 +74,12 @@ from ace_platform.db.models import (
 )
 
 router = APIRouter(tags=["workspaces"])
+logger = get_logger(__name__)
 
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 CurrentUser = RequiredUser
 HostedEvalUser = Annotated[User, Depends(require_capability("hosted_evals"))]
+ManagedInferenceUser = Annotated[User, Depends(require_capability("managed_inference"))]
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -197,6 +207,49 @@ class TriggerHostedEvalRunResponse(HostedEvalRunResponse):
     """Hosted eval launch response."""
 
     is_new: bool
+
+
+class ManagedInferenceMessageRequest(BaseModel):
+    """One normalized chat message for managed inference."""
+
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str = Field(..., min_length=1)
+    name: str | None = Field(default=None, max_length=100)
+
+    model_config = {"extra": "forbid"}
+
+
+class ManagedInferenceRequest(BaseModel):
+    """Request body for invoking managed inference."""
+
+    model: str = Field(..., min_length=1, max_length=100)
+    messages: list[ManagedInferenceMessageRequest] = Field(..., min_length=1, max_length=100)
+    provider: Literal["openai", "anthropic"] | None = None
+    max_tokens: int | None = Field(default=None, ge=1)
+    temperature: float | None = Field(default=None, ge=0, le=2)
+    reasoning_effort: Literal["low", "medium", "high"] | None = None
+
+    model_config = {"extra": "forbid"}
+
+
+class ManagedInferenceUsageResponse(BaseModel):
+    """Portable token usage payload for managed inference."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+class ManagedInferenceResponse(BaseModel):
+    """Normalized managed inference response payload."""
+
+    workspace_id: str
+    model: str
+    provider: str
+    output_text: str
+    finish_reason: str | None = None
+    request_id: str | None = None
+    usage: ManagedInferenceUsageResponse | None = None
 
 
 class WorkspaceFeatureAccessResponse(BaseModel):
@@ -995,8 +1048,94 @@ async def get_workspace_entitlements(
 ) -> WorkspaceEntitlementsResponse:
     """Return authoritative feature access for the caller's cloud workspace."""
     workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
-    snapshot = await resolve_workspace_entitlements(db, current_user)
+    snapshot = await resolve_workspace_entitlements(db, current_user, workspace=workspace)
     return _to_response(snapshot, workspace)
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/inference",
+    response_model=ManagedInferenceResponse,
+)
+@router.post(
+    "/workspaces/{workspace_id}/inference",
+    response_model=ManagedInferenceResponse,
+    include_in_schema=False,
+)
+async def invoke_managed_inference(
+    workspace_id: str,
+    payload: ManagedInferenceRequest,
+    db: DbSession,
+    current_user: ManagedInferenceUser,
+) -> ManagedInferenceResponse:
+    """Execute a managed inference request using server-side provider credentials."""
+    workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
+    if workspace is not None and workspace.deployment_mode != WorkspaceDeploymentMode.CLOUD:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Managed inference is only available for cloud workspaces.",
+        )
+
+    resolved_workspace_id = (
+        str(workspace.id) if workspace is not None else get_workspace_id(current_user)
+    )
+    metadata = {}
+    if payload.provider:
+        metadata["provider"] = payload.provider.strip().lower()
+    if payload.reasoning_effort:
+        metadata["reasoning_effort"] = payload.reasoning_effort.strip().lower()
+
+    gateway = ManagedInferenceGateway(
+        db=db,
+        user_id=current_user.id,
+        workspace_id=resolved_workspace_id,
+    )
+    request_model = ModelRequest(
+        model=payload.model,
+        messages=[
+            InferenceMessage(role=message.role, content=message.content, name=message.name)
+            for message in payload.messages
+        ],
+        max_tokens=payload.max_tokens,
+        temperature=payload.temperature,
+        metadata=metadata,
+    )
+
+    try:
+        response = await gateway.call(request_model)
+    except ManagedInferenceConfigurationError as exc:
+        logger.warning(
+            "Managed inference request could not be served due to missing provider config",
+            extra={"workspace_id": resolved_workspace_id, "model": payload.model},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+    except ManagedInferenceRequestError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except ManagedInferenceProviderError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    return ManagedInferenceResponse(
+        workspace_id=resolved_workspace_id,
+        model=response.model,
+        provider=str(response.metadata.get("provider", metadata.get("provider", "openai"))),
+        output_text=response.output_text,
+        finish_reason=response.finish_reason,
+        request_id=str(response.metadata.get("request_id"))
+        if response.metadata.get("request_id")
+        else None,
+        usage=ManagedInferenceUsageResponse(
+            input_tokens=response.usage.input_tokens if response.usage else None,
+            output_tokens=response.usage.output_tokens if response.usage else None,
+            total_tokens=response.usage.total_tokens if response.usage else None,
+        )
+        if response.usage
+        else None,
+    )
 
 
 @router.post(

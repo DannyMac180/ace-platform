@@ -118,6 +118,7 @@ async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspac
         .options(
             selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
             selectinload(Workspace.entitlements),
+            selectinload(Workspace.subscription),
         )
         .order_by(Workspace.created_at.asc(), Workspace.id.asc())
     )
@@ -151,6 +152,7 @@ async def get_workspace_for_user(
         .options(
             selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
             selectinload(Workspace.entitlements),
+            selectinload(Workspace.subscription),
         )
     )
     return result.scalars().unique().one_or_none()
@@ -173,6 +175,7 @@ async def get_personal_workspace_for_user(
         .options(
             selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
             selectinload(Workspace.entitlements),
+            selectinload(Workspace.subscription),
         )
         .order_by(Workspace.created_at.asc(), Workspace.id.asc())
     )

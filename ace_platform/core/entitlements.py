@@ -16,7 +16,8 @@ from ace_platform.core.limits import (
     get_user_usage_status,
     is_user_trialing,
 )
-from ace_platform.db.models import SubscriptionStatus, User
+from ace_platform.core.subscription_service import get_subscription_tier_for_plan_code
+from ace_platform.db.models import SubscriptionStatus, User, Workspace
 
 WorkspacePlan = Literal["personal", "team", "enterprise"]
 
@@ -59,7 +60,7 @@ class WorkspaceEntitlementsSnapshot:
 
     workspace_id: str
     plan: WorkspacePlan
-    deployment_mode: Literal["cloud"]
+    deployment_mode: Literal["cloud", "self_hosted"]
     seat_limit: int | None
     entitlements: WorkspaceFeatureAccess
     enabled_features: tuple[str, ...]
@@ -78,14 +79,19 @@ class WorkspaceAccessState:
     is_trialing: bool
 
 
-def get_workspace_id(user: User) -> str:
+def get_workspace_id(user: User, workspace: Workspace | None = None) -> str:
     """Use the current user id as the temporary single-user workspace id."""
 
+    if workspace is not None:
+        return str(workspace.id)
     return str(user.id)
 
 
-def normalize_workspace_plan(user: User) -> WorkspacePlan:
+def normalize_workspace_plan(user: User, workspace: Workspace | None = None) -> WorkspacePlan:
     """Map the current billing model into the workspace plans from the spec."""
+
+    if workspace is not None:
+        return workspace.plan.value
 
     if getattr(user, "is_admin", False):
         return "enterprise"
@@ -103,11 +109,22 @@ def normalize_workspace_plan(user: User) -> WorkspacePlan:
     return "personal"
 
 
-def get_subscription_tier(user: User) -> SubscriptionTier:
+def get_subscription_tier(
+    user: User,
+    workspace: Workspace | None = None,
+) -> SubscriptionTier:
     """Return the caller's subscription tier with sane fallbacks."""
 
     if getattr(user, "is_admin", False):
         return SubscriptionTier.ENTERPRISE
+
+    workspace_subscription = (
+        getattr(workspace, "subscription", None) if workspace is not None else None
+    )
+    if workspace_subscription is not None:
+        workspace_tier = get_subscription_tier_for_plan_code(workspace_subscription.plan_code)
+        if workspace_tier is not None:
+            return workspace_tier
 
     try:
         return (
@@ -119,11 +136,24 @@ def get_subscription_tier(user: User) -> SubscriptionTier:
         return SubscriptionTier.FREE
 
 
-def has_feature_access(user: User, subscription_tier: SubscriptionTier) -> bool:
+def has_feature_access(
+    user: User,
+    subscription_tier: SubscriptionTier,
+    workspace: Workspace | None = None,
+) -> bool:
     """Return whether the caller currently has paid feature access."""
 
     if getattr(user, "is_admin", False):
         return True
+
+    workspace_subscription = (
+        getattr(workspace, "subscription", None) if workspace is not None else None
+    )
+    if workspace_subscription is not None:
+        return (
+            workspace_subscription.status.value in {"active", "trialing"}
+            and subscription_tier != SubscriptionTier.FREE
+        )
 
     return (
         getattr(user, "subscription_status", SubscriptionStatus.NONE) == SubscriptionStatus.ACTIVE
@@ -185,30 +215,39 @@ def _build_usage_limits(status: UsageStatus) -> WorkspaceUsageLimits:
 async def resolve_workspace_entitlements(
     db: AsyncSession,
     user: User,
+    workspace: Workspace | None = None,
 ) -> WorkspaceEntitlementsSnapshot:
     """Build a workspace-shaped entitlement snapshot for the authenticated user."""
 
-    plan = normalize_workspace_plan(user)
-    subscription_tier = get_subscription_tier(user)
+    plan = normalize_workspace_plan(user, workspace)
+    subscription_tier = get_subscription_tier(user, workspace)
     limits_tier = get_effective_tier_for_limits(user)
     usage_status = await get_user_usage_status(db, user.id, limits_tier)
-    feature_access_enabled = has_feature_access(user, subscription_tier)
+    feature_access_enabled = has_feature_access(user, subscription_tier, workspace)
     entitlements = get_plan_entitlements(plan, feature_access_enabled)
     enabled_features = tuple(
         field.name for field in fields(WorkspaceFeatureAccess) if getattr(entitlements, field.name)
     )
     limits = get_tier_limits(limits_tier)
 
+    workspace_subscription = (
+        getattr(workspace, "subscription", None) if workspace is not None else None
+    )
+
     return WorkspaceEntitlementsSnapshot(
-        workspace_id=get_workspace_id(user),
+        workspace_id=get_workspace_id(user, workspace),
         plan=plan,
-        deployment_mode="cloud",
-        seat_limit=get_seat_limit(plan),
+        deployment_mode=(workspace.deployment_mode.value if workspace is not None else "cloud"),
+        seat_limit=workspace.seat_limit if workspace is not None else get_seat_limit(plan),
         entitlements=entitlements,
         enabled_features=enabled_features,
         access=WorkspaceAccessState(
             subscription_tier=subscription_tier,
-            subscription_status=getattr(user, "subscription_status", SubscriptionStatus.NONE),
+            subscription_status=(
+                SubscriptionStatus(workspace_subscription.status.value)
+                if workspace_subscription is not None
+                else getattr(user, "subscription_status", SubscriptionStatus.NONE)
+            ),
             effective_tier=limits_tier,
             has_feature_access=feature_access_enabled,
             is_trialing=is_user_trialing(user),

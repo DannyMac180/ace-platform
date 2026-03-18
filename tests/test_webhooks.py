@@ -8,6 +8,7 @@ These tests verify:
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 import stripe
@@ -502,8 +503,6 @@ class TestSetupModeCheckout:
     @pytest.mark.asyncio
     async def test_subscription_mode_not_routed_to_setup_handler(self):
         """Test subscription mode checkout is not routed to setup handler."""
-        from uuid import uuid4
-
         mock_db = AsyncMock()
         mock_user = MagicMock()
         mock_user.id = uuid4()
@@ -532,6 +531,44 @@ class TestSetupModeCheckout:
             mock_setup_handler.assert_not_called()
             # Result should still be success (handled as subscription)
             assert result.success is True
+
+    @pytest.mark.asyncio
+    async def test_subscription_mode_syncs_workspace_subscription(self):
+        """Test subscription checkout also updates workspace billing state."""
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        user_id_str = str(mock_user.id)
+
+        mock_event = MagicMock()
+        mock_event.type = "checkout.session.completed"
+
+        mock_session = MagicMock()
+        mock_session.mode = "subscription"
+        mock_session.customer = "cus_test123"
+        mock_session.subscription = "sub_test123"
+        mock_session.metadata = {
+            "user_id": user_id_str,
+            "tier": "starter",
+            "plan_code": "personal-starter",
+            "is_trial": "false",
+        }
+        mock_event.data.object = mock_session
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = mock_result
+
+        with patch(
+            "ace_platform.core.webhooks.sync_workspace_subscription_state",
+            new_callable=AsyncMock,
+        ) as mock_sync_workspace:
+            result = await _handle_checkout_completed(mock_db, mock_event)
+
+        assert result.success is True
+        mock_sync_workspace.assert_awaited_once()
+        assert mock_sync_workspace.await_args.kwargs["plan_code"] == "personal-starter"
+        assert mock_sync_workspace.await_args.kwargs["status"].value == "active"
 
 
 class TestCheckoutTrialSetsTrialEndsAt:
@@ -576,6 +613,10 @@ class TestCheckoutTrialSetsTrialEndsAt:
         with (
             patch("ace_platform.core.webhooks.get_settings") as mock_settings,
             patch("stripe.StripeClient", return_value=mock_client),
+            patch(
+                "ace_platform.core.webhooks.sync_workspace_subscription_state",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_settings.return_value.stripe_secret_key = "sk_test_123"
 
@@ -599,8 +640,6 @@ class TestSubscriptionCreatedMetadataFallback:
     @pytest.mark.asyncio
     async def test_falls_back_to_metadata_when_customer_id_lookup_fails(self):
         """Test subscription.created uses metadata user_id when customer lookup fails."""
-        from uuid import uuid4
-
         mock_db = AsyncMock()
         mock_user = MagicMock()
         mock_user.id = uuid4()
@@ -628,7 +667,11 @@ class TestSubscriptionCreatedMetadataFallback:
 
         mock_db.execute.side_effect = [mock_result_none, mock_result_user, MagicMock()]
 
-        result = await _handle_subscription_created(mock_db, mock_event)
+        with patch(
+            "ace_platform.core.webhooks.sync_workspace_subscription_state",
+            new_callable=AsyncMock,
+        ):
+            result = await _handle_subscription_created(mock_db, mock_event)
 
         assert result.success is True
         assert result.user_id == str(mock_user.id)
@@ -636,10 +679,48 @@ class TestSubscriptionCreatedMetadataFallback:
         assert mock_db.execute.call_count == 3
 
     @pytest.mark.asyncio
+    async def test_subscription_created_syncs_workspace_state(self):
+        """Test subscription.created updates the workspace subscription record."""
+        mock_db = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.has_used_trial = False
+
+        mock_event = MagicMock()
+        mock_event.type = "customer.subscription.created"
+
+        mock_subscription = MagicMock()
+        mock_subscription.id = "sub_test123"
+        mock_subscription.customer = "cus_test123"
+        mock_subscription.status = "active"
+        mock_subscription.current_period_end = None
+        mock_subscription.trial_end = None
+        mock_subscription.metadata = {
+            "user_id": str(mock_user.id),
+            "tier": "starter",
+            "plan_code": "personal-starter",
+        }
+        mock_subscription.items.data = []
+        mock_event.data.object = mock_subscription
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.side_effect = [mock_result, MagicMock()]
+
+        with patch(
+            "ace_platform.core.webhooks.sync_workspace_subscription_state",
+            new_callable=AsyncMock,
+        ) as mock_sync_workspace:
+            result = await _handle_subscription_created(mock_db, mock_event)
+
+        assert result.success is True
+        mock_sync_workspace.assert_awaited_once()
+        assert mock_sync_workspace.await_args.kwargs["plan_code"] == "personal-starter"
+        assert mock_sync_workspace.await_args.kwargs["status"].value == "active"
+
+    @pytest.mark.asyncio
     async def test_ends_duplicate_trial_for_existing_trial_user(self):
         """Test subscription.created ends trial for user with has_used_trial=True."""
-        from uuid import uuid4
-
         mock_db = AsyncMock()
         mock_user = MagicMock()
         mock_user.id = uuid4()
@@ -670,6 +751,10 @@ class TestSubscriptionCreatedMetadataFallback:
         with (
             patch("ace_platform.core.webhooks.get_settings") as mock_settings,
             patch("stripe.StripeClient", return_value=mock_client),
+            patch(
+                "ace_platform.core.webhooks.sync_workspace_subscription_state",
+                new_callable=AsyncMock,
+            ),
         ):
             mock_settings.return_value.stripe_secret_key = "sk_test_123"
 
