@@ -93,8 +93,8 @@ export function PlaybookContentEditor() {
         <div className={styles.error}>
           <AlertCircle size={24} />
           <span>Failed to load playbook</span>
-          <Button variant="secondary" onClick={() => navigate('/dashboard')}>
-            Back to Dashboard
+          <Button variant="secondary" onClick={() => navigate('/playbooks')}>
+            Back to Playbooks
           </Button>
         </div>
       </div>
