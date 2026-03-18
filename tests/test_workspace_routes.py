@@ -158,6 +158,16 @@ class TestWorkspaceRoutesIntegration:
         assert payload[0]["seat_limit"] == 1
         assert payload[0]["current_user_role"] == "owner"
 
+        entitlements_response = await client.get(
+            "/v1/workspaces/me/entitlements",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        assert entitlements_response.status_code == 200
+        entitlement_payload = entitlements_response.json()
+        assert entitlement_payload["workspace_id"] == payload[0]["id"]
+        assert entitlement_payload["plan"] == "personal"
+        assert entitlement_payload["seat_limit"] == 1
+
     async def test_existing_user_without_workspace_is_bootstrapped_on_first_workspace_request(
         self,
         client,
