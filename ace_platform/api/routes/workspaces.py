@@ -943,7 +943,7 @@ async def get_workspace_entitlements(
 ) -> WorkspaceEntitlementsResponse:
     """Return authoritative feature access for the caller's cloud workspace."""
     workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
-    snapshot = await resolve_workspace_entitlements(db, current_user)
+    snapshot = await resolve_workspace_entitlements(db, current_user, workspace=workspace)
     return _to_response(snapshot, workspace)
 
 

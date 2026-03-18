@@ -30,7 +30,8 @@ from ace_platform.core.rollouts import (
     is_plan_available_for_user,
 )
 from ace_platform.core.stripe_config import BillingInterval
-from ace_platform.db.models import User
+from ace_platform.core.subscription_service import get_plan_catalog
+from ace_platform.db.models import User, WorkspacePlan
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -63,6 +64,35 @@ class SubscriptionResponse(BaseModel):
     stripe_subscription_id: str | None = None
     available_plans: dict[str, bool] = Field(default_factory=dict)
     capabilities: dict[str, bool] = Field(default_factory=dict)
+
+
+class BillingPlanPriceResponse(BaseModel):
+    """One price inside the published billing plan catalog."""
+
+    interval: BillingInterval
+    price_id: str | None = None
+    unit_amount: int | None = None
+    currency: str = "usd"
+
+
+class BillingPlanCatalogEntryResponse(BaseModel):
+    """One plan inside the billing catalog."""
+
+    code: str
+    workspace_plan: WorkspacePlan
+    tier: SubscriptionTier
+    display_name: str
+    description: str
+    available: bool
+    contact_sales: bool
+    features: list[str]
+    prices: list[BillingPlanPriceResponse]
+
+
+class BillingPlanCatalogResponse(BaseModel):
+    """Published billing plan catalog for the current user."""
+
+    plans: list[BillingPlanCatalogEntryResponse]
 
 
 class UsageResponse(BaseModel):
@@ -203,6 +233,38 @@ async def get_subscription(
     """
     tier = _get_user_tier(current_user)
     return _build_subscription_response(current_user, tier)
+
+
+@router.get("/plans", response_model=BillingPlanCatalogResponse)
+async def get_billing_plans(
+    current_user: CurrentUser,
+) -> BillingPlanCatalogResponse:
+    """Return the published billing plan catalog for the caller."""
+
+    availability = get_available_plans(current_user)
+    plans = [
+        BillingPlanCatalogEntryResponse(
+            code=entry.code,
+            workspace_plan=entry.workspace_plan,
+            tier=entry.subscription_tier,
+            display_name=entry.display_name,
+            description=entry.description,
+            available=availability.get(entry.subscription_tier.value, False),
+            contact_sales=entry.contact_sales,
+            features=list(entry.features),
+            prices=[
+                BillingPlanPriceResponse(
+                    interval=price.interval,
+                    price_id=price.price_id,
+                    unit_amount=price.unit_amount,
+                    currency=price.currency,
+                )
+                for price in entry.prices
+            ],
+        )
+        for entry in get_plan_catalog()
+    ]
+    return BillingPlanCatalogResponse(plans=plans)
 
 
 @router.get("/usage", response_model=UsageResponse)
