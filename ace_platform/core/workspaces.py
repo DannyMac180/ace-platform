@@ -7,7 +7,7 @@ the hosted-workspace invariants for cloud users.
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -393,6 +393,9 @@ async def update_workspace(
     inference_config: dict | None = None,
 ) -> Workspace:
     """Update mutable workspace fields."""
+    if "entitlements" in inspect(workspace).unloaded:
+        await db.refresh(workspace, attribute_names=["entitlements"])
+
     previous_plan = workspace.plan
     next_plan = plan or workspace.plan
     next_deployment_mode = deployment_mode or workspace.deployment_mode
