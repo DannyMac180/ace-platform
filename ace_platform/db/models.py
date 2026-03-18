@@ -315,6 +315,9 @@ class User(Base):
     usage_records: Mapped[list["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="user", cascade="all, delete-orphan"
     )
+    workspace_backups: Mapped[list["WorkspaceBackup"]] = relationship(
+        "WorkspaceBackup", back_populates="owner_user"
+    )
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
         "UserOAuthAccount", back_populates="user", cascade="all, delete-orphan"
     )
@@ -368,7 +371,6 @@ class Workspace(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
-
     __table_args__ = (
         CheckConstraint("seat_limit >= 1", name="ck_workspaces_seat_limit"),
         CheckConstraint(
@@ -512,6 +514,41 @@ class WorkspaceEntitlement(Base):
 
     def __repr__(self) -> str:
         return f"<WorkspaceEntitlement {self.workspace_id}>"
+
+
+class WorkspaceBackup(Base):
+    """Persisted backup snapshot for one hosted personal workspace."""
+
+    __tablename__ = "workspace_backups"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    owner_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trigger_source: Mapped[str] = mapped_column(String(50), nullable=False, default="scheduled")
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    backup_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    owner_user: Mapped["User | None"] = relationship("User", back_populates="workspace_backups")
+
+    __table_args__ = (
+        Index("ix_workspace_backups_workspace_created", "workspace_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceBackup {self.workspace_id} {self.created_at}>"
 
 
 class WorkspaceSyncTombstone(Base):
