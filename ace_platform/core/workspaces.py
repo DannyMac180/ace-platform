@@ -394,8 +394,7 @@ async def update_workspace(
 
     if entitlements is None:
         entitlements = WorkspaceEntitlement(
-            workspace_id=workspace.id,
-            **WorkspaceEntitlement.defaults_for_plan(next_plan)
+            workspace_id=workspace.id, **WorkspaceEntitlement.defaults_for_plan(next_plan)
         )
         db.add(entitlements)
         workspace.entitlements = entitlements
