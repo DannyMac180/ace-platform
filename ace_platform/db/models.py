@@ -78,6 +78,12 @@ class PlaybookReviewAction(str, enum.Enum):
     ARCHIVED = "archived"
 
 
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    """Return SQLAlchemy enum labels using the enum values instead of member names."""
+
+    return [str(member.value) for member in enum_cls]
+
+
 class PlaybookSource(str, enum.Enum):
     """Source/origin of a playbook."""
 
@@ -759,7 +765,12 @@ class Playbook(Base):
         Enum(PlaybookStatus), default=PlaybookStatus.ACTIVE, nullable=False
     )
     review_status: Mapped[PlaybookReviewStatus] = mapped_column(
-        Enum(PlaybookReviewStatus),
+        Enum(
+            PlaybookReviewStatus,
+            name="playbookreviewstatus",
+            values_callable=_enum_values,
+            validate_strings=True,
+        ),
         default=PlaybookReviewStatus.DRAFT,
         nullable=False,
     )
