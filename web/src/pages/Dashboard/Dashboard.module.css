@@ -262,12 +262,16 @@
   font-weight: 600;
 }
 
-.statusActive {
-  color: var(--success);
+.statusDraft {
+  color: var(--text-tertiary);
 }
 
-.statusPaused {
+.statusProposed {
   color: var(--warning);
+}
+
+.statusApproved {
+  color: var(--success);
 }
 
 .statusArchived {
