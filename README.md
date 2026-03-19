@@ -89,6 +89,7 @@ Use the existing `symphony` command as a thin launcher for that runtime.
 Prerequisites:
 
 - `LINEAR_API_KEY` set in your shell
+- Codex MCP server named `ace` configured for the same shell user that runs Symphony
 - `codex` available in your `PATH`
 - [`mise`](https://mise.jdx.dev/) installed for the Elixir/Erlang toolchain
 
@@ -97,6 +98,8 @@ Local setup:
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
+export ACE_API_KEY=your_ace_api_key
+codex mcp add ace --url https://aceagent.io/mcp --bearer-token-env-var ACE_API_KEY
 cp WORKFLOW.example.md WORKFLOW.local.md
 # Edit WORKFLOW.local.md for your Linear project, workspace root, and repo clone URL
 ./scripts/run-symphony.sh
@@ -112,17 +115,26 @@ flow through after a pull while machine-specific settings stay local.
 Notes:
 
 - `WORKFLOW.example.md` includes the fields you must customize before your first run.
+- `WORKFLOW.example.md` now requires ACE on every ticket run: Symphony must call `ace.find_playbook`,
+  `ace.get_playbook`, and `ace.record_outcome` instead of treating ACE as optional.
 - Keep your machine-specific Symphony config in `WORKFLOW.local.md`, not by editing the tracked example.
 - `WORKFLOW.local.md` should be treated as local frontmatter overrides for the tracked example workflow.
 - The tracked example includes a `before_run` repair hook that normalizes partially initialized
   workspaces before Codex starts, including nested `repo/` checkouts and checkout-free directories
   that only contain a `venv`.
 - `scripts/run-symphony.sh` uses the repo-local `venv/bin/symphony` launcher directly instead of relying on shell activation.
+- `scripts/run-symphony.sh` fails fast unless both `LINEAR_API_KEY` and `ACE_API_KEY` are set, and `codex mcp list`
+  shows a server named `ace`.
 - The script starts the observability dashboard on `http://127.0.0.1:4000/`.
 - Override the dashboard port with `SYMPHONY_PORT=4001 ./scripts/run-symphony.sh` if needed.
 - Local open-source Symphony development currently expects a Linear project and `LINEAR_API_KEY`.
+- The hosted ACE setup above expects `ACE_API_KEY` in the shell before Codex starts. ACE accepts both
+  `X-API-Key` and `Authorization: Bearer`; Codex's HTTP MCP configuration uses the bearer-token path.
+- If you prefer a local ACE server instead of `https://aceagent.io/mcp`, configure Codex with
+  `codex mcp add ace --env ... -- python -m ace_platform.mcp.server stdio`.
 - If you want Symphony-created branches or PRs to push to your fork, make sure the clone URL in
   `WORKFLOW.local.md` and your local git auth are configured for that fork.
+- If you add SSH worker hosts later, repeat the `codex mcp add ace ...` setup on every worker host.
 
 ### Fastest Full-Stack Docker Setup
 

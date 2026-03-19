@@ -27,8 +27,22 @@ Before running, edit `WORKFLOW.local.md` to set:
 You also need:
 
 - `LINEAR_API_KEY` in your shell
+- a Codex MCP server named `ace` configured for the shell user running Symphony
 - `codex` on your `PATH`
 - `mise` installed
+
+Hosted ACE example:
+
+```bash
+export ACE_API_KEY=your_ace_api_key
+codex mcp add ace --url https://aceagent.io/mcp --bearer-token-env-var ACE_API_KEY
+```
+
+Local ACE example:
+
+```bash
+codex mcp add ace --env DATABASE_URL=postgresql://... --env REDIS_URL=redis://... -- python -m ace_platform.mcp.server stdio
+```
 
 #### Usage
 
@@ -40,6 +54,13 @@ The script starts the dashboard at `http://127.0.0.1:4000/` by default.
 
 The tracked example workflow also includes a `before_run` repair hook that fixes partially
 initialized ticket workspaces before Codex starts.
+
+The tracked example workflow also requires ACE for every ticket run, so Symphony will stop early
+if the `ace` MCP server is not available instead of silently skipping playbook lookup and outcome
+recording.
+
+The launcher also requires `ACE_API_KEY` in the current shell. ACE supports both `X-API-Key` and
+`Authorization: Bearer`, and Codex's HTTP MCP setup uses the bearer-token path.
 
 Override the port with:
 
