@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.dialects import postgresql
 
 from ace_platform.core.playbook_reviews import apply_review_action, get_review_history
 from ace_platform.db.models import (
@@ -15,6 +16,19 @@ from ace_platform.db.models import (
     PlaybookStatus,
     User,
 )
+
+
+def test_playbook_review_status_enum_uses_lowercase_database_values():
+    enum_type = Playbook.__table__.c.review_status.type
+    dialect = postgresql.dialect()
+
+    assert enum_type.enums == ["draft", "proposed", "approved", "archived"]
+
+    bind_processor = enum_type.bind_processor(dialect)
+    result_processor = enum_type.result_processor(dialect, None)
+
+    assert bind_processor(PlaybookReviewStatus.DRAFT) == "draft"
+    assert result_processor("approved") is PlaybookReviewStatus.APPROVED
 
 
 def _make_user() -> User:

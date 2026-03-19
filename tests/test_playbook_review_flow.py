@@ -160,6 +160,27 @@ async def test_review_actions_persist_history(async_session: AsyncSession, test_
 
 
 @pytest.mark.asyncio
+async def test_create_playbook_persists_draft_review_status(
+    async_session: AsyncSession,
+    test_user: User,
+    client,
+):
+    response = await client.post(
+        "/playbooks",
+        json={"name": "Draft From Route", "description": "Create-path regression test"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["name"] == "Draft From Route"
+    assert payload["review_status"] == "draft"
+
+    persisted = await async_session.get(Playbook, payload["id"])
+    assert persisted is not None
+    assert persisted.review_status is PlaybookReviewStatus.DRAFT
+
+
+@pytest.mark.asyncio
 async def test_list_playbooks_filters_by_review_status(
     async_session: AsyncSession,
     test_user: User,
