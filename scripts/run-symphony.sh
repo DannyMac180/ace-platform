@@ -16,6 +16,8 @@ else
 fi
 port="${SYMPHONY_PORT:-4000}"
 term_value="${TERM:-xterm-256color}"
+linear_workspace_url_key="${SYMPHONY_LINEAR_WORKSPACE_URL_KEY:-danmac}"
+linear_team_key="${SYMPHONY_LINEAR_TEAM_KEY:-DAN}"
 
 if [[ ! -x "$venv_symphony" ]]; then
   echo "Missing Symphony launcher at $venv_symphony" >&2
@@ -55,6 +57,11 @@ fi
   --base "$workflow_example_path" \
   --local "$workflow_override_path" \
   --output "$workflow_rendered_path"
+
+"$venv_python" -m ace_platform.symphony.linear_guard \
+  --workflow "$workflow_rendered_path" \
+  --expected-workspace-url-key "$linear_workspace_url_key" \
+  --expected-team-key "$linear_team_key"
 
 cd "$repo_root"
 TERM="$term_value" exec "$venv_symphony" \
