@@ -64,6 +64,7 @@ fi
   --expected-team-key "$linear_team_key"
 
 cd "$repo_root"
+export PATH="$repo_root/scripts:$PATH"
 TERM="$term_value" exec "$venv_symphony" \
   --port "$port" \
   --i-understand-that-this-will-be-running-without-the-usual-guardrails \
