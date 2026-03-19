@@ -10,7 +10,7 @@ These tests verify:
 7. Authentication and authorization
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -26,16 +26,27 @@ from ace_platform.api.auth import (
 from ace_platform.api.deps import get_db
 from ace_platform.api.routes.playbooks import (
     PaginatedPlaybookResponse,
+    PaginatedPlaybookReviewActivityResponse,
     PlaybookCreate,
     PlaybookImportLimitError,
     PlaybookListItem,
     PlaybookResponse,
+    PlaybookReviewActionRequest,
+    PlaybookReviewActivityItem,
     PlaybookUpdate,
     PlaybookVersionResponse,
     VersionCreate,
     require_export_access,
 )
-from ace_platform.db.models import PlaybookSource, PlaybookStatus, SubscriptionStatus
+from ace_platform.core.playbook_reviews import build_review_event
+from ace_platform.db.models import (
+    Playbook,
+    PlaybookReviewAction,
+    PlaybookReviewStatus,
+    PlaybookSource,
+    PlaybookStatus,
+    SubscriptionStatus,
+)
 
 
 class TestPlaybookSchemas:
@@ -94,6 +105,8 @@ class TestPlaybookRoutesIntegration:
         routes = [route.path for route in app.routes]
         assert "/playbooks" in routes
         assert "/playbooks/{playbook_id}" in routes
+        assert "/playbooks/{playbook_id}/review-actions" in routes
+        assert "/playbooks/{playbook_id}/activity" in routes
         assert "/playbooks/export" in routes
         assert "/playbooks/import" in routes
 
@@ -299,6 +312,152 @@ class TestPortableImportRoutes:
         )
 
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class _FakeExecuteResult:
+    def __init__(self, playbook: Playbook | None):
+        self._playbook = playbook
+
+    def scalar_one_or_none(self):
+        return self._playbook
+
+
+class _FakePlaybookDb:
+    def __init__(self, playbook: Playbook | None):
+        self.playbook = playbook
+        self.commit_count = 0
+
+    async def execute(self, _query):
+        return _FakeExecuteResult(self.playbook)
+
+    async def commit(self):
+        self.commit_count += 1
+
+    async def refresh(self, _obj, _attrs=None):
+        return None
+
+    async def get(self, _model, _playbook_id):
+        return self.playbook
+
+
+class TestPlaybookReviewRoutes:
+    @pytest.fixture
+    def reviewer(self):
+        return SimpleNamespace(
+            id=uuid4(),
+            email="reviewer@example.com",
+            is_admin=False,
+            subscription_status=SubscriptionStatus.ACTIVE,
+            subscription_tier="starter",
+        )
+
+    @pytest.fixture
+    def review_playbook(self, reviewer):
+        now = datetime.now(timezone.utc)
+        return Playbook(
+            id=uuid4(),
+            user_id=reviewer.id,
+            name="Governed Playbook",
+            description="Review workflow test",
+            status=PlaybookStatus.ACTIVE,
+            review_status=PlaybookReviewStatus.PROPOSED,
+            review_status_updated_at=now,
+            review_history=[],
+            source=PlaybookSource.USER_CREATED,
+            created_at=now,
+            updated_at=now,
+            current_version=None,
+        )
+
+    @pytest.fixture
+    def app(self, reviewer, review_playbook):
+        from ace_platform.api.routes.playbooks import router
+
+        app = FastAPI()
+        db = _FakePlaybookDb(review_playbook)
+
+        async def override_db():
+            yield db
+
+        async def override_paid_access():
+            return reviewer
+
+        app.include_router(router)
+        app.dependency_overrides[get_db] = override_db
+        app.dependency_overrides[require_paid_access] = override_paid_access
+        app.state.fake_db = db
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        return TestClient(app)
+
+    def test_review_action_request_schema(self):
+        payload = PlaybookReviewActionRequest(action=PlaybookReviewAction.APPROVED)
+        assert payload.action == PlaybookReviewAction.APPROVED
+
+    def test_review_activity_response_schema(self):
+        now = datetime.now(timezone.utc)
+        response = PaginatedPlaybookReviewActivityResponse(
+            items=[
+                PlaybookReviewActivityItem(
+                    id="evt-1",
+                    action=PlaybookReviewAction.APPROVED,
+                    from_review_status=PlaybookReviewStatus.PROPOSED,
+                    to_review_status=PlaybookReviewStatus.APPROVED,
+                    actor_user_id=str(uuid4()),
+                    actor_email="reviewer@example.com",
+                    created_at=now,
+                )
+            ],
+            total=1,
+            page=1,
+            page_size=20,
+            total_pages=1,
+        )
+
+        assert response.items[0].action == PlaybookReviewAction.APPROVED
+
+    def test_run_review_action_updates_playbook(self, client, app):
+        playbook_id = app.state.fake_db.playbook.id
+
+        response = client.post(
+            f"/playbooks/{playbook_id}/review-actions",
+            json={"action": "approved"},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["review_status"] == "approved"
+        assert app.state.fake_db.commit_count == 1
+
+    def test_list_review_activity_returns_review_history(self, client, app, reviewer):
+        playbook = app.state.fake_db.playbook
+        now = datetime.now(timezone.utc)
+        playbook.review_history = [
+            build_review_event(
+                actor=reviewer,
+                action=PlaybookReviewAction.PROPOSED,
+                from_status=PlaybookReviewStatus.DRAFT,
+                to_status=PlaybookReviewStatus.PROPOSED,
+                created_at=now,
+            ),
+            build_review_event(
+                actor=reviewer,
+                action=PlaybookReviewAction.APPROVED,
+                from_status=PlaybookReviewStatus.PROPOSED,
+                to_status=PlaybookReviewStatus.APPROVED,
+                created_at=now + timedelta(minutes=5),
+            ),
+        ]
+        playbook.review_status = PlaybookReviewStatus.APPROVED
+
+        response = client.get(f"/playbooks/{playbook.id}/activity")
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        assert payload["total"] == 2
+        assert payload["items"][0]["action"] == "approved"
+        assert payload["items"][0]["to_review_status"] == "approved"
 
 
 class TestPlaybookExportAccessRoute:

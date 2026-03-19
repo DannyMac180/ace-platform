@@ -48,6 +48,8 @@ export interface Playbook {
   name: string;
   description: string | null;
   status: 'active' | 'paused' | 'archived';
+  review_status: 'draft' | 'proposed' | 'approved' | 'archived';
+  review_status_updated_at: string | null;
   source: 'user_created' | 'starter' | 'imported';
   created_at: string;
   updated_at: string;
@@ -79,6 +81,20 @@ export interface PlaybookUpdate {
   name?: string;
   description?: string;
   status?: 'active' | 'paused' | 'archived';
+}
+
+export interface PlaybookReviewActionRequest {
+  action: 'proposed' | 'approved' | 'returned_to_draft' | 'archived';
+}
+
+export interface PlaybookReviewActivityItem {
+  id: string;
+  action: 'created' | 'proposed' | 'approved' | 'returned_to_draft' | 'archived';
+  from_review_status: 'draft' | 'proposed' | 'approved' | 'archived' | null;
+  to_review_status: 'draft' | 'proposed' | 'approved' | 'archived';
+  actor_user_id: string | null;
+  actor_email: string | null;
+  created_at: string;
 }
 
 export interface VersionCreate {

@@ -22,6 +22,7 @@ from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -134,6 +135,7 @@ def compute_playbook_sync_updated_at(playbook: Playbook) -> datetime:
     """Return the authoritative server timestamp for a playbook sync snapshot."""
 
     timestamps = [_as_utc(playbook.created_at), _as_utc(playbook.updated_at)]
+    timestamps.append(_as_utc(playbook.review_status_updated_at))
     timestamps.extend(_as_utc(version.created_at) for version in playbook.versions)
     timestamps.extend(_as_utc(outcome.updated_at) for outcome in playbook.outcomes)
     return max(timestamps)
@@ -188,7 +190,12 @@ def serialize_playbook_snapshot(playbook: Playbook, workspace: Workspace) -> Por
         traces=traces,
         created_at=playbook.created_at,
         updated_at=compute_playbook_sync_updated_at(playbook),
-        metadata={"workspace_id": str(workspace.id)},
+        metadata={
+            "workspace_id": str(workspace.id),
+            "review_status": playbook.review_status.value,
+            "review_status_updated_at": playbook.review_status_updated_at.isoformat(),
+            "review_history": playbook.review_history,
+        },
     )
 
 
@@ -365,6 +372,7 @@ def _portable_playbook_fingerprint(playbook: PortablePlaybook) -> dict[str, Any]
         "name": playbook.name,
         "description": playbook.description,
         "status": playbook.status,
+        "metadata": playbook.metadata,
         "current_version_number": playbook.current_version_number,
         "versions": [
             _portable_version_fingerprint(version)
@@ -503,6 +511,10 @@ async def apply_playbook_sync_upsert(
         db, owner_user_id=owner_user_id, playbook_id=playbook_id
     )
     playbook_was_created = playbook is None
+    review_metadata = payload.metadata or {}
+    incoming_review_status = review_metadata.get("review_status")
+    incoming_review_history = review_metadata.get("review_history")
+    incoming_review_updated_at = review_metadata.get("review_status_updated_at")
     if playbook is None:
         playbook_kwargs = {
             "id": playbook_id,
@@ -510,10 +522,18 @@ async def apply_playbook_sync_upsert(
             "name": payload.name,
             "description": payload.description,
             "status": PlaybookStatus(payload.status),
+            "review_status": PlaybookReviewStatus(
+                incoming_review_status or PlaybookReviewStatus.DRAFT.value
+            ),
+            "review_history": list(incoming_review_history or []),
             "source": PlaybookSource(payload.source or PlaybookSource.USER_CREATED.value),
         }
         if payload.created_at is not None:
             playbook_kwargs["created_at"] = payload.created_at
+        if incoming_review_updated_at is not None:
+            playbook_kwargs["review_status_updated_at"] = datetime.fromisoformat(
+                incoming_review_updated_at
+            )
         playbook = Playbook(**playbook_kwargs)
         db.add(playbook)
         await db.flush()
@@ -521,6 +541,12 @@ async def apply_playbook_sync_upsert(
         playbook.name = payload.name
         playbook.description = payload.description
         playbook.status = PlaybookStatus(payload.status)
+        if incoming_review_status is not None:
+            playbook.review_status = PlaybookReviewStatus(incoming_review_status)
+        if incoming_review_history is not None:
+            playbook.review_history = list(incoming_review_history)
+        if incoming_review_updated_at is not None:
+            playbook.review_status_updated_at = datetime.fromisoformat(incoming_review_updated_at)
         playbook.source = PlaybookSource(payload.source or playbook.source.value)
 
     await clear_playbook_tombstone(db, workspace.id, playbook_id)

@@ -27,7 +27,7 @@ import styles from './Dashboard.module.css';
 export function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('');
   const [mutationError, setMutationError] = useState<string | null>(null);
   const [isLimitError, setIsLimitError] = useState(false);
   const navigate = useNavigate();
@@ -41,8 +41,8 @@ export function Dashboard() {
     user.subscription_tier !== 'free';
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['playbooks', statusFilter, isAuthenticated, hasPaidAccess],
-    queryFn: () => playbooksApi.list(1, 50, statusFilter || undefined),
+    queryKey: ['playbooks', reviewStatusFilter, isAuthenticated, hasPaidAccess],
+    queryFn: () => playbooksApi.list(1, 50, reviewStatusFilter || undefined),
     enabled: !isAuthLoading && isAuthenticated && hasPaidAccess,
     staleTime: 0, // Always consider data stale to ensure fresh fetches
   });
@@ -129,14 +129,15 @@ export function Dashboard() {
         <div className={styles.filterWrapper}>
           <Filter size={18} />
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            value={reviewStatusFilter}
+            onChange={(e) => setReviewStatusFilter(e.target.value)}
             className={styles.filterSelect}
-            aria-label="Filter by status"
+            aria-label="Filter by review status"
           >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="paused">Paused</option>
+            <option value="">All Review States</option>
+            <option value="draft">Draft</option>
+            <option value="proposed">Proposed</option>
+            <option value="approved">Approved</option>
             <option value="archived">Archived</option>
           </select>
         </div>
@@ -276,9 +277,10 @@ function SubscriptionRequiredState({
 }
 
 function PlaybookCard({ playbook }: { playbook: PlaybookListItem }) {
-  const statusIcon = {
-    active: <CheckCircle2 size={14} className={styles.statusActive} />,
-    paused: <AlertCircle size={14} className={styles.statusPaused} />,
+  const reviewStatusIcon = {
+    draft: <Clock size={14} className={styles.statusDraft} />,
+    proposed: <AlertCircle size={14} className={styles.statusProposed} />,
+    approved: <CheckCircle2 size={14} className={styles.statusApproved} />,
     archived: <XCircle size={14} className={styles.statusArchived} />,
   };
 
@@ -290,8 +292,8 @@ function PlaybookCard({ playbook }: { playbook: PlaybookListItem }) {
             <BookOpen size={20} />
           </div>
           <div className={styles.cardStatus}>
-            {statusIcon[playbook.status]}
-            <span>{playbook.status}</span>
+            {reviewStatusIcon[playbook.review_status]}
+            <span>{playbook.review_status}</span>
           </div>
         </div>
 
@@ -313,7 +315,9 @@ function PlaybookCard({ playbook }: { playbook: PlaybookListItem }) {
 
         <div className={styles.cardFooter}>
           <Clock size={14} />
-          <span>Updated {formatRelativeTime(playbook.updated_at)}</span>
+          <span>
+            Review updated {formatRelativeTime(playbook.review_status_updated_at || playbook.updated_at)}
+          </span>
         </div>
       </Card>
     </Link>

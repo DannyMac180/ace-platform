@@ -35,6 +35,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -53,6 +54,25 @@ class PlaybookStatus(str, enum.Enum):
 
     ACTIVE = "active"
     PAUSED = "paused"
+    ARCHIVED = "archived"
+
+
+class PlaybookReviewStatus(str, enum.Enum):
+    """Review lifecycle state for a promoted playbook."""
+
+    DRAFT = "draft"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class PlaybookReviewAction(str, enum.Enum):
+    """Tracked review activity actions for a playbook."""
+
+    CREATED = "created"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    RETURNED_TO_DRAFT = "returned_to_draft"
     ARCHIVED = "archived"
 
 
@@ -657,6 +677,21 @@ class Playbook(Base):
     )
     status: Mapped[PlaybookStatus] = mapped_column(
         Enum(PlaybookStatus), default=PlaybookStatus.ACTIVE, nullable=False
+    )
+    review_status: Mapped[PlaybookReviewStatus] = mapped_column(
+        Enum(PlaybookReviewStatus),
+        default=PlaybookReviewStatus.DRAFT,
+        nullable=False,
+    )
+    review_status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    review_history: Mapped[list[dict]] = mapped_column(
+        MutableList.as_mutable(JSONB),
+        default=list,
+        nullable=False,
     )
     source: Mapped[PlaybookSource] = mapped_column(
         Enum(PlaybookSource), default=PlaybookSource.USER_CREATED, nullable=False
