@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -539,6 +540,11 @@ def _serialize_membership(membership) -> WorkspaceMembershipResponse:
         user_email=membership.user.email,
         role=membership.role,
     )
+
+
+def _is_active_invitation_unique_violation(exc: IntegrityError) -> bool:
+    """Check whether an integrity error came from the active-invitation unique index."""
+    return "uq_workspace_invitations_active_workspace_email" in str(exc)
 
 
 def _serialize_invitation(invitation: WorkspaceInvitation) -> WorkspaceInvitationResponse:
@@ -1194,6 +1200,14 @@ async def create_workspace_invitation_route(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except IntegrityError as exc:
+        await db.rollback()
+        if _is_active_invitation_unique_violation(exc):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="An active invitation already exists for this email",
+            ) from exc
+        raise
 
     await db.commit()
     refreshed = await get_workspace_invitation_by_id(db, workspace_id, invitation.id)

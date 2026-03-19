@@ -37,6 +37,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -896,3 +897,49 @@ class TestWorkspaceRoutesIntegration:
             headers=teammate_headers,
         )
         assert forbidden_remove.status_code == 403
+
+    async def test_invitation_route_maps_unique_index_race_to_conflict(
+        self,
+        client,
+        async_session: AsyncSession,
+        monkeypatch,
+    ):
+        from ace_platform.api.routes import workspaces as workspace_routes
+
+        owner = await self._create_user(async_session, email="owner-race@example.com")
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+        assert (
+            await client.post("/workspaces/bootstrap", headers=owner_headers)
+        ).status_code == 200
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Invite Race", "plan": "team", "seat_limit": 3},
+            headers=owner_headers,
+        )
+        assert create_response.status_code == 201
+        workspace_id = create_response.json()["id"]
+
+        async def raise_duplicate(*_args, **_kwargs):
+            raise IntegrityError(
+                statement=None,
+                params=None,
+                orig=Exception("uq_workspace_invitations_active_workspace_email"),
+            )
+
+        monkeypatch.setattr(
+            workspace_routes,
+            "create_workspace_invitation",
+            raise_duplicate,
+        )
+
+        invite_response = await client.post(
+            f"/workspaces/{workspace_id}/invitations",
+            json={"email": "duplicate-race@example.com", "role": "member"},
+            headers=owner_headers,
+        )
+        assert invite_response.status_code == 409
+        assert (
+            invite_response.json()["error"]["message"]
+            == "An active invitation already exists for this email"
+        )
