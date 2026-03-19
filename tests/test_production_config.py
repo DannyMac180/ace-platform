@@ -172,3 +172,24 @@ class TestProductionConfigValidation:
             session_cookie_domain=".aceagent.io",
         )
         assert settings.session_cookie_domain == ".aceagent.io"
+
+
+class TestEvolutionDefaults:
+    """Tests for evolution model defaults."""
+
+    def test_defaults_use_gpt_5_4_with_medium_reasoning(self, monkeypatch):
+        """Evolution should default to GPT-5.4 Thinking with medium effort."""
+        for env_var in (
+            "EVOLUTION_GENERATOR_MODEL",
+            "EVOLUTION_REFLECTOR_MODEL",
+            "EVOLUTION_CURATOR_MODEL",
+            "EVOLUTION_REASONING_EFFORT",
+        ):
+            monkeypatch.delenv(env_var, raising=False)
+
+        settings = Settings(_env_file=None, environment="development")
+
+        assert settings.evolution_generator_model == "gpt-5.4"
+        assert settings.evolution_reflector_model == "gpt-5.4"
+        assert settings.evolution_curator_model == "gpt-5.4"
+        assert settings.evolution_reasoning_effort == "medium"

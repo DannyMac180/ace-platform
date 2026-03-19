@@ -11,6 +11,8 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ALLOWED_SESSION_COOKIE_SAMESITE = {"lax", "strict", "none"}
+DEFAULT_EVOLUTION_MODEL = "gpt-5.4"
+DEFAULT_EVOLUTION_REASONING_EFFORT = "medium"
 
 
 class Settings(BaseSettings):
@@ -113,19 +115,19 @@ class Settings(BaseSettings):
         description="LLM provider for evolution (openai, anthropic, together)",
     )
     evolution_generator_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Generator agent",
     )
     evolution_reflector_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Reflector agent",
     )
     evolution_curator_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Curator agent",
     )
     evolution_reasoning_effort: str = Field(
-        default="medium",
+        default=DEFAULT_EVOLUTION_REASONING_EFFORT,
         description="Reasoning effort for GPT-5.x models (none, low, medium, high)",
     )
     evolution_max_tokens: int = Field(
