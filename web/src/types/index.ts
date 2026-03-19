@@ -206,6 +206,28 @@ export interface WorkspaceEntitlements {
   usage_limits: WorkspaceUsageLimits;
 }
 
+export interface WorkspaceInferenceConfig {
+  mode: string;
+  provider: string;
+  available_modes: string[];
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number;
+  inference_config: WorkspaceInferenceConfig;
+  member_count: number;
+  current_user_role: 'owner' | 'admin' | 'reviewer' | 'member';
+}
+
+export interface UpgradePersonalWorkspaceToTeamRequest {
+  name?: string;
+  seat_limit?: number;
+}
+
 export interface UsageSummary {
   start_date: string;
   end_date: string;

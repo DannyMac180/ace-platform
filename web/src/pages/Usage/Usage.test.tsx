@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter } from 'react-router-dom';
 import { Usage } from './Usage';
@@ -9,6 +9,7 @@ const {
   mockGetSummary,
   mockGetDaily,
   mockGetByPlaybook,
+  mockUpgradePersonalToTeam,
   mockAuthState,
 } = vi.hoisted(() => {
   const mockAuthState: {
@@ -38,6 +39,7 @@ const {
     mockGetSummary: vi.fn(),
     mockGetDaily: vi.fn(),
     mockGetByPlaybook: vi.fn(),
+    mockUpgradePersonalToTeam: vi.fn(),
     mockAuthState,
   };
 });
@@ -49,6 +51,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 vi.mock('../../utils/api', () => ({
   workspacesApi: {
     getEntitlements: mockGetEntitlements,
+    upgradePersonalToTeam: mockUpgradePersonalToTeam,
   },
   evolutionsApi: {
     getSummary: mockGetSummary,
@@ -162,6 +165,20 @@ describe('Usage', () => {
         last_evolution_at: '2026-03-12T10:00:00Z',
       },
     ]);
+    mockUpgradePersonalToTeam.mockResolvedValue({
+      id: 'workspace-1',
+      name: 'ACE Team',
+      plan: 'team',
+      deployment_mode: 'cloud',
+      seat_limit: 5,
+      inference_config: {
+        mode: 'managed_provider',
+        provider: 'openai',
+        available_modes: ['byo_provider', 'managed_provider'],
+      },
+      member_count: 1,
+      current_user_role: 'owner',
+    });
   });
 
   it('shows plan allowance and upgrade messaging for free users without detailed activity', async () => {
@@ -335,5 +352,19 @@ describe('Usage', () => {
     expect(screen.getByRole('button', { name: 'Upgrade Plan' })).toBeInTheDocument();
     expect(screen.getByText(/\$9\.00 used/i)).toBeInTheDocument();
     expect(screen.getByText(/\$0\.00 remaining/i)).toBeInTheDocument();
+  });
+
+  it('offers a personal-to-team workspace upgrade action', async () => {
+    renderWithProviders(<Usage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Upgrade Workspace To Team' })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Upgrade Workspace To Team' }));
+
+    await waitFor(() => {
+      expect(mockUpgradePersonalToTeam).toHaveBeenCalledTimes(1);
+    });
   });
 });

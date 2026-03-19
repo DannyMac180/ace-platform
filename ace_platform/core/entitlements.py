@@ -17,6 +17,7 @@ from ace_platform.core.limits import (
     is_user_trialing,
 )
 from ace_platform.core.subscription_service import get_subscription_tier_for_plan_code
+from ace_platform.core.workspaces import DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
 from ace_platform.db.models import SubscriptionStatus, User, Workspace
 
 WorkspacePlan = Literal["personal", "team", "enterprise"]
@@ -167,7 +168,7 @@ def get_seat_limit(plan: WorkspacePlan) -> int | None:
     if plan == "personal":
         return 1
     if plan == "team":
-        return 10
+        return DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
     return None
 
 

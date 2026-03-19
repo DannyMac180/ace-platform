@@ -49,6 +49,7 @@ from ace_platform.core.workspaces import (
     create_workspace,
     delete_workspace,
     get_default_workspace_for_user,
+    get_personal_workspace_for_user,
     get_workspace_for_user,
     get_workspace_membership,
     get_workspace_membership_by_id,
@@ -58,6 +59,7 @@ from ace_platform.core.workspaces import (
     resolve_workspace_permissions,
     update_workspace,
     update_workspace_membership_role,
+    upgrade_personal_workspace_to_team,
 )
 from ace_platform.db.models import (
     EvolutionJob,
@@ -100,6 +102,13 @@ class WorkspaceUpdateRequest(BaseModel):
     deployment_mode: WorkspaceDeploymentMode | None = None
     seat_limit: int | None = Field(default=None, ge=1)
     inference_config: WorkspaceInferenceConfigRequest | None = None
+
+
+class WorkspaceUpgradeToTeamRequest(BaseModel):
+    """Request body for converting a personal workspace into a team workspace."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    seat_limit: int | None = Field(default=None, ge=2)
 
 
 class WorkspaceInferenceConfigRequest(BaseModel):
@@ -764,6 +773,40 @@ async def create_workspace_route(
     return _serialize_workspace(workspace, current_user.id)
 
 
+@router.post("/workspaces/me/upgrade-to-team", response_model=WorkspaceResponse)
+async def upgrade_personal_workspace_to_team_route(
+    payload: WorkspaceUpgradeToTeamRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> WorkspaceResponse:
+    """Upgrade the caller's hosted personal workspace into a team workspace."""
+    workspace = await get_personal_workspace_for_user(db, current_user.id)
+    if workspace is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Personal workspace not found",
+        )
+
+    membership = await _require_workspace_membership(db, workspace.id, current_user)
+    _ensure_can_manage_workspace_settings(workspace, membership)
+
+    try:
+        await upgrade_personal_workspace_to_team(
+            db,
+            workspace,
+            name=payload.name,
+            seat_limit=payload.seat_limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    await db.commit()
+    workspace = await get_workspace_for_user(db, workspace.id, current_user.id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    return _serialize_workspace(workspace, current_user.id)
+
+
 @router.get("/workspaces/{workspace_id}", response_model=WorkspaceResponse)
 async def get_workspace_route(
     workspace_id: UUID,
@@ -792,18 +835,28 @@ async def update_workspace_route(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
     _ensure_can_manage_workspace_settings(workspace, membership)
 
+    inference_config = payload.inference_config.model_dump() if payload.inference_config else None
+
     try:
-        await update_workspace(
-            db,
-            workspace,
-            name=payload.name,
-            plan=payload.plan,
-            deployment_mode=payload.deployment_mode,
-            seat_limit=payload.seat_limit,
-            inference_config=payload.inference_config.model_dump()
-            if payload.inference_config
-            else None,
-        )
+        if payload.plan == WorkspacePlan.TEAM and workspace.plan == WorkspacePlan.PERSONAL:
+            await upgrade_personal_workspace_to_team(
+                db,
+                workspace,
+                name=payload.name,
+                seat_limit=payload.seat_limit,
+                deployment_mode=payload.deployment_mode,
+                inference_config=inference_config,
+            )
+        else:
+            await update_workspace(
+                db,
+                workspace,
+                name=payload.name,
+                plan=payload.plan,
+                deployment_mode=payload.deployment_mode,
+                seat_limit=payload.seat_limit,
+                inference_config=inference_config,
+            )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
