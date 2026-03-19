@@ -171,6 +171,44 @@ export interface TriggerHostedEvalRunResponse extends HostedEvalRun {
   is_new: boolean;
 }
 
+export type WorkspaceRole = 'owner' | 'member' | 'reviewer' | 'admin';
+
+export interface WorkspaceInferenceConfig {
+  mode: 'byo_provider' | 'managed_provider';
+  provider: 'openai' | 'anthropic';
+  available_modes: Array<'byo_provider' | 'managed_provider'>;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number;
+  inference_config: WorkspaceInferenceConfig;
+  member_count: number;
+  current_user_role: WorkspaceRole;
+}
+
+export interface WorkspaceMembership {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  user_email: string;
+  role: WorkspaceRole;
+}
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  invited_email: string;
+  role: WorkspaceRole;
+  invited_by_user_id: string;
+  invited_by_email: string;
+  created_at: string;
+}
+
 export interface WorkspaceFeatureAccess {
   cloud_sync: boolean;
   hosted_backups: boolean;

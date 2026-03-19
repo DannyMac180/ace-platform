@@ -124,7 +124,7 @@ def _is_disconnect_error(exc: BaseException) -> bool:
     """Check if an exception represents a normal SSE client disconnect."""
     from anyio import BrokenResourceError, ClosedResourceError
 
-    if isinstance(exc, (ClosedResourceError, BrokenResourceError)):
+    if isinstance(exc, ClosedResourceError | BrokenResourceError):
         return True
     # ExceptionGroup may wrap disconnect errors (Python 3.11+)
     if hasattr(exc, "exceptions"):

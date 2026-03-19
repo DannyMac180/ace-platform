@@ -4,6 +4,7 @@ This module defines all database models for the platform:
 - User: Platform users with auth
 - Workspace: Hosted tenancy container for personal, team, and enterprise plans
 - Membership: User membership within a workspace
+- WorkspaceInvitation: Pending team-workspace invitation records
 - WorkspaceSubscription: Workspace-level billing state and provider linkage
 - WorkspaceEntitlement: Workspace-level feature flags
 - Playbook: User playbooks with version tracking
@@ -32,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -395,6 +397,12 @@ class User(Base):
     memberships: Mapped[list["Membership"]] = relationship(
         "Membership", back_populates="user", cascade="all, delete-orphan"
     )
+    workspace_invitations_sent: Mapped[list["WorkspaceInvitation"]] = relationship(
+        "WorkspaceInvitation",
+        back_populates="invited_by_user",
+        cascade="all, delete-orphan",
+        foreign_keys="WorkspaceInvitation.invited_by_user_id",
+    )
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"
@@ -427,6 +435,11 @@ class Workspace(Base):
 
     memberships: Mapped[list["Membership"]] = relationship(
         "Membership", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    invitations: Mapped[list["WorkspaceInvitation"]] = relationship(
+        "WorkspaceInvitation",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
     )
     subscription: Mapped["WorkspaceSubscription | None"] = relationship(
         "WorkspaceSubscription",
@@ -498,6 +511,73 @@ class Membership(Base):
 
 # Backward-compatible aliases for the newer workspace service naming.
 WorkspaceMembership = Membership
+
+
+class WorkspaceInvitation(Base):
+    """Pending invitation to join a workspace."""
+
+    __tablename__ = "workspace_invitations"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    invited_by_user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    invited_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    role: Mapped[MembershipRole] = mapped_column(
+        Enum(MembershipRole), default=MembershipRole.MEMBER, nullable=False
+    )
+    accepted_by_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    revoked_by_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="invitations")
+    invited_by_user: Mapped["User"] = relationship(
+        "User",
+        back_populates="workspace_invitations_sent",
+        foreign_keys=[invited_by_user_id],
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_workspace_invitations_active_workspace_email",
+            "workspace_id",
+            "invited_email",
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
+        Index("ix_workspace_invitations_workspace_email", "workspace_id", "invited_email"),
+        Index("ix_workspace_invitations_workspace_created_at", "workspace_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WorkspaceInvitation workspace={self.workspace_id} "
+            f"email={self.invited_email} role={self.role.value}>"
+        )
+
+
 WorkspaceRole = MembershipRole
 
 

@@ -14,6 +14,7 @@ from ace_platform.db.models import (
     WorkspaceEntitlement,
     WorkspaceInferenceMode,
     WorkspaceInferenceProvider,
+    WorkspaceInvitation,
     WorkspacePlan,
     WorkspaceSubscription,
     WorkspaceSubscriptionStatus,
@@ -261,10 +262,20 @@ def test_workspace_constraints_encode_uniqueness_and_personal_seat_limit():
         for constraint in Workspace.__table__.constraints
         if isinstance(constraint, CheckConstraint)
     ]
+    invitation_unique_index = next(
+        index
+        for index in WorkspaceInvitation.__table__.indexes
+        if index.name == "uq_workspace_invitations_active_workspace_email"
+    )
 
     assert membership_pk == ["workspace_id", "user_id"]
     assert subscription_pk == ["workspace_id"]
     assert entitlement_pk == ["workspace_id"]
+    assert invitation_unique_index.unique is True
+    assert (
+        str(invitation_unique_index.dialect_options["postgresql"]["where"]).replace('"', "")
+        == "accepted_at IS NULL AND revoked_at IS NULL"
+    )
     assert any(
         constraint.name == "ck_workspaces_seat_limit"
         and "seat_limit >= 1" in str(constraint.sqltext)

@@ -5,9 +5,10 @@ the hosted-workspace invariants for cloud users.
 """
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -18,6 +19,7 @@ from ace_platform.db.models import (
     WorkspaceEntitlement,
     WorkspaceInferenceMode,
     WorkspaceInferenceProvider,
+    WorkspaceInvitation,
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
@@ -93,6 +95,11 @@ def default_personal_workspace_name(email: str | None) -> str:
     if pretty_name:
         return f"{pretty_name}'s Workspace"[:255]
     return "Personal Workspace"
+
+
+def normalize_workspace_invitation_email(email: str) -> str:
+    """Canonicalize invitation email addresses for lookups."""
+    return email.strip().lower()
 
 
 def normalize_workspace_settings(
@@ -228,6 +235,23 @@ async def get_workspace_for_user(
     return result.scalars().unique().one_or_none()
 
 
+async def get_workspace_by_id(
+    db: AsyncSession,
+    workspace_id: UUID,
+) -> Workspace | None:
+    """Fetch a workspace regardless of the requesting user."""
+    result = await db.execute(
+        select(Workspace)
+        .where(Workspace.id == workspace_id)
+        .options(
+            selectinload(Workspace.memberships).selectinload(WorkspaceMembership.user),
+            selectinload(Workspace.entitlements),
+            selectinload(Workspace.subscription),
+        )
+    )
+    return result.scalars().unique().one_or_none()
+
+
 async def get_personal_workspace_for_user(
     db: AsyncSession,
     user_id: UUID,
@@ -296,6 +320,68 @@ async def list_workspace_memberships(
         .where(WorkspaceMembership.workspace_id == workspace_id)
         .options(selectinload(WorkspaceMembership.user))
         .order_by(WorkspaceMembership.created_at.asc(), WorkspaceMembership.user_id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_workspace_invitation_by_id(
+    db: AsyncSession,
+    workspace_id: UUID,
+    invitation_id: UUID,
+) -> WorkspaceInvitation | None:
+    """Fetch one invitation scoped to a workspace."""
+    result = await db.execute(
+        select(WorkspaceInvitation)
+        .where(
+            WorkspaceInvitation.workspace_id == workspace_id,
+            WorkspaceInvitation.id == invitation_id,
+        )
+        .options(
+            selectinload(WorkspaceInvitation.workspace),
+            selectinload(WorkspaceInvitation.invited_by_user),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def list_workspace_invitations(
+    db: AsyncSession,
+    workspace_id: UUID,
+) -> list[WorkspaceInvitation]:
+    """List active invitations for a workspace."""
+    result = await db.execute(
+        select(WorkspaceInvitation)
+        .where(
+            WorkspaceInvitation.workspace_id == workspace_id,
+            WorkspaceInvitation.accepted_at.is_(None),
+            WorkspaceInvitation.revoked_at.is_(None),
+        )
+        .options(
+            selectinload(WorkspaceInvitation.workspace),
+            selectinload(WorkspaceInvitation.invited_by_user),
+        )
+        .order_by(WorkspaceInvitation.created_at.asc(), WorkspaceInvitation.id.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def list_user_workspace_invitations(
+    db: AsyncSession,
+    email: str,
+) -> list[WorkspaceInvitation]:
+    """List active invitations addressed to a specific email address."""
+    result = await db.execute(
+        select(WorkspaceInvitation)
+        .where(
+            WorkspaceInvitation.invited_email == normalize_workspace_invitation_email(email),
+            WorkspaceInvitation.accepted_at.is_(None),
+            WorkspaceInvitation.revoked_at.is_(None),
+        )
+        .options(
+            selectinload(WorkspaceInvitation.workspace),
+            selectinload(WorkspaceInvitation.invited_by_user),
+        )
+        .order_by(WorkspaceInvitation.created_at.asc(), WorkspaceInvitation.id.asc())
     )
     return list(result.scalars().all())
 
@@ -377,6 +463,9 @@ async def update_workspace(
     inference_config: dict | None = None,
 ) -> Workspace:
     """Update mutable workspace fields."""
+    if "entitlements" in inspect(workspace).unloaded:
+        await db.refresh(workspace, attribute_names=["entitlements"])
+
     previous_plan = workspace.plan
     next_plan = plan or workspace.plan
     next_deployment_mode = deployment_mode or workspace.deployment_mode
@@ -393,10 +482,11 @@ async def update_workspace(
         )
     )
 
-    member_count = await count_workspace_members(db, workspace.id)
-    if next_seat_limit < member_count:
+    occupied_seat_count = await count_workspace_occupied_seats(db, workspace.id)
+    if next_seat_limit < occupied_seat_count:
         raise ValueError(
-            f"Workspace seat limit cannot be less than the current membership count ({member_count})"
+            "Workspace seat limit cannot be less than the current occupied seat count "
+            f"({occupied_seat_count})"
         )
 
     if name is not None:
@@ -455,14 +545,19 @@ async def add_workspace_member(
     workspace: Workspace,
     user: User,
     role: WorkspaceRole,
+    reserved_invitation_id: UUID | None = None,
 ) -> WorkspaceMembership:
     """Add a member to a workspace, enforcing uniqueness and seat limits."""
     existing = await get_workspace_membership(db, workspace.id, user.id)
     if existing:
         raise ValueError("User is already a member of this workspace")
 
-    member_count = await count_workspace_members(db, workspace.id)
-    if member_count >= workspace.seat_limit:
+    occupied_seat_count = await count_workspace_occupied_seats(
+        db,
+        workspace.id,
+        excluded_invitation_id=reserved_invitation_id,
+    )
+    if occupied_seat_count >= workspace.seat_limit:
         raise ValueError("Workspace seat limit reached")
 
     membership = WorkspaceMembership(
@@ -474,6 +569,147 @@ async def add_workspace_member(
     await db.flush()
     await db.refresh(membership, ["user"])
     return membership
+
+
+async def count_workspace_invitations(
+    db: AsyncSession,
+    workspace_id: UUID,
+    *,
+    excluded_invitation_id: UUID | None = None,
+) -> int:
+    """Count active invitations in a workspace."""
+    invitation_filters = [
+        WorkspaceInvitation.workspace_id == workspace_id,
+        WorkspaceInvitation.accepted_at.is_(None),
+        WorkspaceInvitation.revoked_at.is_(None),
+    ]
+    if excluded_invitation_id is not None:
+        invitation_filters.append(WorkspaceInvitation.id != excluded_invitation_id)
+
+    return (
+        await db.scalar(
+            select(func.count()).select_from(WorkspaceInvitation).where(*invitation_filters)
+        )
+        or 0
+    )
+
+
+async def count_workspace_occupied_seats(
+    db: AsyncSession,
+    workspace_id: UUID,
+    *,
+    excluded_invitation_id: UUID | None = None,
+) -> int:
+    """Count current seats consumed by memberships and active invitations."""
+    member_count = await count_workspace_members(db, workspace_id)
+    invitation_count = await count_workspace_invitations(
+        db,
+        workspace_id,
+        excluded_invitation_id=excluded_invitation_id,
+    )
+    return member_count + invitation_count
+
+
+async def create_workspace_invitation(
+    db: AsyncSession,
+    *,
+    workspace: Workspace,
+    invited_by_user: User,
+    invited_email: str,
+    role: WorkspaceRole,
+) -> WorkspaceInvitation:
+    """Create a pending invitation for a team-capable workspace."""
+    normalized_email = normalize_workspace_invitation_email(invited_email)
+    if not normalized_email:
+        raise ValueError("Invitation email is required")
+    if invited_by_user.email and normalized_email == normalize_workspace_invitation_email(
+        invited_by_user.email
+    ):
+        raise ValueError("You cannot invite your own email address")
+    if workspace.entitlements is None or not workspace.entitlements.invite_members:
+        raise ValueError("Workspace plan does not allow member invitations")
+
+    target_user_result = await db.execute(select(User).where(User.email == normalized_email))
+    target_user = target_user_result.scalar_one_or_none()
+    if target_user is not None:
+        existing = await get_workspace_membership(db, workspace.id, target_user.id)
+        if existing is not None:
+            raise ValueError("User is already a member of this workspace")
+
+    existing_invite_result = await db.execute(
+        select(WorkspaceInvitation).where(
+            WorkspaceInvitation.workspace_id == workspace.id,
+            WorkspaceInvitation.invited_email == normalized_email,
+            WorkspaceInvitation.accepted_at.is_(None),
+            WorkspaceInvitation.revoked_at.is_(None),
+        )
+    )
+    if existing_invite_result.scalar_one_or_none() is not None:
+        raise ValueError("An active invitation already exists for this email")
+
+    occupied_seat_count = await count_workspace_occupied_seats(db, workspace.id)
+    if occupied_seat_count >= workspace.seat_limit:
+        raise ValueError("Workspace seat limit reached")
+
+    invitation = WorkspaceInvitation(
+        workspace_id=workspace.id,
+        invited_by_user_id=invited_by_user.id,
+        invited_email=normalized_email,
+        role=role,
+    )
+    db.add(invitation)
+    await db.flush()
+    await db.refresh(invitation, ["workspace", "invited_by_user"])
+    return invitation
+
+
+async def accept_workspace_invitation(
+    db: AsyncSession,
+    *,
+    invitation: WorkspaceInvitation,
+    user: User,
+) -> WorkspaceMembership:
+    """Accept a pending workspace invitation for the authenticated user."""
+    if invitation.accepted_at is not None or invitation.revoked_at is not None:
+        raise ValueError("Invitation is no longer active")
+    if (
+        not user.email
+        or normalize_workspace_invitation_email(user.email) != invitation.invited_email
+    ):
+        raise ValueError("Invitation is not addressed to the current user")
+
+    workspace = await get_workspace_by_id(db, invitation.workspace_id)
+    if workspace is None:
+        raise ValueError("Workspace not found")
+    if workspace.entitlements is None or not workspace.entitlements.invite_members:
+        raise ValueError("Workspace plan does not allow member invitations")
+
+    membership = await add_workspace_member(
+        db,
+        workspace=workspace,
+        user=user,
+        role=invitation.role,
+        reserved_invitation_id=invitation.id,
+    )
+    invitation.accepted_at = datetime.now(timezone.utc)
+    invitation.accepted_by_user_id = user.id
+    await db.flush()
+    return membership
+
+
+async def revoke_workspace_invitation(
+    db: AsyncSession,
+    *,
+    invitation: WorkspaceInvitation,
+    revoked_by_user_id: UUID,
+) -> WorkspaceInvitation:
+    """Revoke a pending workspace invitation."""
+    if invitation.accepted_at is not None or invitation.revoked_at is not None:
+        raise ValueError("Invitation is no longer active")
+    invitation.revoked_at = datetime.now(timezone.utc)
+    invitation.revoked_by_user_id = revoked_by_user_id
+    await db.flush()
+    return invitation
 
 
 async def update_workspace_membership_role(

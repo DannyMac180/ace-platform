@@ -4,15 +4,18 @@ import os
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from ace_platform.core.security import hash_password
 from ace_platform.core.workspaces import (
     DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT,
+    accept_workspace_invitation,
     add_workspace_member,
     bootstrap_workspace_for_user,
     create_workspace,
+    create_workspace_invitation,
     delete_workspace,
     list_user_workspaces,
     normalize_workspace_inference_config,
@@ -28,6 +31,7 @@ from ace_platform.db.models import (
     WorkspaceDeploymentMode,
     WorkspaceInferenceMode,
     WorkspaceInferenceProvider,
+    WorkspaceInvitation,
     WorkspacePlan,
     WorkspaceRole,
 )
@@ -160,6 +164,109 @@ class TestWorkspaceService:
                 user=teammate,
                 role=WorkspaceRole.MEMBER,
             )
+
+    async def test_add_workspace_member_counts_pending_invitations(
+        self, async_session: AsyncSession
+    ):
+        owner = await self._create_user(async_session, "invite-seat-owner@example.com")
+        teammate = await self._create_user(async_session, "invite-seat-teammate@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Reserved Seat Limit",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=2,
+        )
+        await async_session.refresh(workspace, ["entitlements"])
+        await create_workspace_invitation(
+            async_session,
+            workspace=workspace,
+            invited_by_user=owner,
+            invited_email="reserved-seat@example.com",
+            role=WorkspaceRole.MEMBER,
+        )
+        await async_session.commit()
+
+        with pytest.raises(ValueError, match="seat limit"):
+            await add_workspace_member(
+                async_session,
+                workspace=workspace,
+                user=teammate,
+                role=WorkspaceRole.MEMBER,
+            )
+
+    async def test_accept_workspace_invitation_uses_reserved_seat(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "accept-seat-owner@example.com")
+        invited_user = await self._create_user(async_session, "accept-seat-user@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Accept Reserved Seat",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=2,
+        )
+        await async_session.refresh(workspace, ["entitlements"])
+        invitation = await create_workspace_invitation(
+            async_session,
+            workspace=workspace,
+            invited_by_user=owner,
+            invited_email=invited_user.email,
+            role=WorkspaceRole.MEMBER,
+        )
+
+        membership = await accept_workspace_invitation(
+            async_session,
+            invitation=invitation,
+            user=invited_user,
+        )
+        await async_session.commit()
+
+        assert membership.user_id == invited_user.id
+        assert membership.workspace_id == workspace.id
+        assert invitation.accepted_by_user_id == invited_user.id
+
+    async def test_workspace_invitation_unique_index_blocks_duplicate_active_invites(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "invite-unique-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Invitation Uniqueness",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=3,
+        )
+
+        async_session.add_all(
+            [
+                WorkspaceInvitation(
+                    workspace_id=workspace.id,
+                    invited_by_user_id=owner.id,
+                    invited_email="duplicate-active@example.com",
+                    role=WorkspaceRole.MEMBER,
+                ),
+                WorkspaceInvitation(
+                    workspace_id=workspace.id,
+                    invited_by_user_id=owner.id,
+                    invited_email="duplicate-active@example.com",
+                    role=WorkspaceRole.MEMBER,
+                ),
+            ]
+        )
+
+        with pytest.raises(IntegrityError):
+            await async_session.commit()
+        await async_session.rollback()
 
     async def test_update_workspace_falls_back_to_byo_when_managed_becomes_unsupported(
         self,

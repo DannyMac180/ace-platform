@@ -58,7 +58,7 @@ def _normalize_values(values: object) -> frozenset[str]:
         return frozenset()
     if isinstance(values, str):
         return frozenset({values.strip().lower()}) if values.strip() else frozenset()
-    if isinstance(values, (list, tuple, set, frozenset)):
+    if isinstance(values, list | tuple | set | frozenset):
         normalized = []
         for value in values:
             if value is None:
