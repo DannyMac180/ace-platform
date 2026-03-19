@@ -34,7 +34,6 @@ from mcp.server.transport_security import TransportSecuritySettings
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -54,6 +53,7 @@ from ace_platform.core.playbook_matching import (
     refresh_playbook_embedding,
     score_playbook_match,
 )
+from ace_platform.core.playbooks import get_accessible_playbook, list_accessible_playbooks
 from ace_platform.core.rate_limit import RATE_LIMITS, RateLimiter, get_rate_limiter
 from ace_platform.core.sentry_bootstrap import init_sentry_for_process
 from ace_platform.core.validation import (
@@ -774,7 +774,7 @@ async def get_playbook(
     version: Annotated[int | None, "Specific version number to retrieve (default: current)"] = None,
     section: Annotated[str | None, "Filter to a specific section by heading"] = None,
 ) -> str:
-    """Get a playbook's content by ID.
+    """Get an accessible playbook's content by ID.
 
     Returns the playbook name, description, and version content.
     Optionally retrieve a specific version or filter to a section.
@@ -820,14 +820,10 @@ async def get_playbook(
     except ValueError:
         return f"Error: Invalid playbook ID format: {playbook_id}"
 
-    # Get playbook
-    playbook = await db.get(Playbook, pb_uuid)
-    if not playbook:
+    summary = await get_accessible_playbook(db, user_id=user.id, playbook_id=pb_uuid)
+    if summary is None:
         return f"Error: Playbook {playbook_id} not found"
-
-    # Verify ownership
-    if playbook.user_id != user.id:
-        return "Error: Access denied - playbook belongs to another user"
+    playbook = summary.playbook
 
     # Get requested version
     content = ""
@@ -848,7 +844,10 @@ async def get_playbook(
         version_info = f" (v{version})"
     else:
         # Get current version
-        if playbook.current_version_id:
+        if playbook.current_version is not None:
+            content = playbook.current_version.content
+            version_info = f" (v{playbook.current_version.version_number})"
+        elif playbook.current_version_id and hasattr(db, "refresh"):
             await db.refresh(playbook, ["current_version"])
             if playbook.current_version:
                 content = playbook.current_version.content
@@ -860,7 +859,13 @@ async def get_playbook(
         if not content:
             return f"Error: Section '{section}' not found in playbook"
 
+    shared_via = ""
+    if summary.shared_workspace_names:
+        shared_via = f"\nShared via: {', '.join(summary.shared_workspace_names)}"
+
     return f"""# {playbook.name}{version_info}
+
+Owner: {summary.owner_email or "unknown"}{shared_via}
 
 {playbook.description or "No description"}
 
@@ -924,7 +929,7 @@ async def list_playbooks(
         "Optional task description to rank playbooks by semantic relevance",
     ] = None,
 ) -> str:
-    """List all playbooks for the authenticated user.
+    """List playbooks the authenticated user can access.
 
     Returns a list of playbook names and IDs.
     Optionally accepts a task description to sort by relevance.
@@ -954,16 +959,8 @@ async def list_playbooks(
     if not check_scope(api_key_record, "playbooks:read"):
         return "Error: API key lacks 'playbooks:read' scope"
 
-    # Query user's playbooks
-    result = await db.execute(
-        select(Playbook)
-        .where(Playbook.user_id == user.id)
-        .options(selectinload(Playbook.current_version))
-        .order_by(Playbook.created_at.desc())
-    )
-    playbooks = result.scalars().all()
-
-    if not playbooks:
+    accessible_playbooks = await list_accessible_playbooks(db, user_id=user.id)
+    if not accessible_playbooks:
         return "No playbooks found. Create one in the dashboard first."
 
     if task and task.strip():
@@ -977,9 +974,10 @@ async def list_playbooks(
             settings=settings,
         )
         local_task_embedding = generate_local_embedding(task_description)
-        ranked: list[tuple[Playbook, float, str]] = []
+        ranked: list[tuple[Any, float, str]] = []
 
-        for pb in playbooks:
+        for summary in accessible_playbooks:
+            pb = summary.playbook
             content = pb.current_version.content if pb.current_version else None
             playbook_text = build_playbook_match_text(
                 name=pb.name,
@@ -996,20 +994,36 @@ async def list_playbooks(
                 playbook_embedding_model=pb.semantic_embedding_model,
                 local_task_embedding=local_task_embedding,
             )
-            ranked.append((pb, score, method))
+            ranked.append((summary, score, method))
 
         ranked.sort(key=lambda item: item[1], reverse=True)
 
-        lines = ["# Your Playbooks (Ranked by Relevance)\n", f"Task: {task_description}", ""]
-        for pb, score, method in ranked:
+        lines = ["# Accessible Playbooks (Ranked by Relevance)\n", f"Task: {task_description}", ""]
+        for summary, score, method in ranked:
+            pb = summary.playbook
             lines.append(f"- **{pb.name}** (`{pb.id}`) - relevance `{score:.2f}` ({method})")
+            owner_email = summary.owner_email or "unknown"
+            if summary.shared_workspace_names:
+                lines.append(
+                    f"  owner: {owner_email}; shared via: {', '.join(summary.shared_workspace_names)}"
+                )
+            else:
+                lines.append(f"  owner: {owner_email}")
             if pb.description:
                 lines.append(f"  {pb.description[:100]}...")
         return "\n".join(lines)
 
-    lines = ["# Your Playbooks\n"]
-    for pb in playbooks:
+    lines = ["# Accessible Playbooks\n"]
+    for summary in accessible_playbooks:
+        pb = summary.playbook
         lines.append(f"- **{pb.name}** (`{pb.id}`)")
+        owner_email = summary.owner_email or "unknown"
+        if summary.shared_workspace_names:
+            lines.append(
+                f"  owner: {owner_email}; shared via: {', '.join(summary.shared_workspace_names)}"
+            )
+        else:
+            lines.append(f"  owner: {owner_email}")
         if pb.description:
             lines.append(f"  {pb.description[:100]}...")
 
@@ -1058,15 +1072,8 @@ async def find_playbook(
     if task_validation_error:
         return f"Error: {task_validation_error}"
 
-    result = await db.execute(
-        select(Playbook)
-        .where(Playbook.user_id == user.id)
-        .options(selectinload(Playbook.current_version))
-        .order_by(Playbook.created_at.desc())
-    )
-    playbooks = result.scalars().all()
-
-    if not playbooks:
+    accessible_playbooks = await list_accessible_playbooks(db, user_id=user.id)
+    if not accessible_playbooks:
         return "No playbooks found. Create one in the dashboard first."
 
     task_embedding, task_embedding_model = await generate_embedding(
@@ -1074,8 +1081,9 @@ async def find_playbook(
     )
     local_task_embedding = generate_local_embedding(normalized_task)
 
-    ranked: list[tuple[Playbook, float, str]] = []
-    for pb in playbooks:
+    ranked: list[tuple[Any, float, str]] = []
+    for summary in accessible_playbooks:
+        pb = summary.playbook
         content = pb.current_version.content if pb.current_version else None
         playbook_text = build_playbook_match_text(
             name=pb.name,
@@ -1092,10 +1100,11 @@ async def find_playbook(
             playbook_embedding_model=pb.semantic_embedding_model,
             local_task_embedding=local_task_embedding,
         )
-        ranked.append((pb, score, method))
+        ranked.append((summary, score, method))
 
     ranked.sort(key=lambda item: item[1], reverse=True)
-    best_playbook, best_score, match_method = ranked[0]
+    best_summary, best_score, match_method = ranked[0]
+    best_playbook = best_summary.playbook
 
     confidence = "high" if best_score >= 0.75 else "medium" if best_score >= 0.5 else "low"
 
@@ -1105,14 +1114,22 @@ async def find_playbook(
         f"**Task:** {normalized_task}",
         f"**Playbook:** {best_playbook.name}",
         f"**Playbook ID:** `{best_playbook.id}`",
+        f"**Owner:** {best_summary.owner_email or 'unknown'}",
         f"**Confidence:** {best_score:.2f} ({confidence})",
         f"**Method:** {match_method}",
-        "",
-        f'Use `get_playbook(playbook_id="{best_playbook.id}")` to load full instructions.',
     ]
+    if best_summary.shared_workspace_names:
+        lines.append(f"**Shared Via:** {', '.join(best_summary.shared_workspace_names)}")
+    lines.extend(
+        [
+            "",
+            f'Use `get_playbook(playbook_id="{best_playbook.id}")` to load full instructions.',
+        ]
+    )
 
     if len(ranked) > 1:
-        second_playbook, second_score, _ = ranked[1]
+        second_summary, second_score, _ = ranked[1]
+        second_playbook = second_summary.playbook
         lines.extend(
             [
                 "",
