@@ -44,7 +44,6 @@ from ace_platform.core.workspace_sync import (
     list_workspace_sync_events,
 )
 from ace_platform.core.workspaces import (
-    MANAGER_ROLES,
     add_workspace_member,
     bootstrap_workspace_for_user,
     create_workspace,
@@ -57,6 +56,7 @@ from ace_platform.core.workspaces import (
     list_user_workspaces,
     list_workspace_memberships,
     remove_workspace_membership,
+    resolve_workspace_permissions,
     update_workspace,
     update_workspace_membership_role,
     upgrade_personal_workspace_to_team,
@@ -147,6 +147,14 @@ class WorkspaceMembershipUpdateRequest(BaseModel):
     role: WorkspaceRole
 
 
+class WorkspacePermissionsResponse(BaseModel):
+    """Serialized effective workspace permissions for the current user."""
+
+    can_manage_settings: bool
+    can_manage_seats: bool
+    can_approve_playbooks: bool
+
+
 class WorkspaceResponse(BaseModel):
     """Serialized workspace."""
 
@@ -158,6 +166,7 @@ class WorkspaceResponse(BaseModel):
     inference_config: WorkspaceInferenceConfigResponse
     member_count: int
     current_user_role: WorkspaceRole
+    permissions: WorkspacePermissionsResponse
 
 
 class WorkspaceMembershipResponse(BaseModel):
@@ -409,6 +418,7 @@ def _serialize_workspace(workspace: Workspace, current_user_id: UUID) -> Workspa
     if current_membership is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
+    permissions = resolve_workspace_permissions(workspace, current_membership.role)
     return WorkspaceResponse(
         id=workspace.id,
         name=workspace.name,
@@ -418,6 +428,11 @@ def _serialize_workspace(workspace: Workspace, current_user_id: UUID) -> Workspa
         inference_config=_serialize_workspace_inference_config(workspace),
         member_count=len(workspace.memberships),
         current_user_role=current_membership.role,
+        permissions=WorkspacePermissionsResponse(
+            can_manage_settings=permissions.can_manage_settings,
+            can_manage_seats=permissions.can_manage_seats,
+            can_approve_playbooks=permissions.can_approve_playbooks,
+        ),
     )
 
 
@@ -538,14 +553,27 @@ def _to_response(
     )
 
 
-def _ensure_manager(membership) -> None:
-    """Require a manager-capable workspace role."""
+def _ensure_can_manage_workspace_settings(workspace: Workspace, membership) -> None:
+    """Require a role that can alter workspace settings."""
     if membership is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
-    if membership.role not in MANAGER_ROLES:
+    permissions = resolve_workspace_permissions(workspace, membership.role)
+    if not permissions.can_manage_settings:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workspace owner or admin role required",
+            detail="Workspace owner or admin role required to manage workspace settings",
+        )
+
+
+def _ensure_can_manage_workspace_seats(workspace: Workspace, membership) -> None:
+    """Require a role that can change workspace seat assignments."""
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    permissions = resolve_workspace_permissions(workspace, membership.role)
+    if not permissions.can_manage_seats:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Workspace owner or admin role required to manage workspace seats",
         )
 
 
@@ -760,7 +788,7 @@ async def upgrade_personal_workspace_to_team_route(
         )
 
     membership = await _require_workspace_membership(db, workspace.id, current_user)
-    _ensure_manager(membership)
+    _ensure_can_manage_workspace_settings(workspace, membership)
 
     try:
         await upgrade_personal_workspace_to_team(
@@ -801,11 +829,11 @@ async def update_workspace_route(
 ) -> WorkspaceResponse:
     """Update a workspace managed by the current user."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
 
     workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    _ensure_can_manage_workspace_settings(workspace, membership)
 
     inference_config = payload.inference_config.model_dump() if payload.inference_config else None
 
@@ -847,11 +875,11 @@ async def delete_workspace_route(
 ) -> None:
     """Delete a workspace when every member still belongs to another workspace."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
 
     workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    _ensure_can_manage_workspace_settings(workspace, membership)
 
     try:
         await delete_workspace(db, workspace)
@@ -889,11 +917,11 @@ async def create_workspace_membership_route(
 ) -> WorkspaceMembershipResponse:
     """Add a member to a workspace."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
 
     workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    _ensure_can_manage_workspace_seats(workspace, membership)
 
     target_user = await _resolve_user(db, payload.user_id, payload.user_email)
     try:
@@ -923,7 +951,11 @@ async def update_workspace_membership_route(
 ) -> WorkspaceMembershipResponse:
     """Update a member role inside a workspace."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
+
+    workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    _ensure_can_manage_workspace_seats(workspace, membership)
 
     target_membership = await get_workspace_membership_by_id(db, workspace_id, membership_id)
     if target_membership is None:
@@ -950,7 +982,11 @@ async def delete_workspace_membership_route(
 ) -> None:
     """Remove a member from a workspace."""
     membership = await _require_workspace_membership(db, workspace_id, current_user)
-    _ensure_manager(membership)
+
+    workspace = await get_workspace_for_user(db, workspace_id, current_user.id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    _ensure_can_manage_workspace_seats(workspace, membership)
 
     target_membership = await get_workspace_membership_by_id(db, workspace_id, membership_id)
     if target_membership is None:

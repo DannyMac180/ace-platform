@@ -110,6 +110,7 @@ class TestWorkspaceRoutesUnit:
         assert payload.inference_config.mode.value == "managed_provider"
         assert payload.inference_config.provider.value == "openai"
         assert "inference_config" in WorkspaceResponse.model_json_schema()["properties"]
+        assert "permissions" in WorkspaceResponse.model_json_schema()["properties"]
 
     def test_workspace_upgrade_request_requires_team_ready_seat_limit(self):
         with pytest.raises(Exception):
@@ -480,3 +481,113 @@ class TestWorkspaceRoutesIntegration:
             "leave at least one user without any workspace"
             in delete_workspace_response.json()["error"]["message"]
         )
+
+    async def test_workspace_permissions_expose_role_matrix_and_enforce_management_guards(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="roles-owner@example.com")
+        admin = await self._create_user(async_session, email="roles-admin@example.com")
+        reviewer = await self._create_user(async_session, email="roles-reviewer@example.com")
+        member = await self._create_user(async_session, email="roles-member@example.com")
+        outsider = await self._create_user(async_session, email="roles-outsider@example.com")
+
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+        admin_headers = {"Authorization": f"Bearer {admin['token']}"}
+        reviewer_headers = {"Authorization": f"Bearer {reviewer['token']}"}
+        member_headers = {"Authorization": f"Bearer {member['token']}"}
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Roles Team", "plan": "team", "seat_limit": 6},
+            headers=owner_headers,
+        )
+        assert create_response.status_code == 201
+        workspace_id = create_response.json()["id"]
+
+        for email, role in [
+            ("roles-admin@example.com", "admin"),
+            ("roles-reviewer@example.com", "reviewer"),
+            ("roles-member@example.com", "member"),
+        ]:
+            add_response = await client.post(
+                f"/workspaces/{workspace_id}/memberships",
+                json={"user_email": email, "role": role},
+                headers=owner_headers,
+            )
+            assert add_response.status_code == 201
+
+        owner_workspace = await client.get(f"/workspaces/{workspace_id}", headers=owner_headers)
+        admin_workspace = await client.get(f"/workspaces/{workspace_id}", headers=admin_headers)
+        reviewer_workspace = await client.get(
+            f"/workspaces/{workspace_id}",
+            headers=reviewer_headers,
+        )
+        member_workspace = await client.get(f"/workspaces/{workspace_id}", headers=member_headers)
+
+        assert owner_workspace.status_code == 200
+        assert owner_workspace.json()["permissions"] == {
+            "can_manage_settings": True,
+            "can_manage_seats": True,
+            "can_approve_playbooks": True,
+        }
+        assert admin_workspace.status_code == 200
+        assert admin_workspace.json()["permissions"] == {
+            "can_manage_settings": True,
+            "can_manage_seats": True,
+            "can_approve_playbooks": True,
+        }
+        assert reviewer_workspace.status_code == 200
+        assert reviewer_workspace.json()["permissions"] == {
+            "can_manage_settings": False,
+            "can_manage_seats": False,
+            "can_approve_playbooks": True,
+        }
+        assert member_workspace.status_code == 200
+        assert member_workspace.json()["permissions"] == {
+            "can_manage_settings": False,
+            "can_manage_seats": False,
+            "can_approve_playbooks": False,
+        }
+
+        reviewer_update = await client.patch(
+            f"/workspaces/{workspace_id}",
+            json={"name": "Reviewer Cannot Edit"},
+            headers=reviewer_headers,
+        )
+        assert reviewer_update.status_code == 403
+        assert (
+            reviewer_update.json()["error"]["message"]
+            == "Workspace owner or admin role required to manage workspace settings"
+        )
+
+        member_add = await client.post(
+            f"/workspaces/{workspace_id}/memberships",
+            json={"user_id": str(outsider["user"].id), "role": "member"},
+            headers=member_headers,
+        )
+        assert member_add.status_code == 403
+        assert (
+            member_add.json()["error"]["message"]
+            == "Workspace owner or admin role required to manage workspace seats"
+        )
+
+        reviewer_add = await client.post(
+            f"/workspaces/{workspace_id}/memberships",
+            json={"user_id": str(outsider["user"].id), "role": "member"},
+            headers=reviewer_headers,
+        )
+        assert reviewer_add.status_code == 403
+        assert (
+            reviewer_add.json()["error"]["message"]
+            == "Workspace owner or admin role required to manage workspace seats"
+        )
+
+        admin_update = await client.patch(
+            f"/workspaces/{workspace_id}",
+            json={"seat_limit": 7},
+            headers=admin_headers,
+        )
+        assert admin_update.status_code == 200
+        assert admin_update.json()["seat_limit"] == 7
