@@ -102,6 +102,7 @@ class TestWorkspaceRoutesUnit:
 
     def test_reuse_shared_workspace_playbook_requires_auth(self, client):
         response = client.post(f"/v1/workspaces/me/playbooks/shared/{uuid4()}/reuse")
+        assert response.status_code == 401
 
     def test_workspace_upgrade_requires_auth(self, client):
         response = client.post("/workspaces/me/upgrade-to-team", json={})
