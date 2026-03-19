@@ -230,6 +230,15 @@ export interface WorkspaceAccessState {
   is_trialing: boolean;
 }
 
+export interface WorkspaceUsageCounter {
+  current: number;
+  soft_limit: number | null;
+  hard_limit: number | null;
+  remaining_soft: number | null;
+  remaining_hard: number | null;
+  status: 'ok' | 'warning' | 'blocked';
+}
+
 export interface WorkspaceUsageLimits {
   monthly_evolution_runs: number | null;
   current_evolution_runs: number;
@@ -239,6 +248,12 @@ export interface WorkspaceUsageLimits {
   remaining_cost_usd: string | number | null;
   current_total_tokens: number;
   max_playbooks: number | null;
+  storage_bytes: WorkspaceUsageCounter;
+  hosted_eval_runs: WorkspaceUsageCounter;
+  managed_inference_requests: WorkspaceUsageCounter;
+  managed_inference_tokens: WorkspaceUsageCounter;
+  warning_fields: string[];
+  blocked_fields: string[];
   is_within_limits: boolean;
   limit_exceeded: string | null;
 }

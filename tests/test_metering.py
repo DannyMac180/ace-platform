@@ -20,11 +20,13 @@ from ace_platform.core.metering import (
     DailyUsage,
     OperationUsage,
     PlaybookUsage,
+    UsageCounterSummary,
     UsageSummary,
     get_billing_period_usage,
     get_usage_by_model,
     get_usage_by_operation,
     get_usage_by_playbook,
+    get_usage_counter_summary,
     get_user_usage_by_day,
     get_user_usage_summary,
 )
@@ -257,6 +259,35 @@ class TestOperationUsage:
         assert by_operation[0].operation == "evolution_generator"
         assert by_operation[1].operation == "evolution_reflector"
         assert by_operation[2].operation == "evolution_curator"
+
+
+class TestUsageCounterSummary:
+    """Tests for get_usage_counter_summary."""
+
+    @pytest.mark.asyncio
+    async def test_returns_filtered_usage_counters(self):
+        user_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_row = MagicMock()
+        mock_row.request_count = 4
+        mock_row.total_tokens = 1200
+        mock_row.total_cost_usd = Decimal("0.33")
+
+        mock_result = MagicMock()
+        mock_result.one.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        summary = await get_usage_counter_summary(
+            mock_db,
+            user_id,
+            operation_prefixes=("managed_inference",),
+        )
+
+        assert isinstance(summary, UsageCounterSummary)
+        assert summary.request_count == 4
+        assert summary.total_tokens == 1200
+        assert summary.total_cost_usd == Decimal("0.33")
 
 
 class TestModelUsage:

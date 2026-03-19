@@ -10,10 +10,10 @@ import {
   AlertCircle,
   ArrowRight,
   BookOpen,
-  CheckCircle2,
-  CreditCard,
+  Cpu,
+  FlaskConical,
   Gauge,
-  Rocket,
+  HardDrive,
   Sparkles,
   TriangleAlert,
 } from 'lucide-react';
@@ -111,6 +111,7 @@ export function Usage() {
   const summary = summaryQuery.data;
   const dailyEvolutions = dailyQuery.data ?? [];
   const playbookStats = playbookQuery.data ?? [];
+  const usageAlerts = buildUsageAlerts(usage);
   const showActivityDetails = hasFeatureAccess && !hasSubscriptionError && !hasDetailError;
 
   return (
@@ -151,51 +152,79 @@ export function Usage() {
           </div>
           <div className={styles.accountList}>
             <AccountMetric
-              label="Hosted evolutions"
-              value={`${formatLimit(usage.monthly_evolution_runs)} / month`}
+              label="Hosted storage"
+              value={formatCounterLimit(usage.storage_bytes.hard_limit, formatBytes)}
             />
             <AccountMetric
-              label="Playbooks"
-              value={formatLimit(usage.max_playbooks)}
+              label="Hosted evals"
+              value={`${formatCounterLimit(usage.hosted_eval_runs.hard_limit ?? usage.monthly_evolution_runs, formatInteger)} / month`}
             />
             <AccountMetric
-              label="Managed budget"
-              value={formatMoneyLimit(usage.monthly_cost_limit_usd)}
+              label="Managed requests"
+              value={formatCounterLimit(usage.managed_inference_requests.hard_limit, formatInteger)}
             />
             <AccountMetric
-              label="Premium models"
-              value={usage.max_playbooks === null || entitlements.access.effective_tier !== 'free'
-                ? 'Included'
-                : 'Not included'}
+              label="Managed tokens"
+              value={formatCounterLimit(usage.managed_inference_tokens.hard_limit, formatInteger)}
             />
           </div>
         </Card>
       </div>
 
+      {usageAlerts.length > 0 ? (
+        <Card variant="default" className={styles.alertCard}>
+          <div className={styles.alertHeader}>
+            <AlertCircle size={18} />
+            <span>Usage attention needed</span>
+          </div>
+          <div className={styles.alertList}>
+            {usageAlerts.map((alert) => (
+              <span key={alert}>{alert}</span>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
       <div className={styles.summaryGrid}>
         <SummaryCard
-          icon={<CreditCard />}
-          label="Current Plan"
-          value={formatPlanHeadline(entitlements)}
-          color="primary"
+          icon={<HardDrive />}
+          label="Hosted Storage"
+          value={formatUsageWithLimit(
+            usage.storage_bytes.current,
+            usage.storage_bytes.hard_limit,
+            formatBytes
+          )}
+          color={usage.storage_bytes.status === 'blocked' ? 'error' : usage.storage_bytes.status === 'warning' ? 'primary' : 'success'}
         />
         <SummaryCard
-          icon={<Rocket />}
-          label="Included Evolutions"
-          value={formatLimit(usage.monthly_evolution_runs)}
-          color="primary"
+          icon={<FlaskConical />}
+          label="Hosted Evals"
+          value={formatUsageWithLimit(
+            usage.hosted_eval_runs.current,
+            usage.hosted_eval_runs.hard_limit ?? usage.monthly_evolution_runs,
+            formatInteger
+          )}
+          color={usage.hosted_eval_runs.status === 'blocked' ? 'error' : usage.hosted_eval_runs.status === 'warning' ? 'primary' : 'success'}
+        />
+        <SummaryCard
+          icon={<Cpu />}
+          label="Managed Requests"
+          value={formatUsageWithLimit(
+            usage.managed_inference_requests.current,
+            usage.managed_inference_requests.hard_limit,
+            formatInteger
+          )}
+          color={usage.managed_inference_requests.status === 'blocked' ? 'error' : usage.managed_inference_requests.status === 'warning' ? 'primary' : 'success'}
         />
         <SummaryCard
           icon={<Gauge />}
-          label="Used This Month"
-          value={formatInteger(usage.current_evolution_runs)}
-          color="primary"
-        />
-        <SummaryCard
-          icon={usage.limit_exceeded ? <TriangleAlert /> : <CheckCircle2 />}
-          label="Remaining This Month"
-          value={formatLimit(usage.remaining_evolution_runs)}
-          color={usage.limit_exceeded ? 'error' : 'success'}
+          label="Managed Tokens"
+          value={formatUsageWithLimit(
+            usage.managed_inference_tokens.current,
+            usage.managed_inference_tokens.hard_limit,
+            formatInteger
+          )}
+          color={usage.managed_inference_tokens.status === 'blocked' ? 'error' : usage.managed_inference_tokens.status === 'warning' ? 'primary' : 'success'}
         />
       </div>
 
@@ -292,17 +321,6 @@ function SummaryCard({ icon, label, value, color }: SummaryCardProps) {
 
 function UsageEnvelopeCard({ entitlements }: { entitlements: WorkspaceEntitlements }) {
   const usage = entitlements.usage_limits;
-  const evolutionLabel = usage.remaining_evolution_runs === null
-    ? 'Unlimited on this plan'
-    : `${formatInteger(usage.current_evolution_runs)} used · ${formatLimit(
-        usage.remaining_evolution_runs
-      )} remaining`;
-
-  const budgetLabel = usage.remaining_cost_usd === null
-    ? 'Unlimited on this plan'
-    : `${formatCurrency(toNumber(usage.current_cost_usd))} used · ${formatCurrency(
-        toNumber(usage.remaining_cost_usd)
-      )} remaining`;
 
   return (
     <Card variant="default" padding="lg" className={styles.noticeCard}>
@@ -311,23 +329,38 @@ function UsageEnvelopeCard({ entitlements }: { entitlements: WorkspaceEntitlemen
       </div>
       <div className={styles.meterList}>
         <ProgressMeter
-          label="Hosted evolutions"
-          current={usage.current_evolution_runs}
-          total={usage.monthly_evolution_runs}
-          helper={evolutionLabel}
+          label="Hosted storage"
+          current={usage.storage_bytes.current}
+          total={usage.storage_bytes.hard_limit}
+          helper={getCounterHelper(usage.storage_bytes, formatBytes)}
+          formatter={formatBytes}
+        />
+        <ProgressMeter
+          label="Hosted evals"
+          current={usage.hosted_eval_runs.current}
+          total={usage.hosted_eval_runs.hard_limit ?? usage.monthly_evolution_runs}
+          helper={getCounterHelper(usage.hosted_eval_runs, formatInteger)}
           formatter={formatInteger}
         />
         <ProgressMeter
-          label="Managed usage budget"
-          current={toNumber(usage.current_cost_usd)}
-          total={toNullableNumber(usage.monthly_cost_limit_usd)}
-          helper={budgetLabel}
-          formatter={formatCurrency}
+          label="Managed inference requests"
+          current={usage.managed_inference_requests.current}
+          total={usage.managed_inference_requests.hard_limit}
+          helper={getCounterHelper(usage.managed_inference_requests, formatInteger)}
+          formatter={formatInteger}
+        />
+        <ProgressMeter
+          label="Managed inference tokens"
+          current={usage.managed_inference_tokens.current}
+          total={usage.managed_inference_tokens.hard_limit}
+          helper={getCounterHelper(usage.managed_inference_tokens, formatInteger)}
+          formatter={formatInteger}
         />
       </div>
       <div className={styles.planHighlights}>
         <FeatureChip label={`${formatLimit(usage.max_playbooks)} playbooks`} />
-        <FeatureChip label={`${formatInteger(usage.current_total_tokens)} tokens recorded`} />
+        <FeatureChip label={`${formatMoneyLimit(usage.monthly_cost_limit_usd)} managed budget`} />
+        <FeatureChip label={`${formatInteger(usage.warning_fields.length)} warnings / ${formatInteger(usage.blocked_fields.length)} blocked`} />
         <FeatureChip label={entitlements.access.has_feature_access ? 'Hosted access active' : 'Hosted access locked'} />
       </div>
     </Card>
@@ -611,11 +644,12 @@ function resolveUsageTone(entitlements: WorkspaceEntitlements): 'success' | 'war
     return 'warning';
   }
 
-  if (usage.limit_exceeded) {
+  if (usage.blocked_fields.length > 0 || usage.limit_exceeded) {
     return 'error';
   }
 
   if (
+    usage.warning_fields.length > 0 ||
     isApproachingLimit(usage.current_evolution_runs, usage.monthly_evolution_runs) ||
     isApproachingLimit(toNumber(usage.current_cost_usd), toNullableNumber(usage.monthly_cost_limit_usd))
   ) {
@@ -666,13 +700,76 @@ function getUsageCopy(entitlements: WorkspaceEntitlements, hasUsedTrial: boolean
     };
   }
 
-  if (usage.limit_exceeded === 'monthly_evolution_runs') {
+  if (usage.blocked_fields.includes('storage_bytes')) {
+    return {
+      title: 'Hosted storage limit reached',
+      description: 'Stored playbook content has reached the workspace limit. Trim old hosted content or upgrade to continue growing usage safely.',
+      primaryAction: 'Upgrade Plan',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (usage.blocked_fields.includes('hosted_eval_runs') || usage.limit_exceeded === 'monthly_evolution_runs') {
     return {
       title: 'Monthly evolution limit reached',
       description: `You have used all ${formatLimit(
         usage.monthly_evolution_runs
       )} included hosted evolutions for this billing period. New hosted evolutions are blocked until the cycle resets or you upgrade.`,
       primaryAction: 'Upgrade Plan',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (usage.blocked_fields.includes('managed_inference_requests')) {
+    return {
+      title: 'Managed inference request limit reached',
+      description: 'This workspace has exhausted the configured managed inference request quota for the current period.',
+      primaryAction: 'Upgrade Plan',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (usage.blocked_fields.includes('managed_inference_tokens')) {
+    return {
+      title: 'Managed inference token limit reached',
+      description: 'This workspace has exhausted the configured managed inference token quota for the current period.',
+      primaryAction: 'Upgrade Plan',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (usage.warning_fields.includes('storage_bytes')) {
+    return {
+      title: 'Approaching your hosted storage limit',
+      description: `Hosted storage is currently at ${formatUsageWithLimit(
+        usage.storage_bytes.current,
+        usage.storage_bytes.hard_limit,
+        formatBytes
+      )}. Upgrade before new hosted content starts getting blocked.`,
+      primaryAction: 'Upgrade Before You Hit The Limit',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (usage.warning_fields.includes('hosted_eval_runs')) {
+    return {
+      title: 'Approaching your hosted eval limit',
+      description: `You have ${formatLimit(
+        usage.hosted_eval_runs.remaining_hard
+      )} hosted eval run${usage.hosted_eval_runs.remaining_hard === 1 ? '' : 's'} remaining before the hard cap.`,
+      primaryAction: 'Upgrade Before You Hit The Limit',
+      primaryHref: '/pricing',
+    };
+  }
+
+  if (
+    usage.warning_fields.includes('managed_inference_requests') ||
+    usage.warning_fields.includes('managed_inference_tokens')
+  ) {
+    return {
+      title: 'Approaching a managed inference limit',
+      description: 'Managed inference usage is above the warning threshold for this workspace. Upgrade now to avoid blocked requests.',
+      primaryAction: 'Upgrade Before You Hit The Limit',
       primaryHref: '/pricing',
     };
   }
@@ -746,6 +843,43 @@ function formatCurrency(value: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function formatBytes(value: number) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let current = Math.max(value, 0);
+  let unitIndex = 0;
+
+  while (current >= 1024 && unitIndex < units.length - 1) {
+    current /= 1024;
+    unitIndex += 1;
+  }
+
+  const digits = unitIndex === 0 ? 0 : 1;
+  return `${current.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function formatCounterLimit(
+  value: number | null,
+  formatter: (value: number) => string
+) {
+  if (value === null) {
+    return 'Unlimited';
+  }
+
+  return formatter(value);
+}
+
+function formatUsageWithLimit(
+  current: number,
+  limit: number | null,
+  formatter: (value: number) => string
+) {
+  if (limit == null) {
+    return formatter(current);
+  }
+
+  return `${formatter(current)} / ${formatter(limit)}`;
 }
 
 function formatLimit(value: number | null) {
@@ -848,4 +982,47 @@ function toNullableNumber(value: string | number | null) {
   }
 
   return toNumber(value);
+}
+
+function getCounterHelper(
+  counter: WorkspaceEntitlements['usage_limits']['storage_bytes'],
+  formatter: (value: number) => string
+) {
+  if (counter.status === 'blocked') {
+    return 'Hard limit reached';
+  }
+
+  if (counter.remaining_hard !== null) {
+    const remaining = formatter(counter.remaining_hard);
+    const softLabel = counter.soft_limit === null ? null : `warning at ${formatter(counter.soft_limit)}`;
+    return softLabel ? `${remaining} remaining · ${softLabel}` : `${remaining} remaining`;
+  }
+
+  if (counter.soft_limit !== null) {
+    return `Warning at ${formatter(counter.soft_limit)}`;
+  }
+
+  return 'Unlimited on this plan';
+}
+
+function buildUsageAlerts(usage: WorkspaceEntitlements['usage_limits']) {
+  const alerts: string[] = [];
+
+  if (usage.blocked_fields.includes('storage_bytes')) {
+    alerts.push('Hosted storage is at the hard limit.');
+  }
+  if (usage.blocked_fields.includes('hosted_eval_runs')) {
+    alerts.push('Hosted evals are blocked until the limit resets or the plan changes.');
+  }
+  if (usage.blocked_fields.includes('managed_inference_requests')) {
+    alerts.push('Managed inference requests are blocked for this workspace.');
+  }
+  if (usage.blocked_fields.includes('managed_inference_tokens')) {
+    alerts.push('Managed inference tokens are blocked for this workspace.');
+  }
+  if (!alerts.length && usage.warning_fields.length > 0) {
+    alerts.push('One or more workspace meters are above their warning threshold.');
+  }
+
+  return alerts;
 }

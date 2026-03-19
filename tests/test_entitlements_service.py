@@ -60,8 +60,15 @@ def _usage_status(tier: SubscriptionTier) -> UsageStatus:
             if limits.monthly_cost_limit_usd is None
             else limits.monthly_cost_limit_usd - Decimal("0.42")
         ),
+        remaining_storage_bytes=(
+            None if limits.storage_limit_bytes is None else limits.storage_limit_bytes
+        ),
         is_within_limits=True,
         limit_exceeded=None,
+        current_managed_inference_requests=0,
+        current_managed_inference_tokens=0,
+        current_managed_inference_cost_usd=Decimal("0"),
+        current_storage_bytes=0,
     )
 
 
@@ -172,6 +179,8 @@ def test_workspace_entitlements_returns_authoritative_snapshot():
     assert data["entitlements"]["invite_members"] is False
     assert data["usage_limits"]["monthly_evolution_runs"] == 100
     assert data["usage_limits"]["current_total_tokens"] == 1234
+    assert data["usage_limits"]["storage_bytes"]["current"] == 0
+    assert data["usage_limits"]["managed_inference_requests"]["current"] == 0
     assert data["usage_limits"]["is_within_limits"] is True
 
 

@@ -31,22 +31,36 @@ def _make_user(**overrides):
     return SimpleNamespace(**defaults)
 
 
-def _make_usage_status(tier: SubscriptionTier) -> UsageStatus:
+def _make_usage_status(
+    tier: SubscriptionTier,
+    *,
+    storage_bytes: int = 0,
+    managed_inference_requests: int = 0,
+    total_tokens: int = 1_234,
+    total_cost_usd: Decimal = Decimal("0.42"),
+) -> UsageStatus:
     limits = get_tier_limits(tier)
     return UsageStatus(
         tier=tier,
         limits=limits,
         current_evolution_runs=2,
-        current_total_tokens=1_234,
-        current_cost_usd=Decimal("0.42"),
+        current_total_tokens=total_tokens,
+        current_cost_usd=total_cost_usd,
         remaining_evolution_runs=None
         if limits.monthly_evolution_runs is None
         else max(0, limits.monthly_evolution_runs - 2),
         remaining_cost_usd=None
         if limits.monthly_cost_limit_usd is None
-        else limits.monthly_cost_limit_usd - Decimal("0.42"),
+        else limits.monthly_cost_limit_usd - total_cost_usd,
+        remaining_storage_bytes=None
+        if limits.storage_limit_bytes is None
+        else max(0, limits.storage_limit_bytes - storage_bytes),
         is_within_limits=True,
         limit_exceeded=None,
+        current_managed_inference_requests=managed_inference_requests,
+        current_managed_inference_tokens=total_tokens,
+        current_managed_inference_cost_usd=total_cost_usd,
+        current_storage_bytes=storage_bytes,
     )
 
 
@@ -68,6 +82,8 @@ async def test_free_user_gets_no_enabled_features(monkeypatch):
     assert snapshot.access.has_feature_access is False
     assert snapshot.entitlements.cloud_sync is False
     assert snapshot.entitlements.managed_inference is False
+    assert snapshot.usage_limits.storage_bytes.current == 0
+    assert snapshot.usage_limits.hosted_eval_runs.hard_limit == 5
 
 
 @pytest.mark.asyncio
@@ -94,6 +110,7 @@ async def test_paid_personal_user_gets_convenience_features(monkeypatch):
     assert snapshot.entitlements.invite_members is False
     assert snapshot.usage_limits.monthly_evolution_runs == 100
     assert snapshot.usage_limits.max_playbooks == 5
+    assert snapshot.usage_limits.storage_bytes.current == 0
 
 
 @pytest.mark.asyncio
@@ -116,6 +133,7 @@ async def test_trial_user_keeps_features_but_uses_free_limits(monkeypatch):
     assert snapshot.access.is_trialing is True
     assert snapshot.entitlements.managed_inference is True
     assert snapshot.usage_limits.monthly_evolution_runs == 5
+    assert snapshot.usage_limits.hosted_eval_runs.hard_limit == 5
 
 
 @pytest.mark.asyncio
@@ -139,3 +157,52 @@ async def test_enterprise_user_gets_governance_features(monkeypatch):
     assert snapshot.entitlements.rbac is True
     assert snapshot.entitlements.sso is True
     assert snapshot.entitlements.audit_logs is True
+
+
+@pytest.mark.asyncio
+async def test_workspace_usage_config_adds_soft_and_hard_thresholds(monkeypatch):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.ACTIVE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        usage_limits={
+            "storage_bytes": {"soft_limit": 1_024},
+            "managed_inference_requests": {"hard_limit": 3},
+            "managed_inference_tokens": {"soft_limit": 500, "hard_limit": 1_000},
+            "hosted_eval_runs": {"soft_limit": 2, "hard_limit": 4},
+        },
+    )
+    usage_status = _make_usage_status(
+        SubscriptionTier.STARTER,
+        storage_bytes=2_048,
+        managed_inference_requests=3,
+        total_tokens=750,
+    )
+    usage_status.current_evolution_runs = 3
+    usage_status.remaining_evolution_runs = 97
+
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=usage_status),
+    )
+
+    snapshot = await resolve_workspace_entitlements(object(), user, workspace=workspace)
+
+    assert snapshot.usage_limits.storage_bytes.status == "warning"
+    assert snapshot.usage_limits.hosted_eval_runs.soft_limit == 2
+    assert snapshot.usage_limits.hosted_eval_runs.hard_limit == 4
+    assert snapshot.usage_limits.managed_inference_requests.status == "blocked"
+    assert snapshot.usage_limits.managed_inference_tokens.status == "warning"
+    assert snapshot.usage_limits.warning_fields == (
+        "storage_bytes",
+        "hosted_eval_runs",
+        "managed_inference_tokens",
+    )
+    assert snapshot.usage_limits.blocked_fields == ("managed_inference_requests",)
+    assert snapshot.usage_limits.is_within_limits is False
+    assert snapshot.usage_limits.limit_exceeded == "managed_inference_requests"
