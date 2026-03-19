@@ -18,6 +18,7 @@ from ace_core.contracts import InferenceMessage, ModelRequest
 from ace_core.portability import PortablePlaybook
 from ace_platform.api.auth import PaidUser, RequiredUser, require_capability
 from ace_platform.api.deps import get_db
+from ace_platform.api.routes.playbooks import PlaybookResponse, PlaybookVersionResponse
 from ace_platform.core.entitlements import (
     WorkspaceEntitlementsSnapshot,
     get_workspace_id,
@@ -34,6 +35,11 @@ from ace_platform.core.managed_inference import (
     ManagedInferenceGateway,
     ManagedInferenceProviderError,
     ManagedInferenceRequestError,
+)
+from ace_platform.core.playbooks import (
+    PlaybookLimitError,
+    list_shared_workspace_playbooks,
+    reuse_shared_workspace_playbook,
 )
 from ace_platform.core.workspace_sync import (
     WorkspaceSyncConflictError,
@@ -72,6 +78,8 @@ from ace_platform.db.models import (
     EvolutionJob,
     EvolutionJobStatus,
     Playbook,
+    PlaybookSource,
+    PlaybookStatus,
     PlaybookVersion,
     User,
     Workspace,
@@ -205,6 +213,39 @@ class WorkspaceInvitationResponse(BaseModel):
     invited_by_user_id: UUID
     invited_by_email: str
     created_at: datetime
+
+
+class SharedPlaybookOwnerResponse(BaseModel):
+    """Ownership metadata for one shared registry entry."""
+
+    user_id: UUID
+    email: str
+
+
+class WorkspaceSharedPlaybookResponse(BaseModel):
+    """Serialized shared playbook entry for the team registry."""
+
+    id: UUID
+    name: str
+    description: str | None
+    status: PlaybookStatus
+    source: PlaybookSource
+    created_at: datetime
+    updated_at: datetime
+    version_count: int
+    outcome_count: int
+    owner: SharedPlaybookOwnerResponse
+    is_owned_by_current_user: bool
+
+
+class PaginatedWorkspaceSharedPlaybookResponse(BaseModel):
+    """Paginated shared playbook catalog response."""
+
+    items: list[WorkspaceSharedPlaybookResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class WorkspaceBootstrapResponse(BaseModel):
@@ -514,6 +555,38 @@ def _serialize_invitation(invitation: WorkspaceInvitation) -> WorkspaceInvitatio
     )
 
 
+def _serialize_shared_playbook(
+    playbook: Playbook,
+    *,
+    current_user_id: UUID,
+) -> WorkspaceSharedPlaybookResponse:
+    """Serialize one shared registry playbook entry."""
+
+    owner = playbook.user
+    if owner is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Shared playbook owner was not loaded",
+        )
+
+    return WorkspaceSharedPlaybookResponse(
+        id=playbook.id,
+        name=playbook.name,
+        description=playbook.description,
+        status=playbook.status,
+        source=playbook.source,
+        created_at=playbook.created_at,
+        updated_at=playbook.updated_at,
+        version_count=len(playbook.versions),
+        outcome_count=len(playbook.outcomes),
+        owner=SharedPlaybookOwnerResponse(
+            user_id=owner.id,
+            email=owner.email,
+        ),
+        is_owned_by_current_user=playbook.user_id == current_user_id,
+    )
+
+
 async def _resolve_entitlements_workspace(
     db: AsyncSession,
     current_user: User,
@@ -629,6 +702,26 @@ async def _require_workspace_membership(
     if membership is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
     return membership
+
+
+async def _require_shared_registry_workspace(
+    db: AsyncSession,
+    current_user: User,
+    workspace_id: str,
+) -> Workspace:
+    """Resolve a workspace and require shared-registry entitlement."""
+
+    workspace = await _resolve_entitlements_workspace(db, current_user, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+
+    if workspace.entitlements is None or not workspace.entitlements.shared_workspace:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Shared playbook registry is not enabled for this workspace.",
+        )
+
+    return workspace
 
 
 def _serialize_sync_event(event) -> WorkspaceSyncEventResponse:
@@ -1206,6 +1299,103 @@ async def accept_workspace_invitation_route(
 
     await db.commit()
     return _serialize_membership(membership)
+
+
+@router.get(
+    "/v1/workspaces/{workspace_id}/playbooks/shared",
+    response_model=PaginatedWorkspaceSharedPlaybookResponse,
+)
+@router.get(
+    "/workspaces/{workspace_id}/playbooks/shared",
+    response_model=PaginatedWorkspaceSharedPlaybookResponse,
+    include_in_schema=False,
+)
+async def list_shared_workspace_playbooks_route(
+    workspace_id: str,
+    db: DbSession,
+    current_user: PaidUser,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+) -> PaginatedWorkspaceSharedPlaybookResponse:
+    """List approved shared playbooks for a team workspace."""
+
+    workspace = await _require_shared_registry_workspace(db, current_user, workspace_id)
+    playbooks, total = await list_shared_workspace_playbooks(
+        db,
+        workspace,
+        current_user_id=current_user.id,
+        page=page,
+        page_size=page_size,
+    )
+    total_pages = (total + page_size - 1) // page_size
+
+    return PaginatedWorkspaceSharedPlaybookResponse(
+        items=[
+            _serialize_shared_playbook(playbook, current_user_id=current_user.id)
+            for playbook in playbooks
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+
+
+@router.post(
+    "/v1/workspaces/{workspace_id}/playbooks/shared/{playbook_id}/reuse",
+    response_model=PlaybookResponse,
+)
+@router.post(
+    "/workspaces/{workspace_id}/playbooks/shared/{playbook_id}/reuse",
+    response_model=PlaybookResponse,
+    include_in_schema=False,
+)
+async def reuse_shared_workspace_playbook_route(
+    workspace_id: str,
+    playbook_id: UUID,
+    db: DbSession,
+    current_user: PaidUser,
+) -> PlaybookResponse:
+    """Copy one shared workspace playbook into the caller's library."""
+
+    workspace = await _require_shared_registry_workspace(db, current_user, workspace_id)
+    try:
+        copied_playbook = await reuse_shared_workspace_playbook(
+            db,
+            workspace,
+            current_user=current_user,
+            source_playbook_id=playbook_id,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PlaybookLimitError as exc:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail=str(exc)) from exc
+
+    await db.commit()
+    await db.refresh(copied_playbook)
+    if copied_playbook.current_version_id is not None:
+        await db.refresh(copied_playbook, ["current_version"])
+
+    return PlaybookResponse(
+        id=copied_playbook.id,
+        name=copied_playbook.name,
+        description=copied_playbook.description,
+        status=copied_playbook.status,
+        source=copied_playbook.source,
+        created_at=copied_playbook.created_at,
+        updated_at=copied_playbook.updated_at,
+        current_version=(
+            PlaybookVersionResponse(
+                id=copied_playbook.current_version.id,
+                version_number=copied_playbook.current_version.version_number,
+                content=copied_playbook.current_version.content,
+                bullet_count=copied_playbook.current_version.bullet_count,
+                created_at=copied_playbook.current_version.created_at,
+            )
+            if copied_playbook.current_version is not None
+            else None
+        ),
+    )
 
 
 @router.get(

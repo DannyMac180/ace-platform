@@ -31,6 +31,8 @@ import type {
   PlaybookVersion,
   PlatformStats,
   RecentEvolution,
+  WorkspaceSharedPlaybook,
+  WorkspaceSummary,
   TokenResponse,
   TriggerHostedEvalRunResponse,
   TopUser,
@@ -42,7 +44,6 @@ import type {
   WorkspaceInvitation,
   WorkspaceMembership,
   WorkspaceRole,
-  WorkspaceSummary,
 } from '../types';
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
@@ -465,9 +466,30 @@ export const workspacesApi = {
     return response.data;
   },
 
-  getEntitlements: async (): Promise<WorkspaceEntitlements> => {
+  getEntitlements: async (workspaceId = PERSONAL_WORKSPACE_ID): Promise<WorkspaceEntitlements> => {
     const response = await api.get<WorkspaceEntitlements>(
-      `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/entitlements`
+      `/v1/workspaces/${workspaceId}/entitlements`
+    );
+    return response.data;
+  },
+
+  listSharedPlaybooks: async (
+    workspaceId = PERSONAL_WORKSPACE_ID,
+    page = 1,
+    pageSize = 20
+  ): Promise<PaginatedResponse<WorkspaceSharedPlaybook>> => {
+    const response = await api.get<PaginatedResponse<WorkspaceSharedPlaybook>>(
+      `/v1/workspaces/${workspaceId}/playbooks/shared?page=${page}&page_size=${pageSize}`
+    );
+    return response.data;
+  },
+
+  reuseSharedPlaybook: async (
+    workspaceId: string,
+    playbookId: string
+  ): Promise<Playbook> => {
+    const response = await api.post<Playbook>(
+      `/v1/workspaces/${workspaceId}/playbooks/shared/${playbookId}/reuse`
     );
     return response.data;
   },

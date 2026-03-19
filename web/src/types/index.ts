@@ -61,6 +61,16 @@ export interface PlaybookListItem extends Omit<Playbook, 'current_version'> {
   outcome_count: number;
 }
 
+export interface SharedPlaybookOwner {
+  user_id: string;
+  email: string;
+}
+
+export interface WorkspaceSharedPlaybook extends PlaybookListItem {
+  owner: SharedPlaybookOwner;
+  is_owned_by_current_user: boolean;
+}
+
 export interface PlaybookVersion {
   id: string;
   version_number: number;
@@ -245,9 +255,9 @@ export interface WorkspaceEntitlements {
 }
 
 export interface WorkspaceInferenceConfig {
-  mode: string;
-  provider: string;
-  available_modes: string[];
+  mode: 'byo_provider' | 'managed_provider';
+  provider: 'openai' | 'anthropic';
+  available_modes: Array<'byo_provider' | 'managed_provider'>;
 }
 
 export interface WorkspaceSummary {
@@ -258,7 +268,7 @@ export interface WorkspaceSummary {
   seat_limit: number;
   inference_config: WorkspaceInferenceConfig;
   member_count: number;
-  current_user_role: 'owner' | 'admin' | 'reviewer' | 'member';
+  current_user_role: 'owner' | 'member' | 'reviewer' | 'admin';
 }
 
 export interface UpgradePersonalWorkspaceToTeamRequest {
