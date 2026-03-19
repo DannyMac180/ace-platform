@@ -10,6 +10,7 @@ from sqlalchemy.pool import NullPool
 
 from ace_platform.core.security import hash_password
 from ace_platform.core.workspaces import (
+    DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT,
     accept_workspace_invitation,
     add_workspace_member,
     bootstrap_workspace_for_user,
@@ -18,8 +19,10 @@ from ace_platform.core.workspaces import (
     delete_workspace,
     list_user_workspaces,
     normalize_workspace_inference_config,
+    normalize_workspace_settings,
     remove_workspace_membership,
     update_workspace,
+    upgrade_personal_workspace_to_team,
 )
 from ace_platform.db.models import (
     Base,
@@ -38,6 +41,30 @@ TEST_DATABASE_URL_ASYNC = os.environ.get(
     "TEST_DATABASE_URL_ASYNC",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test",
 )
+
+
+def test_normalize_workspace_settings_defaults_team_seat_limit():
+    plan, deployment_mode, seat_limit, inference_config = normalize_workspace_settings(
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=None,
+        inference_config=None,
+    )
+
+    assert plan == WorkspacePlan.TEAM
+    assert deployment_mode == WorkspaceDeploymentMode.CLOUD
+    assert seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+    assert inference_config["mode"] == WorkspaceInferenceMode.MANAGED_PROVIDER.value
+
+
+def test_normalize_workspace_settings_rejects_single_seat_team_workspace():
+    with pytest.raises(ValueError, match="at least 2"):
+        normalize_workspace_settings(
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+            inference_config=None,
+        )
 
 
 @pytest.mark.skipif(
@@ -269,6 +296,67 @@ class TestWorkspaceService:
             "provider": WorkspaceInferenceProvider.OPENAI.value,
         }
 
+    async def test_update_workspace_promotes_personal_workspace_to_team_defaults(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "upgrade-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Upgrade Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        workspace_id = workspace.id
+        await async_session.commit()
+
+        await upgrade_personal_workspace_to_team(
+            async_session,
+            workspace,
+        )
+        await async_session.commit()
+
+        upgraded_workspace = (await list_user_workspaces(async_session, owner.id))[0]
+
+        assert upgraded_workspace.id == workspace_id
+        assert upgraded_workspace.plan == WorkspacePlan.TEAM
+        assert upgraded_workspace.seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+        assert upgraded_workspace.memberships[0].user_id == owner.id
+        assert upgraded_workspace.memberships[0].role == WorkspaceRole.OWNER
+        assert upgraded_workspace.entitlements is not None
+        assert upgraded_workspace.entitlements.shared_workspace is True
+        assert upgraded_workspace.entitlements.invite_members is True
+
+    async def test_upgrade_personal_workspace_to_team_reuses_existing_workspace_id(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "upgrade-route-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Personal Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        original_id = workspace.id
+        await async_session.commit()
+
+        await upgrade_personal_workspace_to_team(async_session, workspace, name="Product Team")
+        await async_session.commit()
+
+        upgraded_workspace = (await list_user_workspaces(async_session, owner.id))[0]
+
+        assert upgraded_workspace.id == original_id
+        assert upgraded_workspace.name == "Product Team"
+        assert upgraded_workspace.plan == WorkspacePlan.TEAM
+        assert upgraded_workspace.seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+
     async def test_remove_membership_rejects_last_workspace(self, async_session: AsyncSession):
         owner = await self._create_user(async_session, "remove-owner@example.com")
 
@@ -323,3 +411,20 @@ def test_normalize_workspace_inference_config_rejects_unsupported_managed_mode()
                 "provider": WorkspaceInferenceProvider.OPENAI.value,
             },
         )
+
+
+def test_normalize_workspace_settings_defaults_team_to_multi_seat():
+    plan, deployment_mode, seat_limit, inference_config = normalize_workspace_settings(
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=None,
+        inference_config=None,
+    )
+
+    assert plan == WorkspacePlan.TEAM
+    assert deployment_mode == WorkspaceDeploymentMode.CLOUD
+    assert seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+    assert inference_config == {
+        "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }

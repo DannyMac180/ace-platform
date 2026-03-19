@@ -29,6 +29,7 @@ from ace_platform.db.models import (
 )
 
 MANAGER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN}
+DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT = 5
 APPROVER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER}
 
 
@@ -110,12 +111,14 @@ def normalize_workspace_settings(
     keep_unsupported_managed_mode: bool = False,
 ) -> tuple[WorkspacePlan, WorkspaceDeploymentMode, int, dict[str, str]]:
     """Normalize and validate workspace settings."""
-    resolved_seat_limit = seat_limit if seat_limit is not None else 1
+    resolved_seat_limit = _default_workspace_seat_limit(plan, seat_limit)
     if resolved_seat_limit < 1:
         raise ValueError("Workspace seat limit must be at least 1")
 
     if plan == WorkspacePlan.PERSONAL:
         resolved_seat_limit = 1
+    elif plan == WorkspacePlan.TEAM and resolved_seat_limit < 2:
+        raise ValueError("Team workspace seat limit must be at least 2")
 
     resolved_inference_config = normalize_workspace_inference_config(
         plan=plan,
@@ -125,6 +128,19 @@ def normalize_workspace_settings(
     )
 
     return plan, deployment_mode, resolved_seat_limit, resolved_inference_config
+
+
+def _default_workspace_seat_limit(
+    plan: WorkspacePlan,
+    seat_limit: int | None,
+) -> int:
+    """Resolve plan-aware seat defaults for hosted workspaces."""
+
+    if seat_limit is not None:
+        return seat_limit
+    if plan == WorkspacePlan.TEAM:
+        return DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+    return 1
 
 
 def normalize_workspace_inference_config(
@@ -453,7 +469,9 @@ async def update_workspace(
     previous_plan = workspace.plan
     next_plan = plan or workspace.plan
     next_deployment_mode = deployment_mode or workspace.deployment_mode
-    requested_seat_limit = seat_limit if seat_limit is not None else workspace.seat_limit
+    requested_seat_limit = seat_limit
+    if requested_seat_limit is None and next_plan == workspace.plan:
+        requested_seat_limit = workspace.seat_limit
     next_plan, next_deployment_mode, next_seat_limit, next_inference_config = (
         normalize_workspace_settings(
             plan=next_plan,
@@ -478,10 +496,11 @@ async def update_workspace(
     workspace.seat_limit = next_seat_limit
     workspace.inference_config = next_inference_config
 
-    entitlements = workspace.__dict__.get("entitlements")
-    if entitlements is None:
-        entitlements = await db.get(WorkspaceEntitlement, workspace.id)
-
+    entitlements = (
+        workspace.entitlements
+        if "entitlements" in workspace.__dict__
+        else await db.get(WorkspaceEntitlement, workspace.id)
+    )
     if entitlements is None:
         entitlements = WorkspaceEntitlement(
             workspace_id=workspace.id, **WorkspaceEntitlement.defaults_for_plan(next_plan)
@@ -494,6 +513,30 @@ async def update_workspace(
 
     await db.flush()
     return workspace
+
+
+async def upgrade_personal_workspace_to_team(
+    db: AsyncSession,
+    workspace: Workspace,
+    *,
+    name: str | None = None,
+    seat_limit: int | None = None,
+    deployment_mode: WorkspaceDeploymentMode | None = None,
+    inference_config: dict | None = None,
+) -> Workspace:
+    """Convert a hosted personal workspace into a team workspace in place."""
+    if workspace.plan != WorkspacePlan.PERSONAL:
+        raise ValueError("Only personal workspaces can be upgraded to team")
+
+    return await update_workspace(
+        db,
+        workspace,
+        name=name,
+        plan=WorkspacePlan.TEAM,
+        seat_limit=seat_limit,
+        deployment_mode=deployment_mode,
+        inference_config=inference_config,
+    )
 
 
 async def add_workspace_member(

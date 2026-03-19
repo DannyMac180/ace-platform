@@ -34,6 +34,7 @@ import type {
   TokenResponse,
   TriggerHostedEvalRunResponse,
   TopUser,
+  UpgradePersonalWorkspaceToTeamRequest,
   UsageSummary,
   User,
   VersionCreate,
@@ -468,6 +469,13 @@ export const workspacesApi = {
     const response = await api.get<WorkspaceEntitlements>(
       `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/entitlements`
     );
+    return response.data;
+  },
+
+  upgradePersonalToTeam: async (
+    payload: UpgradePersonalWorkspaceToTeamRequest = {}
+  ): Promise<WorkspaceSummary> => {
+    const response = await api.post<WorkspaceSummary>('/workspaces/me/upgrade-to-team', payload);
     return response.data;
   },
 };
