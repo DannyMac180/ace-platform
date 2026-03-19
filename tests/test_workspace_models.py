@@ -1,7 +1,9 @@
 """Tests for workspace tenancy schema models."""
 
+import pytest
 from sqlalchemy import CheckConstraint
 
+from ace_platform.core.workspaces import resolve_workspace_permissions
 from ace_platform.db.models import (
     Membership,
     MembershipRole,
@@ -167,6 +169,87 @@ def test_workspace_models_support_all_plans_in_one_schema():
     assert enterprise.inference_config["mode"] == WorkspaceInferenceMode.BYO_PROVIDER.value
     assert enterprise.subscription is not None
     assert enterprise.subscription.status is WorkspaceSubscriptionStatus.UNPAID
+
+
+@pytest.mark.parametrize(
+    ("role", "expected_permissions"),
+    [
+        (
+            MembershipRole.OWNER,
+            {
+                "can_manage_settings": True,
+                "can_manage_seats": True,
+                "can_approve_playbooks": True,
+            },
+        ),
+        (
+            MembershipRole.ADMIN,
+            {
+                "can_manage_settings": True,
+                "can_manage_seats": True,
+                "can_approve_playbooks": True,
+            },
+        ),
+        (
+            MembershipRole.REVIEWER,
+            {
+                "can_manage_settings": False,
+                "can_manage_seats": False,
+                "can_approve_playbooks": True,
+            },
+        ),
+        (
+            MembershipRole.MEMBER,
+            {
+                "can_manage_settings": False,
+                "can_manage_seats": False,
+                "can_approve_playbooks": False,
+            },
+        ),
+    ],
+)
+def test_team_workspace_permissions_follow_role_matrix(role, expected_permissions):
+    workspace = Workspace(
+        name="Team Permissions",
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=5,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        ),
+        entitlements=WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.TEAM)
+        ),
+    )
+
+    permissions = resolve_workspace_permissions(workspace, role)
+
+    assert permissions.can_manage_settings is expected_permissions["can_manage_settings"]
+    assert permissions.can_manage_seats is expected_permissions["can_manage_seats"]
+    assert permissions.can_approve_playbooks is expected_permissions["can_approve_playbooks"]
+
+
+def test_personal_workspace_permissions_disable_seat_and_approval_actions():
+    workspace = Workspace(
+        name="Personal Permissions",
+        plan=WorkspacePlan.PERSONAL,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=1,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        ),
+        entitlements=WorkspaceEntitlement(
+            **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.PERSONAL)
+        ),
+    )
+
+    permissions = resolve_workspace_permissions(workspace, MembershipRole.OWNER)
+
+    assert permissions.can_manage_settings is True
+    assert permissions.can_manage_seats is False
+    assert permissions.can_approve_playbooks is False
 
 
 def test_workspace_constraints_encode_uniqueness_and_personal_seat_limit():
