@@ -9,6 +9,8 @@ These tests verify:
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+from ace_platform.config import DEFAULT_EVOLUTION_MODEL
+
 
 class TestEvolutionTaskRegistration:
     """Tests for task registration and configuration."""
@@ -153,6 +155,38 @@ class TestProcessEvolutionJobUnit:
             result = process_evolution_job(str(uuid4()))
 
         assert result["status"] == "skipped"
+
+    def test_reports_current_default_model_when_usage_model_missing(self):
+        """Completion metrics should fall back to the current evolution default model."""
+        from ace_platform.db.models import EvolutionJobStatus
+        from ace_platform.workers.evolution_task import process_evolution_job
+
+        mock_job = MagicMock()
+        mock_job.status = EvolutionJobStatus.QUEUED
+        mock_job.playbook_id = uuid4()
+        mock_job.token_totals = None
+
+        with (
+            patch("ace_platform.workers.evolution_task.SyncSessionLocal") as mock_session_class,
+            patch(
+                "ace_platform.workers.evolution_task._execute_evolution",
+                return_value={"status": "completed"},
+            ),
+            patch("ace_platform.workers.evolution_task.observe_evolution") as mock_observe,
+            patch("ace_platform.workers.evolution_task.increment_active_jobs"),
+            patch("ace_platform.workers.evolution_task.decrement_active_jobs"),
+            patch("ace_platform.workers.evolution_task.set_job_context"),
+        ):
+            mock_session = MagicMock()
+            mock_session.__enter__ = MagicMock(return_value=mock_session)
+            mock_session.__exit__ = MagicMock(return_value=False)
+            mock_session.get.return_value = mock_job
+            mock_session_class.return_value = mock_session
+
+            result = process_evolution_job(str(uuid4()))
+
+        assert result["status"] == "completed"
+        assert mock_observe.call_args.kwargs["model"] == DEFAULT_EVOLUTION_MODEL
 
 
 class TestTriggerEvolutionQueuesCeleryTask:
