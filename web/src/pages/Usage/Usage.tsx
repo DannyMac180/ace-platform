@@ -31,7 +31,7 @@ export function Usage() {
 
   const entitlementsQuery = useQuery<WorkspaceEntitlements>({
     queryKey: ['workspace-entitlements', 'me'],
-    queryFn: workspacesApi.getEntitlements,
+    queryFn: () => workspacesApi.getEntitlements(),
     enabled: !isAuthLoading,
   });
 
