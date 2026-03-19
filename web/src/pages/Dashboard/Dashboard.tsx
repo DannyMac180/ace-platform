@@ -142,7 +142,8 @@ export function Dashboard() {
     playbook.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   const showSharedRegistry =
-    sharedRegistryEnabled && statusFilter !== 'paused' && statusFilter !== 'archived';
+    sharedRegistryEnabled &&
+    (reviewStatusFilter === '' || reviewStatusFilter === 'approved');
 
   // Check if trial user is at playbook limit
   const isOnTrial = !!user?.trial_ends_at && new Date(user.trial_ends_at) > new Date();
