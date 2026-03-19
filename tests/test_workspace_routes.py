@@ -42,8 +42,13 @@ from sqlalchemy.pool import NullPool
 
 from ace_platform.api.auth import require_paid_access
 from ace_platform.api.deps import get_db
-from ace_platform.api.routes.workspaces import WorkspaceCreateRequest, WorkspaceResponse
+from ace_platform.api.routes.workspaces import (
+    WorkspaceCreateRequest,
+    WorkspaceResponse,
+    WorkspaceUpgradeToTeamRequest,
+)
 from ace_platform.core.security import create_access_token, hash_password
+from ace_platform.core.workspaces import DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
 from ace_platform.db.models import Base, User, WorkspaceMembership
 
 RUN_INTEGRATION_TESTS = os.environ.get("RUN_WORKSPACE_INTEGRATION_TESTS") == "1"
@@ -70,6 +75,7 @@ class TestWorkspaceRoutesUnit:
         routes = [route.path for route in app.routes]
         assert "/workspaces" in routes
         assert "/workspaces/bootstrap" in routes
+        assert "/workspaces/me/upgrade-to-team" in routes
         assert "/workspaces/{workspace_id}" in routes
         assert "/workspaces/{workspace_id}/memberships" in routes
         assert "/workspaces/{workspace_id}/memberships/{membership_id}" in routes
@@ -96,6 +102,9 @@ class TestWorkspaceRoutesUnit:
 
     def test_reuse_shared_workspace_playbook_requires_auth(self, client):
         response = client.post(f"/v1/workspaces/me/playbooks/shared/{uuid4()}/reuse")
+
+    def test_workspace_upgrade_requires_auth(self, client):
+        response = client.post("/workspaces/me/upgrade-to-team", json={})
         assert response.status_code == 401
 
     def test_workspace_models_include_inference_config(self):
@@ -115,6 +124,10 @@ class TestWorkspaceRoutesUnit:
         assert payload.inference_config.provider.value == "openai"
         assert "inference_config" in WorkspaceResponse.model_json_schema()["properties"]
         assert "permissions" in WorkspaceResponse.model_json_schema()["properties"]
+
+    def test_workspace_upgrade_request_requires_team_ready_seat_limit(self):
+        with pytest.raises(Exception):
+            WorkspaceUpgradeToTeamRequest.model_validate({"seat_limit": 1})
 
 
 class TestSharedRegistryRoutesUnit:
@@ -418,6 +431,61 @@ class TestWorkspaceRoutesIntegration:
         assert workspace_response.status_code == 200
         assert len(workspace_response.json()) == 1
 
+    async def test_team_workspace_creation_defaults_to_multi_seat_capacity(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="team-defaults@example.com")
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Team Defaults", "plan": "team"},
+            headers=owner_headers,
+        )
+
+        assert create_response.status_code == 201
+        payload = create_response.json()
+        assert payload["plan"] == "team"
+        assert payload["seat_limit"] == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+        assert payload["current_user_role"] == "owner"
+
+    async def test_personal_workspace_upgrade_flow_preserves_identity_and_owner_membership(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="upgrade-route@example.com")
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+
+        bootstrap_response = await client.post("/workspaces/bootstrap", headers=owner_headers)
+        assert bootstrap_response.status_code == 200
+        original_workspace = bootstrap_response.json()["workspaces"][0]
+
+        upgrade_response = await client.post(
+            "/workspaces/me/upgrade-to-team",
+            json={},
+            headers=owner_headers,
+        )
+
+        assert upgrade_response.status_code == 200
+        upgraded_workspace = upgrade_response.json()
+        assert upgraded_workspace["id"] == original_workspace["id"]
+        assert upgraded_workspace["plan"] == "team"
+        assert upgraded_workspace["seat_limit"] == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+        assert upgraded_workspace["current_user_role"] == "owner"
+
+        memberships_response = await client.get(
+            f"/workspaces/{original_workspace['id']}/memberships",
+            headers=owner_headers,
+        )
+        assert memberships_response.status_code == 200
+        memberships = memberships_response.json()
+        assert len(memberships) == 1
+        assert memberships[0]["user_id"] == str(owner["user"].id)
+        assert memberships[0]["role"] == "owner"
+
     async def test_workspace_crud_and_membership_management(
         self,
         client,
@@ -481,6 +549,33 @@ class TestWorkspaceRoutesIntegration:
             headers=owner_headers,
         )
         assert delete_workspace_response.status_code == 204
+
+    async def test_personal_workspace_can_upgrade_to_team_in_place(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="upgrade-workspace@example.com")
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+
+        bootstrap_response = await client.post("/workspaces/bootstrap", headers=owner_headers)
+        assert bootstrap_response.status_code == 200
+        original_workspace = bootstrap_response.json()["workspaces"][0]
+
+        upgrade_response = await client.post(
+            "/workspaces/me/upgrade-to-team",
+            json={"name": "ACE Product Team"},
+            headers=owner_headers,
+        )
+
+        assert upgrade_response.status_code == 200
+        upgraded_workspace = upgrade_response.json()
+        assert upgraded_workspace["id"] == original_workspace["id"]
+        assert upgraded_workspace["name"] == "ACE Product Team"
+        assert upgraded_workspace["plan"] == "team"
+        assert upgraded_workspace["seat_limit"] == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+        assert upgraded_workspace["member_count"] == 1
+        assert upgraded_workspace["current_user_role"] == "owner"
 
     async def test_workspace_invariants_prevent_last_owner_removal_and_stranding_member(
         self,

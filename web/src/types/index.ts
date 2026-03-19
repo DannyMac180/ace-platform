@@ -216,19 +216,26 @@ export interface WorkspaceEntitlements {
   usage_limits: WorkspaceUsageLimits;
 }
 
+export interface WorkspaceInferenceConfig {
+  mode: 'byo_provider' | 'managed_provider';
+  provider: 'openai' | 'anthropic';
+  available_modes: Array<'byo_provider' | 'managed_provider'>;
+}
+
 export interface WorkspaceSummary {
   id: string;
   name: string;
   plan: 'personal' | 'team' | 'enterprise';
   deployment_mode: 'cloud' | 'self_hosted';
   seat_limit: number;
+  inference_config: WorkspaceInferenceConfig;
   member_count: number;
   current_user_role: 'owner' | 'member' | 'reviewer' | 'admin';
-  inference_config: {
-    mode: 'byo_provider' | 'managed_provider';
-    provider: 'openai' | 'anthropic';
-    available_modes: Array<'byo_provider' | 'managed_provider'>;
-  };
+}
+
+export interface UpgradePersonalWorkspaceToTeamRequest {
+  name?: string;
+  seat_limit?: number;
 }
 
 export interface UsageSummary {
