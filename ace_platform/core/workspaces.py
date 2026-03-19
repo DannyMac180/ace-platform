@@ -4,6 +4,7 @@ Provides CRUD helpers, membership management, and bootstrap flows that enforce
 the hosted-workspace invariants for cloud users.
 """
 
+from dataclasses import dataclass
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -20,11 +21,64 @@ from ace_platform.db.models import (
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
+    get_default_workspace_entitlements,
     get_default_workspace_inference_config,
     workspace_supports_managed_inference,
 )
 
 MANAGER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN}
+APPROVER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER}
+
+
+@dataclass(frozen=True)
+class WorkspacePermissions:
+    """Effective role-based permissions for one workspace member."""
+
+    can_manage_settings: bool
+    can_manage_seats: bool
+    can_approve_playbooks: bool
+
+
+def can_manage_workspace_settings(role: WorkspaceRole) -> bool:
+    """Return whether the role can alter workspace settings."""
+
+    return role in MANAGER_ROLES
+
+
+def can_manage_workspace_seats(role: WorkspaceRole) -> bool:
+    """Return whether the role can invite, remove, or re-role members."""
+
+    return role in MANAGER_ROLES
+
+
+def can_approve_workspace_playbooks(role: WorkspaceRole) -> bool:
+    """Return whether the role can approve shared playbooks."""
+
+    return role in APPROVER_ROLES
+
+
+def resolve_workspace_permissions(
+    workspace: Workspace,
+    role: WorkspaceRole,
+) -> WorkspacePermissions:
+    """Resolve the caller's effective permissions inside a workspace."""
+
+    entitlement_values = (
+        get_default_workspace_entitlements(workspace.plan)
+        if workspace.entitlements is None
+        else {
+            "invite_members": workspace.entitlements.invite_members,
+            "approvals": workspace.entitlements.approvals,
+        }
+    )
+
+    return WorkspacePermissions(
+        can_manage_settings=can_manage_workspace_settings(role),
+        can_manage_seats=bool(entitlement_values["invite_members"])
+        and can_manage_workspace_seats(role),
+        can_approve_playbooks=bool(entitlement_values["approvals"])
+        and can_approve_workspace_playbooks(role),
+    )
 
 
 def default_personal_workspace_name(email: str | None) -> str:
@@ -334,13 +388,19 @@ async def update_workspace(
     workspace.seat_limit = next_seat_limit
     workspace.inference_config = next_inference_config
 
-    if workspace.entitlements is None:
-        workspace.entitlements = WorkspaceEntitlement(
-            **WorkspaceEntitlement.defaults_for_plan(next_plan)
+    entitlements = workspace.__dict__.get("entitlements")
+    if entitlements is None:
+        entitlements = await db.get(WorkspaceEntitlement, workspace.id)
+
+    if entitlements is None:
+        entitlements = WorkspaceEntitlement(
+            workspace_id=workspace.id, **WorkspaceEntitlement.defaults_for_plan(next_plan)
         )
+        db.add(entitlements)
+        workspace.entitlements = entitlements
     elif next_plan != previous_plan:
         for field_name, value in WorkspaceEntitlement.defaults_for_plan(next_plan).items():
-            setattr(workspace.entitlements, field_name, value)
+            setattr(entitlements, field_name, value)
 
     await db.flush()
     return workspace
