@@ -410,10 +410,11 @@ async def update_workspace(
         )
     )
 
-    member_count = await count_workspace_members(db, workspace.id)
-    if next_seat_limit < member_count:
+    occupied_seat_count = await count_workspace_occupied_seats(db, workspace.id)
+    if next_seat_limit < occupied_seat_count:
         raise ValueError(
-            f"Workspace seat limit cannot be less than the current membership count ({member_count})"
+            "Workspace seat limit cannot be less than the current occupied seat count "
+            f"({occupied_seat_count})"
         )
 
     if name is not None:
@@ -441,14 +442,19 @@ async def add_workspace_member(
     workspace: Workspace,
     user: User,
     role: WorkspaceRole,
+    reserved_invitation_id: UUID | None = None,
 ) -> WorkspaceMembership:
     """Add a member to a workspace, enforcing uniqueness and seat limits."""
     existing = await get_workspace_membership(db, workspace.id, user.id)
     if existing:
         raise ValueError("User is already a member of this workspace")
 
-    member_count = await count_workspace_members(db, workspace.id)
-    if member_count >= workspace.seat_limit:
+    occupied_seat_count = await count_workspace_occupied_seats(
+        db,
+        workspace.id,
+        excluded_invitation_id=reserved_invitation_id,
+    )
+    if occupied_seat_count >= workspace.seat_limit:
         raise ValueError("Workspace seat limit reached")
 
     membership = WorkspaceMembership(
@@ -465,20 +471,40 @@ async def add_workspace_member(
 async def count_workspace_invitations(
     db: AsyncSession,
     workspace_id: UUID,
+    *,
+    excluded_invitation_id: UUID | None = None,
 ) -> int:
     """Count active invitations in a workspace."""
+    invitation_filters = [
+        WorkspaceInvitation.workspace_id == workspace_id,
+        WorkspaceInvitation.accepted_at.is_(None),
+        WorkspaceInvitation.revoked_at.is_(None),
+    ]
+    if excluded_invitation_id is not None:
+        invitation_filters.append(WorkspaceInvitation.id != excluded_invitation_id)
+
     return (
         await db.scalar(
-            select(func.count())
-            .select_from(WorkspaceInvitation)
-            .where(
-                WorkspaceInvitation.workspace_id == workspace_id,
-                WorkspaceInvitation.accepted_at.is_(None),
-                WorkspaceInvitation.revoked_at.is_(None),
-            )
+            select(func.count()).select_from(WorkspaceInvitation).where(*invitation_filters)
         )
         or 0
     )
+
+
+async def count_workspace_occupied_seats(
+    db: AsyncSession,
+    workspace_id: UUID,
+    *,
+    excluded_invitation_id: UUID | None = None,
+) -> int:
+    """Count current seats consumed by memberships and active invitations."""
+    member_count = await count_workspace_members(db, workspace_id)
+    invitation_count = await count_workspace_invitations(
+        db,
+        workspace_id,
+        excluded_invitation_id=excluded_invitation_id,
+    )
+    return member_count + invitation_count
 
 
 async def create_workspace_invitation(
@@ -518,9 +544,8 @@ async def create_workspace_invitation(
     if existing_invite_result.scalar_one_or_none() is not None:
         raise ValueError("An active invitation already exists for this email")
 
-    member_count = await count_workspace_members(db, workspace.id)
-    invitation_count = await count_workspace_invitations(db, workspace.id)
-    if member_count + invitation_count >= workspace.seat_limit:
+    occupied_seat_count = await count_workspace_occupied_seats(db, workspace.id)
+    if occupied_seat_count >= workspace.seat_limit:
         raise ValueError("Workspace seat limit reached")
 
     invitation = WorkspaceInvitation(
@@ -561,6 +586,7 @@ async def accept_workspace_invitation(
         workspace=workspace,
         user=user,
         role=invitation.role,
+        reserved_invitation_id=invitation.id,
     )
     invitation.accepted_at = datetime.now(timezone.utc)
     invitation.accepted_by_user_id = user.id

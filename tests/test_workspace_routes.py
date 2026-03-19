@@ -452,6 +452,42 @@ class TestWorkspaceRoutesIntegration:
         )
         assert remove_response.status_code == 204
 
+    async def test_direct_member_add_respects_reserved_invitation_seats(
+        self,
+        client,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, email="owner-seat-guard@example.com")
+        teammate = await self._create_user(async_session, email="teammate-seat-guard@example.com")
+
+        owner_headers = {"Authorization": f"Bearer {owner['token']}"}
+        assert (
+            await client.post("/workspaces/bootstrap", headers=owner_headers)
+        ).status_code == 200
+
+        create_response = await client.post(
+            "/workspaces",
+            json={"name": "Seat Guard", "plan": "team", "seat_limit": 2},
+            headers=owner_headers,
+        )
+        assert create_response.status_code == 201
+        workspace_id = create_response.json()["id"]
+
+        invite_response = await client.post(
+            f"/workspaces/{workspace_id}/invitations",
+            json={"email": "reserved-seat@example.com", "role": "member"},
+            headers=owner_headers,
+        )
+        assert invite_response.status_code == 201
+
+        add_response = await client.post(
+            f"/workspaces/{workspace_id}/memberships",
+            json={"user_id": str(teammate["user"].id), "role": "member"},
+            headers=owner_headers,
+        )
+        assert add_response.status_code == 400
+        assert "seat limit" in add_response.json()["error"]["message"]
+
     async def test_non_owner_cannot_invite_or_remove_members(
         self,
         client,

@@ -67,6 +67,13 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index(
+        "uq_workspace_invitations_active_workspace_email",
+        "workspace_invitations",
+        ["workspace_id", "invited_email"],
+        unique=True,
+        postgresql_where=sa.text("accepted_at IS NULL AND revoked_at IS NULL"),
+    )
+    op.create_index(
         "ix_workspace_invitations_workspace_email",
         "workspace_invitations",
         ["workspace_id", "invited_email"],
@@ -85,6 +92,10 @@ def downgrade() -> None:
 
     op.drop_index(
         "ix_workspace_invitations_workspace_created_at",
+        table_name="workspace_invitations",
+    )
+    op.drop_index(
+        "uq_workspace_invitations_active_workspace_email",
         table_name="workspace_invitations",
     )
     op.drop_index(

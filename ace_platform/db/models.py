@@ -33,6 +33,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -539,6 +540,13 @@ class WorkspaceInvitation(Base):
     )
 
     __table_args__ = (
+        Index(
+            "uq_workspace_invitations_active_workspace_email",
+            "workspace_id",
+            "invited_email",
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
         Index("ix_workspace_invitations_workspace_email", "workspace_id", "invited_email"),
         Index("ix_workspace_invitations_workspace_created_at", "workspace_id", "created_at"),
     )
