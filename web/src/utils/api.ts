@@ -21,6 +21,8 @@ import type {
   OutcomeCreate,
   PaginatedResponse,
   Playbook,
+  PlaybookReviewActionRequest,
+  PlaybookReviewActivityItem,
   PlaybookCreate,
   PlaybookEvolutionStats,
   PlaybookListItem,
@@ -295,10 +297,10 @@ export const playbooksApi = {
   list: async (
     page = 1,
     pageSize = 20,
-    status?: string
+    reviewStatus?: string
   ): Promise<PaginatedResponse<PlaybookListItem>> => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-    if (status) params.set('status_filter', status);
+    if (reviewStatus) params.set('review_status_filter', reviewStatus);
     const response = await api.get<PaginatedResponse<PlaybookListItem>>(
       `/playbooks?${params}`
     );
@@ -360,6 +362,22 @@ export const playbooksApi = {
 
   createOutcome: async (id: string, data: OutcomeCreate): Promise<Outcome> => {
     const response = await api.post<Outcome>(`/playbooks/${id}/outcomes`, data);
+    return response.data;
+  },
+
+  runReviewAction: async (id: string, data: PlaybookReviewActionRequest): Promise<Playbook> => {
+    const response = await api.post<Playbook>(`/playbooks/${id}/review-actions`, data);
+    return response.data;
+  },
+
+  getActivity: async (
+    id: string,
+    page = 1,
+    pageSize = 20
+  ): Promise<PaginatedResponse<PlaybookReviewActivityItem>> => {
+    const response = await api.get<PaginatedResponse<PlaybookReviewActivityItem>>(
+      `/playbooks/${id}/activity?page=${page}&page_size=${pageSize}`
+    );
     return response.data;
   },
 

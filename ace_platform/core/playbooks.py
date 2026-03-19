@@ -25,10 +25,13 @@ from ace_platform.core.limits import (
     is_user_trialing,
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
+from ace_platform.core.playbook_reviews import build_review_event
 from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewAction,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -67,6 +70,14 @@ async def export_playbook_bundle(
 
     portable_playbooks: list[PortablePlaybook] = []
     for playbook in playbooks:
+        review_status = getattr(playbook, "review_status", PlaybookReviewStatus.DRAFT)
+        review_status_updated_at = getattr(playbook, "review_status_updated_at", None)
+        review_history = list(getattr(playbook, "review_history", []) or [])
+        review_status_value = (
+            review_status.value
+            if isinstance(review_status, PlaybookReviewStatus)
+            else review_status
+        )
         versions = [
             PortablePlaybookVersion(
                 id=str(version.id),
@@ -113,7 +124,14 @@ async def export_playbook_bundle(
                 ],
                 created_at=playbook.created_at,
                 updated_at=playbook.updated_at,
-                metadata={"source_playbook_id": str(playbook.id)},
+                metadata={
+                    "source_playbook_id": str(playbook.id),
+                    "review_status": review_status_value,
+                    "review_status_updated_at": review_status_updated_at.isoformat()
+                    if review_status_updated_at
+                    else None,
+                    "review_history": review_history,
+                },
             )
         )
 
@@ -142,17 +160,40 @@ async def import_playbook_bundle(
     settings = get_settings()
 
     for portable_playbook in bundle.playbooks:
+        metadata = portable_playbook.metadata or {}
+        review_status = PlaybookReviewStatus(
+            metadata.get("review_status", PlaybookReviewStatus.DRAFT.value)
+        )
+        review_status_updated_at = metadata.get("review_status_updated_at")
+        review_history = list(metadata.get("review_history") or [])
+        if not review_history:
+            review_history = [
+                build_review_event(
+                    actor=user,
+                    action=PlaybookReviewAction.CREATED,
+                    from_status=None,
+                    to_status=review_status,
+                    created_at=portable_playbook.created_at,
+                )
+            ]
+
         playbook_kwargs = {
             "user_id": user.id,
             "name": portable_playbook.name,
             "description": portable_playbook.description,
             "status": PlaybookStatus(portable_playbook.status),
+            "review_status": review_status,
+            "review_history": review_history,
             "source": PlaybookSource.IMPORTED,
         }
         if portable_playbook.created_at is not None:
             playbook_kwargs["created_at"] = portable_playbook.created_at
         if portable_playbook.updated_at is not None:
             playbook_kwargs["updated_at"] = portable_playbook.updated_at
+        if review_status_updated_at:
+            playbook_kwargs["review_status_updated_at"] = datetime.fromisoformat(
+                review_status_updated_at
+            )
 
         playbook = Playbook(**playbook_kwargs)
         db.add(playbook)
