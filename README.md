@@ -98,6 +98,27 @@ You can run ACE on your own infrastructure with Docker Compose or a hybrid local
 
 This is the `ACE OSS` / self-managed path. If you want ACE-hosted convenience for one user or a team workspace, start with the hosted quick start above and the [product split guide](docs/PRODUCT_SPLIT.md).
 
+## OSS Examples
+
+If you want to demonstrate the open-source, local-first ACE workflow without
+creating a hosted account, start with the committed examples in
+[examples/README.md](examples/README.md).
+
+The fastest path is:
+
+```bash
+source venv/bin/activate
+python -m ace_platform.cli seed --path examples/repo-maintainer-starter
+python -m ace_platform.cli benchmark \
+  --input examples/repo-maintainer-starter/benchmark/repo-maintainer-benchmark.json
+```
+
+That sample stays on the OSS side of the product boundary:
+
+- it uses only local files in this repository
+- it demonstrates seeded starter playbooks plus a local benchmark result
+- it links to a reusable example playbook pack under `examples/playbook-packs/`
+
 ## Symphony
 
 This repo now vendors the official OpenAI Elixir Symphony implementation under `vendor/symphony-elixir/`.
