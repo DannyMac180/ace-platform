@@ -19,6 +19,8 @@
   ·
   <a href="https://docs.aceagent.io">Docs</a>
   ·
+  <a href="docs/RELEASE_NOTES_CLOUD_PLANS.md">Release Notes</a>
+  ·
   <a href="docs/PRODUCT_SPLIT.md">OSS vs Cloud</a>
   ·
   <a href="docs/SELF_HOSTED_DEPLOYMENT.md">Self-Host Guide</a>
@@ -88,6 +90,7 @@ Legacy SSE compatibility remains available at `https://aceagent.io/mcp/sse` thro
 
 Helpful links:
 
+- [Cloud plans release notes and migration guide](docs/RELEASE_NOTES_CLOUD_PLANS.md)
 - [Hosted quick start](docs/QUICKSTART.md)
 - [Docs site quick start](https://docs.aceagent.io/docs/getting-started/quick-start/)
 - [Claude Code setup](https://docs.aceagent.io/docs/developer-guides/mcp-integration/claude-code/)
