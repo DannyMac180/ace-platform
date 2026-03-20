@@ -74,6 +74,13 @@ In practice, that means premium value comes from private services ACE operates, 
 
 No. `ACE Cloud Personal` is a real hosted product for one user.
 
+### "Do I need hosted OAuth to use ACE?"
+
+No. Hosted OAuth is a convenience option for ACE-hosted environments, not the
+only way to onboard. ACE should keep provider-neutral paths available through
+local or password-based auth plus API-key access, and `ACE OSS` continues to
+support self-managed local/BYO workflows without ACE-operated identity.
+
 ### "Is self-hosting the same thing as Enterprise?"
 
 No. `ACE OSS` can be self-managed by an individual. `Enterprise` is the commercial/governance layer for organizations that need stronger controls or private deployment terms.

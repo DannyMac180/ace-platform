@@ -174,6 +174,7 @@ export function AuthPage() {
   };
 
   const stickySwitchHref = appendAttributionParams(mode === 'login' ? '/register' : '/login');
+  const localPathTitle = mode === 'login' ? 'Skip hosted OAuth' : 'Start with local auth';
 
   return (
     <div className={styles.container}>
@@ -328,6 +329,32 @@ export function AuthPage() {
                 </Button>
               </div>
             </form>
+
+            <div className={styles.localPathCard}>
+              <div className={styles.localPathHeader}>
+                <p className={styles.localPathEyebrow}>Provider-neutral path</p>
+                <h3>{localPathTitle}</h3>
+                <p>
+                  Use email and password now, then generate an API key for Claude Code, Codex,
+                  or any MCP client after you reach your workspace.
+                </p>
+              </div>
+
+              <ol className={styles.localPathSteps}>
+                <li>
+                  <span className={styles.localPathStepNumber}>1</span>
+                  <span>{mode === 'login' ? 'Sign in with your password.' : 'Create your account with email and password.'}</span>
+                </li>
+                <li>
+                  <span className={styles.localPathStepNumber}>2</span>
+                  <span>Verify your email if your deployment requires it.</span>
+                </li>
+                <li>
+                  <span className={styles.localPathStepNumber}>3</span>
+                  <span>Create an API key in the dashboard for tool and MCP access.</span>
+                </li>
+              </ol>
+            </div>
 
             <OAuthButtons />
 
