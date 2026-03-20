@@ -13,7 +13,6 @@ This module provides REST API endpoints for playbook management:
 - GET /playbooks/{id}/evolutions - List evolution history for a playbook
 """
 
-import re
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
@@ -26,6 +25,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ace_core.playbook_utils import count_playbook_bullets
 from ace_core.portability import PortablePlaybookBundle, bundle_to_json
 from ace_platform.api.auth import (
     AuthorizationError,
@@ -588,9 +588,7 @@ async def create_playbook(
     # Create initial version if content provided
     version = None
     if data.initial_content:
-        # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
-        ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
-        bullet_count = len(re.findall(ace_bullet_pattern, data.initial_content))
+        bullet_count = count_playbook_bullets(data.initial_content)
 
         version = PlaybookVersion(
             playbook_id=playbook.id,
@@ -988,9 +986,7 @@ async def create_version(
         )
 
     # Calculate bullet count (done once, outside retry loop)
-    # Count ACE-format bullets: [id] helpful=X harmful=Y :: content
-    ace_bullet_pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
-    bullet_count = len(re.findall(ace_bullet_pattern, data.content))
+    bullet_count = count_playbook_bullets(data.content)
 
     # Retry loop to handle race conditions on version_number
     max_retries = 3

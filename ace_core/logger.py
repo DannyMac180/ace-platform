@@ -6,6 +6,7 @@ logger.py
 This file contains functions for logging various events and information during the training process.
 
 """
+
 import json
 import os
 from datetime import datetime
@@ -36,12 +37,13 @@ def log_bullet_usage(
     epoch,
     step,
     sample_data,
-    bullet_ids_used,
+    considered_bullet_ids,
+    used_bullet_ids=None,
     playbook=None,
     reflection_content=None,
     is_correct=None,
 ):
-    """Log which bullets were used in each training sample for future curator reference
+    """Log considered and used bullet evidence for future curator reference.
 
     TODO: Future curator enhancement - when updating a bullet, the curator can:
     1. Look up all training samples that used this bullet (via this log)
@@ -49,40 +51,48 @@ def log_bullet_usage(
     3. Understand what worked/didn't work with the current bullet
     4. Write a better version based on all the usage history and feedback
     """
-    # Extract bullet contents from the playbook
-    bullets_with_content = []
-    if playbook and bullet_ids_used:
+    used_bullet_ids = used_bullet_ids or []
+
+    def _extract_bullets_with_content(bullet_ids):
+        if not bullet_ids:
+            return []
+
+        if not playbook:
+            return [{"bullet_id": bullet_id, "content": None} for bullet_id in bullet_ids]
+
+        bullets = []
         playbook_lines = playbook.split("\n")
-        for bullet_id in bullet_ids_used:
-            # Find the line containing this bullet ID
+        for bullet_id in bullet_ids:
             bullet_content = None
             for line in playbook_lines:
                 if f"[{bullet_id}]" in line:
-                    # Extract content after the bullet ID pattern
-                    # Format: [bullet_id] helpful=X harmful=Y :: content
-                    if "::" in line:
-                        bullet_content = line.split("::", 1)[1].strip()
-                    else:
-                        bullet_content = line.strip()
+                    bullet_content = (
+                        line.split("::", 1)[1].strip() if "::" in line else line.strip()
+                    )
                     break
 
-            bullets_with_content.append(
+            bullets.append(
                 {
                     "bullet_id": bullet_id,
                     "content": bullet_content if bullet_content else "Content not found",
                 }
             )
-    else:
-        # If no playbook provided or no bullets used, just log the IDs
-        bullets_with_content = [{"bullet_id": bid, "content": None} for bid in bullet_ids_used]
+
+        return bullets
+
+    considered_bullets_with_content = _extract_bullets_with_content(considered_bullet_ids)
+    used_bullets_with_content = _extract_bullets_with_content(used_bullet_ids)
 
     log_entry = {
         "timestamp": datetime.now().isoformat(),
         "epoch": epoch,
         "step": step,
         "sample_id": f"epoch_{epoch}_step_{step}",
-        "bullet_ids_used": bullet_ids_used,
-        "bullets_with_content": bullets_with_content,
+        "considered_bullet_ids": considered_bullet_ids,
+        "used_bullet_ids": used_bullet_ids,
+        "bullet_ids_used": used_bullet_ids,
+        "considered_bullets_with_content": considered_bullets_with_content,
+        "used_bullets_with_content": used_bullets_with_content,
         "is_correct": is_correct,  # Only record accuracy for initial trials
         "sample_context": sample_data.get("context", "")[:500]
         if sample_data
@@ -93,7 +103,7 @@ def log_bullet_usage(
         "reflection_summary": reflection_content[:300]
         if reflection_content
         else None,  # First 300 chars
-        "bullet_count": len(bullet_ids_used),
+        "bullet_count": len(used_bullet_ids),
     }
 
     with open(usage_log_path, "a", encoding="utf-8") as f:
@@ -312,24 +322,24 @@ def log_curator_failure(save_path, step, failure_type, curator_response, epoch, 
 
     # Create log entry
     log_entry = f"""
-{'='*60}
+{"=" * 60}
 CURATOR FAILURE LOG
-{'='*60}
+{"=" * 60}
 Timestamp: {timestamp}
 Epoch: {epoch}
 Step: {step}
 Failure Type: {failure_type}
-Error Details: {error_details if error_details else 'N/A'}
+Error Details: {error_details if error_details else "N/A"}
 
 Raw Curator Response (first 1000 chars):
-{'-'*40}
+{"-" * 40}
 {curator_response[:1000]}
-{'-'*40}
+{"-" * 40}
 
 Full Raw Curator Response:
-{'-'*40}
+{"-" * 40}
 {curator_response}
-{'-'*40}
+{"-" * 40}
 
 """
 

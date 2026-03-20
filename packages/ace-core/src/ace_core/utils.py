@@ -49,10 +49,11 @@ def get_section_slug(section_name):
     """Convert section name to slug format (3-5 chars)"""
     # Common section mappings - updated to match original sections
     slug_map = {
+        "strategies_and_insights": "str",
         "financial_strategies_and_insights": "fin",
         "formulas_and_calculations": "calc",
         "code_snippets_and_templates": "code",
-        "common_mistakes_to_avoid": "err",
+        "common_mistakes_to_avoid": "mis",
         "problem_solving_heuristics": "prob",
         "context_clues_and_indicators": "ctx",
         "others": "misc",
@@ -169,15 +170,17 @@ def evaluate_single_test_sample(args_tuple, data_processor) -> tuple[dict, str]:
         args_tuple: Tuple of (index, task_dict, generator, playbook, max_tokens, log_dir, use_json_mode)
         data_processor: DataProcessor instance with answer_is_correct method
     """
+    from .playbook_utils import render_active_playbook
+
     (i, task_dict, generator, playbook, max_tokens, log_dir, use_json_mode) = args_tuple
     try:
         context = task_dict["context"]
         question = task_dict["question"]
         target = task_dict["target"]
 
-        gen_response, bullet_ids, call_info = generator.generate(
+        gen_response, _, _, call_info = generator.generate(
             question=question,
-            playbook=playbook,
+            playbook=render_active_playbook(playbook),
             context=context,
             reflection="(empty)",
             use_json_mode=use_json_mode,

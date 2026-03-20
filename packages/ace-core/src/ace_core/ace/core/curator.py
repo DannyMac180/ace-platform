@@ -1,6 +1,6 @@
 """
 Curator agent for ACE system.
-Manages playbook operations (ADD, UPDATE, MERGE, DELETE).
+Manages playbook operations (ADD, UPDATE, MERGE, ARCHIVE).
 """
 
 import json
@@ -16,7 +16,7 @@ from ..prompts.curator import CURATOR_PROMPT, CURATOR_PROMPT_NO_GT
 class Curator:
     """
     Curator agent that manages the playbook by adding, updating,
-    merging, and deleting bullets based on reflection feedback.
+    merging, and archiving bullets based on reflection feedback.
     """
 
     def __init__(
@@ -142,7 +142,7 @@ class Curator:
 
             # Apply operations to playbook
             updated_playbook, next_global_id = apply_curator_operations(
-                current_playbook, operations, next_global_id
+                current_playbook, operations, next_global_id, current_step=current_step
             )
 
             # Log operations
@@ -222,16 +222,32 @@ class Curator:
 
             op_type = op["type"]
 
-            # Currently only ADD operations are fully supported
-            # Note: You can add support for UPDATE, MERGE, DELETE operations here
-            if op_type not in ["ADD", "UPDATE", "MERGE", "DELETE", "CREATE_META"]:
-                print(f"Warning: Operation type '{op_type}' may not be fully supported")
+            if op_type not in ["ADD", "UPDATE", "MERGE", "ARCHIVE", "CREATE_META"]:
+                raise ValueError(f"Unsupported operation type '{op_type}'")
 
-            # Validate ADD operation structure
             if op_type == "ADD":
                 required_fields = {"type", "section", "content"}
                 missing_fields = required_fields - set(op.keys())
                 if missing_fields:
                     raise ValueError(f"ADD operation {i} missing fields: {list(missing_fields)}")
+            elif op_type == "UPDATE":
+                required_fields = {"type", "bullet_id", "content"}
+                missing_fields = required_fields - set(op.keys())
+                if missing_fields:
+                    raise ValueError(f"UPDATE operation {i} missing fields: {list(missing_fields)}")
+            elif op_type == "MERGE":
+                required_fields = {"type", "source_ids", "section", "content"}
+                missing_fields = required_fields - set(op.keys())
+                if missing_fields:
+                    raise ValueError(f"MERGE operation {i} missing fields: {list(missing_fields)}")
+                if len(op.get("source_ids", [])) < 2:
+                    raise ValueError(f"MERGE operation {i} must include at least two source_ids")
+            elif op_type == "ARCHIVE":
+                required_fields = {"type", "bullet_id", "reason"}
+                missing_fields = required_fields - set(op.keys())
+                if missing_fields:
+                    raise ValueError(
+                        f"ARCHIVE operation {i} missing fields: {list(missing_fields)}"
+                    )
 
         return operations_info

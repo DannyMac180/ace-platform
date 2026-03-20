@@ -71,6 +71,14 @@ Some text here.
 """
         assert count_bullets(content) == 4
 
+    def test_count_bullets_with_lifecycle_metadata(self):
+        """Test counting bullets with extended lifecycle metadata."""
+        content = """
+[str-00001] helpful=1 harmful=0 neutral=0 created_step=1 last_considered_step=1 last_used_step=1 times_considered_not_used=0 status=active :: Strategy
+[err-00002] helpful=0 harmful=1 neutral=2 created_step=2 last_considered_step=5 last_used_step=0 times_considered_not_used=3 status=archived :: Error
+"""
+        assert count_bullets(content) == 2
+
 
 class TestExtractDescription:
     """Tests for description extraction."""

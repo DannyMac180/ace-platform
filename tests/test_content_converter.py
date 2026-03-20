@@ -253,6 +253,20 @@ class TestFormatBulletsOutput:
         assert output.count("helpful=0 harmful=0") == 1
         assert "Actual instruction." in output
 
+    def test_strips_lifecycle_bullet_formatting_from_content(self):
+        """Test that lifecycle metadata bullet prefixes are also stripped."""
+        bullets = [
+            {
+                "slug": "test-slug",
+                "content": "[test-slug] helpful=1 harmful=0 neutral=2 created_step=3 last_considered_step=4 last_used_step=3 times_considered_not_used=1 status=active :: Actual instruction.",
+            }
+        ]
+        output = format_bullets_output(bullets)
+
+        assert output.count("[test-slug]") == 1
+        assert output.count("helpful=0 harmful=0") == 1
+        assert "Actual instruction." in output
+
 
 class TestConversionResult:
     """Tests for ConversionResult dataclass."""
