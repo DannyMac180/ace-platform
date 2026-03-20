@@ -19,6 +19,8 @@
   ·
   <a href="https://docs.aceagent.io">Docs</a>
   ·
+  <a href="docs/PRODUCT_SPLIT.md">OSS vs Cloud</a>
+  ·
   <a href="docs/SELF_HOSTED_DEPLOYMENT.md">Self-Host Guide</a>
   ·
   <a href="https://buy.stripe.com/5kQ4gz3b460X8zsh1g8so00">Support ACE Open-Source</a>
@@ -54,14 +56,20 @@ The result is simple: less prompt drift, fewer repeated mistakes, and better fir
 
 ACE is also available as a hosted agent at [aceagent.io](https://aceagent.io), with the dashboard at [app.aceagent.io](https://app.aceagent.io) and documentation at [docs.aceagent.io](https://docs.aceagent.io).
 
-## Start Here
+## Choose Your ACE Path
 
-ACE currently supports two clear starting paths:
+ACE has four distinct offers. The difference is primarily about who operates the service and whether you need solo convenience, team collaboration, or governance controls.
 
-- **Use ACE Cloud** if you want the fastest hosted path with no local infrastructure.
-- **Use ACE OSS / self-managed ACE** if you want the local engine, local API/MCP runtime, or your own deployment.
+| Offer | Best fit | Core value |
+| --- | --- | --- |
+| `ACE OSS` | A single user who wants local or self-managed ACE | Fully usable local/self-managed runtime |
+| `ACE Cloud Personal` | A single user who wants hosted convenience | Hosted sync, backups, evals, and less setup work |
+| `ACE Cloud Team` | A team that needs shared workflows | Hosted collaboration, invites, reviews, and permissions |
+| `ACE Enterprise` | An organization with governance requirements | Compliance, auditability, and private deployment options |
 
-### Hosted ACE Cloud
+Use [docs/PRODUCT_SPLIT.md](docs/PRODUCT_SPLIT.md) for the full `ACE OSS` vs `Cloud Personal` vs `Cloud Team` vs `Enterprise` breakdown.
+
+## Hosted Quick Start
 
 If you want to use ACE right away, the fastest path is the hosted service:
 
@@ -144,6 +152,8 @@ docs/
   oss-overview.md
   local-quickstart.md
 ```
+
+This is the `ACE OSS` / self-managed path. If you want ACE-hosted convenience for one user or a team workspace, start with the hosted quick start above and the [product split guide](docs/PRODUCT_SPLIT.md).
 
 ## OSS Examples
 
@@ -360,6 +370,7 @@ Dan is focused on making AI systems more durable, compounding, and useful in rea
 ## Learn More
 
 - [ACE docs](https://docs.aceagent.io)
+- [Product split guide](docs/PRODUCT_SPLIT.md)
 - [API reference](docs/API_REFERENCE.md)
 - [Next iteration working stream](docs/next_iteration_working_stream.md)
 - [Changelog](CHANGELOG.md)
