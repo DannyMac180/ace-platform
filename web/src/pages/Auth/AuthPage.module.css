@@ -339,6 +339,69 @@
   letter-spacing: 0.1em;
 }
 
+.localPathCard {
+  margin-top: var(--space-lg);
+  padding: var(--space-lg);
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(184, 134, 11, 0.28);
+  background:
+    linear-gradient(135deg, rgba(184, 134, 11, 0.08), rgba(15, 23, 42, 0.02)),
+    var(--bg-secondary);
+}
+
+.localPathHeader h3 {
+  margin: var(--space-xs) 0 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  color: var(--text-primary);
+}
+
+.localPathHeader p:last-child {
+  margin: var(--space-sm) 0 0;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+
+.localPathEyebrow {
+  margin: 0;
+  color: var(--gold-primary);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.localPathSteps {
+  margin: var(--space-md) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.localPathSteps li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-sm);
+  align-items: start;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.localPathStepNumber {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(184, 134, 11, 0.16);
+  color: var(--gold-primary);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
 /* Form footer */
 .formFooter {
   display: flex;
@@ -555,5 +618,9 @@
 
   .submitButton {
     margin-top: 0;
+  }
+
+  .localPathCard {
+    padding: var(--space-md);
   }
 }

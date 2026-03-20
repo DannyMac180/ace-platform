@@ -97,7 +97,7 @@ export function OAuthButtons() {
   return (
     <div className={styles.container}>
       <div className={styles.divider}>
-        <span>or continue with</span>
+        <span>Hosted OAuth optional</span>
       </div>
 
       {showInAppHint && (
@@ -139,7 +139,10 @@ export function OAuthButtons() {
         )}
       </div>
 
-      <p className={styles.emailPath}>Prefer email? Use the email/password form above anytime.</p>
+      <p className={styles.emailPath}>
+        Prefer local-first setup? Use the email/password form above, then create an API
+        key after you sign in.
+      </p>
     </div>
   );
 }

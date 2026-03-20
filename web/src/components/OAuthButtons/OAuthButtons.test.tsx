@@ -85,4 +85,14 @@ describe('OAuthButtons', () => {
       );
     });
   });
+
+  it('labels hosted OAuth as optional and points users to the local auth path', async () => {
+    render(<OAuthButtons />);
+
+    expect(await screen.findByText(/hosted oauth optional/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/prefer local-first setup\? use the email\/password form above/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/create an api key after you sign in/i)).toBeInTheDocument();
+  });
 });
