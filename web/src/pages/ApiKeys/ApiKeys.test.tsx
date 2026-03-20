@@ -136,6 +136,18 @@ describe('ApiKeys', () => {
   });
 
   describe('Subscription and Verification States', () => {
+    it('shows local auth and API-key mode guidance near the top of the page', async () => {
+      renderWithProviders(<ApiKeys />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Local auth / API-key mode')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.getByText(/prefer not to use hosted oauth\? sign in with email and password/i)
+      ).toBeInTheDocument();
+    });
+
     it('shows a trial prompt instead of a load error for users without paid access', async () => {
       mockAuthState.user = {
         email_verified: true,
