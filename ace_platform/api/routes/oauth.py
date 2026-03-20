@@ -44,9 +44,14 @@ from ace_platform.core.audit import (
     is_new_ip_for_user,
 )
 from ace_platform.core.email import send_new_login_alert
+from ace_platform.core.identity import (
+    HostedIdentityProvider,
+    OAuthIdentityError,
+    get_identity_provider,
+    list_identity_providers,
+    oauth_signup_context_key,
+)
 from ace_platform.core.oauth import (
-    is_github_oauth_enabled,
-    is_google_oauth_enabled,
     oauth,
 )
 from ace_platform.core.oauth_service import OAuthService
@@ -68,16 +73,34 @@ settings = get_settings()
 class OAuthProvidersResponse(BaseModel):
     """Response listing available OAuth providers."""
 
-    google: bool
-    github: bool
+    providers: list["OAuthProviderStatus"]
+    google: bool = False
+    github: bool = False
+
+
+class OAuthProviderStatus(BaseModel):
+    """Provider metadata exposed through the provider-neutral auth interface."""
+
+    provider: str
+    display_name: str
+    enabled: bool
 
 
 class LinkedAccountsResponse(BaseModel):
     """Response listing user's linked OAuth accounts."""
 
-    google: bool
-    github: bool
+    providers: list["LinkedAccountStatus"]
+    google: bool = False
+    github: bool = False
     has_password: bool
+
+
+class LinkedAccountStatus(BaseModel):
+    """Linked-account status for a hosted identity provider."""
+
+    provider: str
+    display_name: str
+    linked: bool
 
 
 class MessageResponse(BaseModel):
@@ -120,10 +143,6 @@ def _validate_oauth_csrf_token(request: Request, csrf_token: str | None) -> None
     )
 
 
-_GOOGLE_SIGNUP_CTX_KEY = "oauth_signup_context_google"
-_GITHUB_SIGNUP_CTX_KEY = "oauth_signup_context_github"
-
-
 def _store_oauth_signup_context(
     request: Request,
     *,
@@ -133,8 +152,7 @@ def _store_oauth_signup_context(
     attribution: dict[str, str] | None,
 ) -> None:
     """Persist signup attribution context through OAuth redirect flow."""
-    key = _GOOGLE_SIGNUP_CTX_KEY if provider == OAuthProvider.GOOGLE else _GITHUB_SIGNUP_CTX_KEY
-    request.session[key] = {
+    request.session[oauth_signup_context_key(provider)] = {
         "anonymous_id": anonymous_id,
         "experiment_variant": experiment_variant,
         "attribution": attribution,
@@ -143,9 +161,208 @@ def _store_oauth_signup_context(
 
 def _pop_oauth_signup_context(request: Request, provider: OAuthProvider) -> dict[str, Any]:
     """Pop and return OAuth signup attribution context for a provider."""
-    key = _GOOGLE_SIGNUP_CTX_KEY if provider == OAuthProvider.GOOGLE else _GITHUB_SIGNUP_CTX_KEY
-    value = request.session.pop(key, None)
+    value = request.session.pop(oauth_signup_context_key(provider), None)
     return value if isinstance(value, dict) else {}
+
+
+def _legacy_provider_flags(
+    statuses: list[OAuthProviderStatus] | list[LinkedAccountStatus],
+    attr_name: str,
+) -> dict[str, bool]:
+    flags = {"google": False, "github": False}
+    for provider_status in statuses:
+        provider = getattr(provider_status, "provider", None)
+        if provider in flags:
+            flags[provider] = bool(getattr(provider_status, attr_name))
+    return flags
+
+
+def _build_oauth_provider_statuses() -> list[OAuthProviderStatus]:
+    return [
+        OAuthProviderStatus(
+            provider=provider.key,
+            display_name=provider.display_name,
+            enabled=provider.is_enabled(),
+        )
+        for provider in list_identity_providers()
+    ]
+
+
+def _apply_oauth_signup_context(
+    *,
+    db: AsyncSession,
+    user,
+    signup_context: dict[str, Any],
+    provider: HostedIdentityProvider,
+) -> None:
+    anonymous_id = signup_context.get("anonymous_id")
+    experiment_variant = signup_context.get("experiment_variant")
+    attribution = signup_context.get("attribution")
+    parsed_attribution = parse_signup_attribution(attribution)
+
+    user.signup_source = parsed_attribution.source
+    user.signup_channel = parsed_attribution.channel
+    user.signup_campaign = parsed_attribution.campaign
+    user.signup_anonymous_id = anonymous_id
+    user.signup_variant = experiment_variant
+    user.signup_attribution = parsed_attribution.snapshot
+
+    event_data: dict[str, Any] = {"method": "oauth", "provider": provider.key}
+    if parsed_attribution.snapshot:
+        event_data["attribution"] = parsed_attribution.snapshot
+
+    db.add(
+        AcquisitionEvent(
+            user_id=user.id,
+            event_type=AcquisitionEventType.REGISTER_SUCCESS,
+            anonymous_id=anonymous_id,
+            source=parsed_attribution.source,
+            channel=parsed_attribution.channel,
+            campaign=parsed_attribution.campaign,
+            experiment_variant=experiment_variant,
+            event_data=event_data,
+        )
+    )
+
+
+async def _oauth_login(
+    provider: HostedIdentityProvider,
+    request: Request,
+    csrf_token: str | None,
+    anonymous_id: str | None,
+    experiment_variant: str | None,
+) -> RedirectResponse:
+    if not provider.is_enabled():
+        raise HTTPException(status_code=400, detail=f"{provider.display_name} OAuth not configured")
+
+    _validate_oauth_csrf_token(request, csrf_token)
+
+    _store_oauth_signup_context(
+        request,
+        provider=provider.provider,
+        anonymous_id=anonymous_id,
+        experiment_variant=experiment_variant,
+        attribution=attribution_from_query_params(request.query_params),
+    )
+    return await provider.authorize_redirect(oauth, request)
+
+
+async def _oauth_callback(
+    provider: HostedIdentityProvider,
+    request: Request,
+    db: AsyncSession,
+) -> RedirectResponse:
+    if not provider.is_enabled():
+        raise HTTPException(status_code=400, detail=f"{provider.display_name} OAuth not configured")
+
+    try:
+        token = await provider.exchange_token(oauth, request)
+    except Exception as exc:
+        session_has_state = bool(request.session.get(provider.session_state_key))
+        logger.error(
+            "%s OAuth token exchange failed: %s: %s (session_has_state=%s)",
+            provider.display_name,
+            type(exc).__name__,
+            str(exc),
+            session_has_state,
+            exc_info=True,
+            extra={
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+                "provider": provider.key,
+                "session_has_state": session_has_state,
+                "query_params": dict(request.query_params),
+            },
+        )
+        await audit_oauth_login_failure(
+            db,
+            request,
+            provider=provider.key,
+            reason=f"Token exchange failed: {type(exc).__name__}: {exc}",
+        )
+        await db.commit()
+        return _oauth_error_redirect(
+            f"Failed to authenticate with {provider.display_name}. Please try again."
+        )
+
+    try:
+        identity = await provider.resolve_identity(oauth, request, token)
+    except OAuthIdentityError as exc:
+        logger.warning(
+            "%s OAuth identity resolution failed: %s",
+            provider.display_name,
+            exc.reason,
+            extra={"provider": provider.key},
+        )
+        await audit_oauth_login_failure(
+            db,
+            request,
+            provider=provider.key,
+            reason=exc.reason,
+        )
+        await db.commit()
+        return _oauth_error_redirect(exc.user_message)
+
+    oauth_service = OAuthService(db)
+    user, is_new = await oauth_service.get_or_create_user_from_oauth(
+        provider=provider.provider,
+        provider_user_id=identity.provider_user_id,
+        email=identity.email,
+        user_info=identity.user_info,
+        access_token=identity.access_token,
+        refresh_token=identity.refresh_token,
+        token_expires_at=identity.token_expires_at,
+    )
+    signup_context = _pop_oauth_signup_context(request, provider.provider)
+
+    if settings.acquisition_tracking_enabled and is_new:
+        _apply_oauth_signup_context(
+            db=db,
+            user=user,
+            signup_context=signup_context,
+            provider=provider,
+        )
+
+    if not user.is_active:
+        await audit_oauth_login_failure(
+            db,
+            request,
+            provider=provider.key,
+            reason="Account disabled",
+            email=identity.email,
+        )
+        await db.commit()
+        return _oauth_error_redirect("Account is disabled")
+
+    await bootstrap_workspace_for_user(db, user)
+
+    should_send_alert = False
+    client_ip = None
+    if not is_new:
+        client_ip = get_client_ip(request)
+        if client_ip:
+            should_send_alert = await is_new_ip_for_user(db, user.id, client_ip)
+
+    await audit_oauth_login_success(
+        db,
+        user.id,
+        request,
+        provider=provider.key,
+        is_new_user=is_new,
+    )
+    await db.commit()
+
+    if should_send_alert:
+        await send_new_login_alert(
+            to_email=user.email,
+            ip_address=client_ip,
+            login_time=datetime.now(UTC),
+            user_agent=get_user_agent(request),
+        )
+
+    access_token = create_access_token(user.id)
+    refresh_token = create_refresh_token(user.id)
+    return _oauth_success_redirect(access_token, refresh_token, is_new)
 
 
 @router.get("/csrf-token", response_model=CSRFTokenResponse)
@@ -176,9 +393,12 @@ async def get_oauth_providers() -> OAuthProvidersResponse:
 
     Returns which OAuth providers are configured and available for login.
     """
+    providers = _build_oauth_provider_statuses()
+    legacy_flags = _legacy_provider_flags(providers, "enabled")
     return OAuthProvidersResponse(
-        google=is_google_oauth_enabled(),
-        github=is_github_oauth_enabled(),
+        providers=providers,
+        google=legacy_flags["google"],
+        github=legacy_flags["github"],
     )
 
 
@@ -216,22 +436,13 @@ async def google_login(
 
     Redirects the user to Google's OAuth consent screen.
     """
-    if not is_google_oauth_enabled():
-        raise HTTPException(status_code=400, detail="Google OAuth not configured")
-
-    # Validate CSRF token
-    _validate_oauth_csrf_token(request, csrf_token)
-
-    _store_oauth_signup_context(
+    return await _oauth_login(
+        get_identity_provider(OAuthProvider.GOOGLE),
         request,
-        provider=OAuthProvider.GOOGLE,
-        anonymous_id=anonymous_id,
-        experiment_variant=experiment_variant or exp_trial_disclosure,
-        attribution=attribution_from_query_params(request.query_params),
+        csrf_token,
+        anonymous_id,
+        experiment_variant or exp_trial_disclosure,
     )
-
-    redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/google/callback"
-    return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/google/callback")
@@ -244,129 +455,7 @@ async def google_callback(
 
     Creates or links user account and returns JWT tokens via frontend redirect.
     """
-    if not is_google_oauth_enabled():
-        raise HTTPException(status_code=400, detail="Google OAuth not configured")
-
-    try:
-        token = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        # Log detailed error info to help diagnose OAuth failures
-        # Common causes: session cookie lost (missing state), network errors,
-        # or Google rejecting the token exchange
-        session_has_state = bool(request.session.get("_state_google_"))
-        logger.error(
-            "Google OAuth token exchange failed: %s: %s (session_has_state=%s)",
-            type(e).__name__,
-            str(e),
-            session_has_state,
-            exc_info=True,
-            extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "session_has_state": session_has_state,
-                "query_params": dict(request.query_params),
-            },
-        )
-        await audit_oauth_login_failure(
-            db, request, provider="google", reason=f"Token exchange failed: {type(e).__name__}: {e}"
-        )
-        await db.commit()
-        return _oauth_error_redirect("Failed to authenticate with Google. Please try again.")
-
-    user_info = token.get("userinfo")
-    if not user_info:
-        await audit_oauth_login_failure(db, request, provider="google", reason="No user info")
-        await db.commit()
-        return _oauth_error_redirect("Failed to get user info from Google")
-
-    email = user_info.get("email")
-    if not email:
-        await audit_oauth_login_failure(db, request, provider="google", reason="No email provided")
-        await db.commit()
-        return _oauth_error_redirect("No email provided by Google")
-
-    # Get or create user
-    oauth_service = OAuthService(db)
-    user, is_new = await oauth_service.get_or_create_user_from_oauth(
-        provider=OAuthProvider.GOOGLE,
-        provider_user_id=user_info["sub"],
-        email=email,
-        user_info=dict(user_info),
-        access_token=token.get("access_token"),
-        refresh_token=token.get("refresh_token"),
-        token_expires_at=None,  # Google tokens handled differently
-    )
-    signup_context = _pop_oauth_signup_context(request, OAuthProvider.GOOGLE)
-    tracking_enabled = settings.acquisition_tracking_enabled
-
-    if tracking_enabled and is_new:
-        anonymous_id = signup_context.get("anonymous_id")
-        experiment_variant = signup_context.get("experiment_variant")
-        attribution = signup_context.get("attribution")
-        parsed_attribution = parse_signup_attribution(attribution)
-
-        user.signup_source = parsed_attribution.source
-        user.signup_channel = parsed_attribution.channel
-        user.signup_campaign = parsed_attribution.campaign
-        user.signup_anonymous_id = anonymous_id
-        user.signup_variant = experiment_variant
-        user.signup_attribution = parsed_attribution.snapshot
-
-        event_data: dict[str, Any] = {"method": "oauth", "provider": "google"}
-        if parsed_attribution.snapshot:
-            event_data["attribution"] = parsed_attribution.snapshot
-
-        db.add(
-            AcquisitionEvent(
-                user_id=user.id,
-                event_type=AcquisitionEventType.REGISTER_SUCCESS,
-                anonymous_id=anonymous_id,
-                source=parsed_attribution.source,
-                channel=parsed_attribution.channel,
-                campaign=parsed_attribution.campaign,
-                experiment_variant=experiment_variant,
-                event_data=event_data,
-            )
-        )
-
-    if not user.is_active:
-        await audit_oauth_login_failure(
-            db, request, provider="google", reason="Account disabled", email=email
-        )
-        await db.commit()
-        return _oauth_error_redirect("Account is disabled")
-
-    await bootstrap_workspace_for_user(db, user)
-
-    # Check if this is a new IP BEFORE logging (to avoid race condition)
-    # Only for existing users (not new signups)
-    should_send_alert = False
-    client_ip = None
-    if not is_new:
-        client_ip = get_client_ip(request)
-        if client_ip:
-            is_new_ip = await is_new_ip_for_user(db, user.id, client_ip)
-            should_send_alert = is_new_ip
-
-    # Audit log the successful OAuth login
-    await audit_oauth_login_success(db, user.id, request, provider="google", is_new_user=is_new)
-    await db.commit()
-
-    # Send notification after commit if needed
-    if should_send_alert:
-        await send_new_login_alert(
-            to_email=user.email,
-            ip_address=client_ip,
-            login_time=datetime.now(UTC),
-            user_agent=get_user_agent(request),
-        )
-
-    # Create JWT tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-
-    # Redirect to frontend with tokens
-    return _oauth_success_redirect(access_token, refresh_token, is_new)
+    return await _oauth_callback(get_identity_provider(OAuthProvider.GOOGLE), request, db)
 
 
 # =============================================================================
@@ -403,22 +492,13 @@ async def github_login(
 
     Redirects the user to GitHub's OAuth consent screen.
     """
-    if not is_github_oauth_enabled():
-        raise HTTPException(status_code=400, detail="GitHub OAuth not configured")
-
-    # Validate CSRF token
-    _validate_oauth_csrf_token(request, csrf_token)
-
-    _store_oauth_signup_context(
+    return await _oauth_login(
+        get_identity_provider(OAuthProvider.GITHUB),
         request,
-        provider=OAuthProvider.GITHUB,
-        anonymous_id=anonymous_id,
-        experiment_variant=experiment_variant or exp_trial_disclosure,
-        attribution=attribution_from_query_params(request.query_params),
+        csrf_token,
+        anonymous_id,
+        experiment_variant or exp_trial_disclosure,
     )
-
-    redirect_uri = f"{settings.oauth_redirect_base_url}/auth/oauth/github/callback"
-    return await oauth.github.authorize_redirect(request, redirect_uri)
 
 
 @router.get("/github/callback")
@@ -431,147 +511,7 @@ async def github_callback(
 
     Creates or links user account and returns JWT tokens via frontend redirect.
     """
-    if not is_github_oauth_enabled():
-        raise HTTPException(status_code=400, detail="GitHub OAuth not configured")
-
-    try:
-        token = await oauth.github.authorize_access_token(request)
-    except Exception as e:
-        session_has_state = bool(request.session.get("_state_github_"))
-        logger.error(
-            "GitHub OAuth token exchange failed: %s: %s (session_has_state=%s)",
-            type(e).__name__,
-            str(e),
-            session_has_state,
-            exc_info=True,
-            extra={
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "session_has_state": session_has_state,
-                "query_params": dict(request.query_params),
-            },
-        )
-        await audit_oauth_login_failure(
-            db, request, provider="github", reason=f"Token exchange failed: {type(e).__name__}: {e}"
-        )
-        await db.commit()
-        return _oauth_error_redirect("Failed to authenticate with GitHub. Please try again.")
-
-    # GitHub requires separate API call to get user info
-    try:
-        resp = await oauth.github.get("user", token=token)
-        user_info = resp.json()
-    except Exception as e:
-        logger.error("GitHub user info fetch failed", exc_info=True, extra={"error": str(e)})
-        await audit_oauth_login_failure(
-            db, request, provider="github", reason="User info fetch failed"
-        )
-        await db.commit()
-        return _oauth_error_redirect("Failed to get user info from GitHub. Please try again.")
-
-    # GitHub may not return email in user endpoint, fetch from emails endpoint
-    email = user_info.get("email")
-    if not email:
-        try:
-            emails_resp = await oauth.github.get("user/emails", token=token)
-            emails = emails_resp.json()
-            primary_email = next(
-                (e for e in emails if e.get("primary") and e.get("verified")),
-                None,
-            )
-            if primary_email:
-                email = primary_email["email"]
-        except Exception as e:
-            logger.warning(
-                "GitHub email fetch failed, will check for email in user info",
-                extra={"error": str(e)},
-            )
-
-    if not email:
-        await audit_oauth_login_failure(db, request, provider="github", reason="No verified email")
-        await db.commit()
-        return _oauth_error_redirect("No verified email found on GitHub account")
-
-    # Get or create user
-    oauth_service = OAuthService(db)
-    user, is_new = await oauth_service.get_or_create_user_from_oauth(
-        provider=OAuthProvider.GITHUB,
-        provider_user_id=str(user_info["id"]),
-        email=email,
-        user_info=user_info,
-        access_token=token.get("access_token"),
-        refresh_token=token.get("refresh_token"),
-    )
-    signup_context = _pop_oauth_signup_context(request, OAuthProvider.GITHUB)
-    tracking_enabled = settings.acquisition_tracking_enabled
-
-    if tracking_enabled and is_new:
-        anonymous_id = signup_context.get("anonymous_id")
-        experiment_variant = signup_context.get("experiment_variant")
-        attribution = signup_context.get("attribution")
-        parsed_attribution = parse_signup_attribution(attribution)
-
-        user.signup_source = parsed_attribution.source
-        user.signup_channel = parsed_attribution.channel
-        user.signup_campaign = parsed_attribution.campaign
-        user.signup_anonymous_id = anonymous_id
-        user.signup_variant = experiment_variant
-        user.signup_attribution = parsed_attribution.snapshot
-
-        event_data: dict[str, Any] = {"method": "oauth", "provider": "github"}
-        if parsed_attribution.snapshot:
-            event_data["attribution"] = parsed_attribution.snapshot
-
-        db.add(
-            AcquisitionEvent(
-                user_id=user.id,
-                event_type=AcquisitionEventType.REGISTER_SUCCESS,
-                anonymous_id=anonymous_id,
-                source=parsed_attribution.source,
-                channel=parsed_attribution.channel,
-                campaign=parsed_attribution.campaign,
-                experiment_variant=experiment_variant,
-                event_data=event_data,
-            )
-        )
-
-    if not user.is_active:
-        await audit_oauth_login_failure(
-            db, request, provider="github", reason="Account disabled", email=email
-        )
-        await db.commit()
-        return _oauth_error_redirect("Account is disabled")
-
-    await bootstrap_workspace_for_user(db, user)
-
-    # Check if this is a new IP BEFORE logging (to avoid race condition)
-    # Only for existing users (not new signups)
-    should_send_alert = False
-    client_ip = None
-    if not is_new:
-        client_ip = get_client_ip(request)
-        if client_ip:
-            is_new_ip = await is_new_ip_for_user(db, user.id, client_ip)
-            should_send_alert = is_new_ip
-
-    # Audit log the successful OAuth login
-    await audit_oauth_login_success(db, user.id, request, provider="github", is_new_user=is_new)
-    await db.commit()
-
-    # Send notification after commit if needed
-    if should_send_alert:
-        await send_new_login_alert(
-            to_email=user.email,
-            ip_address=client_ip,
-            login_time=datetime.now(UTC),
-            user_agent=get_user_agent(request),
-        )
-
-    # Create JWT tokens
-    access_token = create_access_token(user.id)
-    refresh_token = create_refresh_token(user.id)
-
-    return _oauth_success_redirect(access_token, refresh_token, is_new)
+    return await _oauth_callback(get_identity_provider(OAuthProvider.GITHUB), request, db)
 
 
 # =============================================================================
@@ -591,10 +531,20 @@ async def get_linked_accounts(
     oauth_service = OAuthService(db)
     accounts = await oauth_service.get_user_oauth_accounts(user.id)
 
-    providers = {acc.provider for acc in accounts}
+    linked_provider_values = {acc.provider.value for acc in accounts}
+    providers = [
+        LinkedAccountStatus(
+            provider=provider.key,
+            display_name=provider.display_name,
+            linked=provider.key in linked_provider_values,
+        )
+        for provider in list_identity_providers()
+    ]
+    legacy_flags = _legacy_provider_flags(providers, "linked")
     return LinkedAccountsResponse(
-        google=OAuthProvider.GOOGLE in providers,
-        github=OAuthProvider.GITHUB in providers,
+        providers=providers,
+        google=legacy_flags["google"],
+        github=legacy_flags["github"],
         has_password=user.hashed_password is not None,
     )
 
