@@ -48,8 +48,36 @@ if [[ ! -f "$workflow_builder" ]]; then
   exit 1
 fi
 
+if ! command -v codex >/dev/null 2>&1; then
+  echo "Missing \`codex\` in PATH." >&2
+  echo "Install Codex and make sure the CLI is available before running Symphony." >&2
+  exit 1
+fi
+
 if [[ -z "${LINEAR_API_KEY:-}" ]]; then
   echo "LINEAR_API_KEY is not set in the current shell." >&2
+  exit 1
+fi
+
+if [[ -z "${ACE_API_KEY:-}" ]]; then
+  echo "ACE_API_KEY is not set in the current shell." >&2
+  echo "Set it before starting Symphony so Codex can authenticate to the 'ace' MCP server." >&2
+  exit 1
+fi
+
+if ! codex_mcp_list_output="$(codex mcp list 2>&1)"; then
+  echo "Failed to inspect Codex MCP configuration." >&2
+  echo "$codex_mcp_list_output" >&2
+  exit 1
+fi
+
+if ! grep -Eq '^ace([[:space:]]|$)' <<<"$codex_mcp_list_output"; then
+  echo "Codex MCP server 'ace' is not configured for this shell user." >&2
+  echo "Configure ACE before starting Symphony. Hosted ACE example:" >&2
+  echo "  export ACE_API_KEY=your_ace_api_key" >&2
+  echo "  codex mcp add ace --url https://aceagent.io/mcp --bearer-token-env-var ACE_API_KEY" >&2
+  echo "Local ACE example from this repo:" >&2
+  echo "  codex mcp add ace --env ACE_API_KEY=\$ACE_API_KEY --env DATABASE_URL=postgresql://... --env REDIS_URL=redis://... -- python -m ace_platform.mcp.server stdio" >&2
   exit 1
 fi
 

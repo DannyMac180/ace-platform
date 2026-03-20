@@ -25,9 +25,29 @@ workspace:
   root: ~/code/symphony-workspaces/ace-platform
 hooks:
   after_create: |
-    # Replace with your fork or preferred clone URL for ace-platform.
-    git clone --depth 1 https://github.com/your-github-handle/ace-platform.git .
+    # Change this to your fork if you want Symphony-created branches and PRs to
+    # push there instead of the upstream repo.
+    git clone --depth 1 https://github.com/DannyMac180/ace-platform.git .
     python3 -m venv venv
+    . venv/bin/activate
+    pip install -e ".[dev]"
+  before_run: |
+    # Repair partially initialized workspaces before Codex starts. This fixes
+    # cases where a previous run left the repo nested under ./repo or created a
+    # venv before the checkout finished.
+    if [ -d repo/.git ] && [ ! -d .git ]; then
+      cp -a repo/. .
+      rm -rf repo
+    fi
+    if [ ! -d .git ]; then
+      rm -rf repo
+      git clone --depth 1 https://github.com/DannyMac180/ace-platform.git repo
+      cp -a repo/. .
+      rm -rf repo
+    fi
+    if [ ! -x venv/bin/python ]; then
+      python3 -m venv venv
+    fi
     . venv/bin/activate
     pip install -e ".[dev]"
 agent:
@@ -78,6 +98,33 @@ Work only in the provided repository copy. Do not touch any other path.
 ## Prerequisite: Linear MCP or `linear_graphql` tool is available
 
 The agent should be able to talk to Linear, either via a configured Linear MCP server or injected `linear_graphql` tool. If none are present, stop and ask the user to configure Linear.
+
+## Prerequisite: ACE MCP server named `ace` is available
+
+The agent must have a configured ACE MCP server named `ace` with the
+`find_playbook`, `get_playbook`, and `record_outcome` tools available. If ACE is
+missing or any required ACE tool is unavailable, treat that as a blocker instead
+of continuing without ACE.
+
+## Required ACE playbook flow
+
+Before planning or implementation work:
+
+1. Summarize the ticket as a concise task description and call
+   `ace.find_playbook` with that summary.
+2. Load the selected playbook with `ace.get_playbook`.
+3. Use that playbook as the primary instruction set for the ticket. If multiple
+   playbooks are relevant, keep exactly one primary playbook and use the others
+   only as supporting context.
+
+After the ticket is completed or blocked:
+
+1. Call `ace.record_outcome` exactly once.
+2. Include the primary playbook ID, concise task description, outcome
+   (`success`, `partial`, or `failure`), and brief notes on what worked, what
+   failed, and important tradeoffs.
+3. If outcome recording fails, document the failure in the workpad and final
+   message. Do not silently skip it.
 
 ## Default posture
 

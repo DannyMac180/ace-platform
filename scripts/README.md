@@ -7,17 +7,17 @@ Utility scripts for development, testing, and operations.
 ### run-symphony.sh
 
 Start the vendored Symphony runtime with the repo-local virtualenv launcher and a local
-`WORKFLOW.md`.
+`WORKFLOW.local.md` layered on top of the tracked `WORKFLOW.example.md`.
 
 #### Prerequisites
 
 ```bash
 source venv/bin/activate && pip install -e .
 source venv/bin/activate && symphony setup
-cp WORKFLOW.example.md WORKFLOW.md
+cp WORKFLOW.example.md WORKFLOW.local.md
 ```
 
-Before running, edit `WORKFLOW.md` to set:
+Before running, edit `WORKFLOW.local.md` to set:
 
 - your Linear `project_slug`
 - your preferred Symphony workspace root
@@ -26,9 +26,24 @@ Before running, edit `WORKFLOW.md` to set:
 You also need:
 
 - `LINEAR_API_KEY` in your shell
+- `ACE_API_KEY` in your shell
+- a Codex MCP server named `ace` configured for the shell user running Symphony
 - `codex` on your `PATH`
 - `mise` installed
 - a Linear token that resolves to workspace `danmac` and a project attached to team `DAN`
+
+Hosted ACE example:
+
+```bash
+export ACE_API_KEY=your_ace_api_key
+codex mcp add ace --url https://aceagent.io/mcp --bearer-token-env-var ACE_API_KEY
+```
+
+Local ACE example:
+
+```bash
+codex mcp add ace --env ACE_API_KEY=$ACE_API_KEY --env DATABASE_URL=postgresql://... --env REDIS_URL=redis://... -- python -m ace_platform.mcp.server stdio
+```
 
 #### Usage
 
@@ -37,9 +52,20 @@ You also need:
 ```
 
 The script starts the dashboard at `http://127.0.0.1:4000/` by default.
-Before launch, it validates that `LINEAR_API_KEY` points at the expected Linear
-workspace and that the configured workflow project belongs to the expected team.
-By default this repo expects workspace URL key `danmac` and team key `DAN`.
+
+The tracked example workflow also includes a `before_run` repair hook that fixes partially
+initialized ticket workspaces before Codex starts.
+
+The tracked example workflow also requires ACE for every ticket run, so Symphony will stop early
+if the `ace` MCP server is not available instead of silently skipping playbook lookup and outcome
+recording.
+
+Before launch, the script validates that `LINEAR_API_KEY` points at the expected Linear workspace
+and that the configured workflow project belongs to the expected team. By default this repo expects
+workspace URL key `danmac` and team key `DAN`.
+
+The launcher also requires `ACE_API_KEY` in the current shell. ACE supports both `X-API-Key` and
+`Authorization: Bearer`, and Codex's HTTP MCP setup uses the bearer-token path.
 
 Override the port with:
 
