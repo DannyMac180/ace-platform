@@ -41,3 +41,10 @@ If you want the broader OSS/local-runtime picture, see:
 ```bash
 source ../../venv/bin/activate && python -m build
 ```
+
+## License
+
+`ace-core` is distributed under the
+[MIT License](../../LICENSE.txt). Contributions to the extracted OSS package
+should follow the boundary and inbound licensing guidance in
+[`../../CONTRIBUTING.md`](../../CONTRIBUTING.md).
