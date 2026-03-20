@@ -175,6 +175,114 @@ def test_init_command_force_overwrites_with_custom_settings(tmp_path, capsys) ->
     assert 'mcp_url = "https://staging.example/mcp"' in config_text
 
 
+def test_benchmark_command_compares_baseline_and_ace_outputs(tmp_path, capsys) -> None:
+    benchmark_path = tmp_path / "benchmark.json"
+    benchmark_path.write_text(
+        json.dumps(
+            {
+                "id": "starter-benchmark",
+                "metric": "exact_match",
+                "cases": [
+                    {
+                        "id": "case-1",
+                        "prompt": "first prompt",
+                        "expected_output": "alpha",
+                        "baseline_output": "wrong",
+                        "ace_output": "alpha",
+                    },
+                    {
+                        "id": "case-2",
+                        "prompt": "second prompt",
+                        "expected_output": "beta",
+                        "baseline_output": "beta",
+                        "ace_output": "beta",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = ace_cli.main(["benchmark", "--input", str(benchmark_path)])
+
+    stdout = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Benchmark: starter-benchmark" in stdout
+    assert "ACE-assisted" in stdout
+    assert "- Net passed cases: +1" in stdout
+    assert "- Head-to-head: 1 ACE wins, 0 baseline wins, 1 ties" in stdout
+    assert "- Improved cases: case-1" in stdout
+
+
+def test_benchmark_command_can_emit_json_summary(tmp_path, capsys) -> None:
+    benchmark_path = tmp_path / "benchmark.json"
+    benchmark_path.write_text(
+        json.dumps(
+            {
+                "id": "json-benchmark",
+                "metric": "contains",
+                "cases": [
+                    {
+                        "id": "case-1",
+                        "prompt": "unused",
+                        "expected_output": "portable",
+                        "baseline_output": "baseline miss",
+                        "ace_output": "portable local runtime",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = ace_cli.main(["benchmark", "--input", str(benchmark_path), "--format", "json"])
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["benchmark_id"] == "json-benchmark"
+    assert payload["comparison"]["net_passed_delta"] == 1
+    assert payload["comparison"]["ace_wins"] == 1
+    assert payload["cases"][0]["outcome"] == "ace_win"
+
+
+def test_benchmark_command_rejects_missing_case_fields(tmp_path, capsys) -> None:
+    benchmark_path = tmp_path / "broken-benchmark.json"
+    benchmark_path.write_text(
+        json.dumps(
+            {
+                "id": "broken-benchmark",
+                "metric": "exact_match",
+                "cases": [
+                    {
+                        "id": "case-1",
+                        "prompt": "missing ace output",
+                        "expected_output": "value",
+                        "baseline_output": "value",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    exit_code = ace_cli.main(["benchmark", "--input", str(benchmark_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "field 'ace_output' must be a string" in captured.err
+
+
+def test_benchmark_command_reports_missing_input_file(capsys) -> None:
+    missing_path = "/tmp/ace-benchmark-does-not-exist.json"
+
+    exit_code = ace_cli.main(["benchmark", "--input", missing_path])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "ACE benchmark failed:" in captured.err
+    assert missing_path in captured.err
+
+
 def test_doctor_command_reports_missing_config(tmp_path, capsys) -> None:
     exit_code = ace_cli.main(["doctor", "--path", str(tmp_path)])
 
@@ -324,9 +432,9 @@ def test_init_command_agent_mode_emits_deterministic_json(tmp_path, capsys) -> N
             "reason": None,
         },
         {
-            "available": False,
+            "available": True,
             "command": "ace benchmark",
-            "reason": "command not implemented yet",
+            "reason": None,
         },
     ]
     assert "generated_at" not in payload["config"]
