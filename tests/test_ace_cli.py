@@ -172,3 +172,66 @@ def test_init_command_force_overwrites_with_custom_settings(tmp_path, capsys) ->
     assert 'docs_url = "https://docs.example"' in config_text
     assert 'api_url = "http://127.0.0.1:9000"' in config_text
     assert 'mcp_url = "https://staging.example/mcp"' in config_text
+
+
+def test_init_command_agent_mode_emits_deterministic_json(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "agent-project"
+    project_dir.mkdir()
+    (project_dir / "docs").mkdir()
+
+    exit_code = ace_cli.main(["init", "--path", str(project_dir), "--agent"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    config_text = (project_dir / "ace.toml").read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["status"] == "ok"
+    assert payload["mode"] == "agent"
+    assert payload["deterministic"] is True
+    assert payload["project_root"] == str(project_dir.resolve())
+    assert payload["config_path"] == str((project_dir / "ace.toml").resolve())
+    assert payload["recommended_next_commands"] == ["ace doctor", "ace seed", "ace benchmark"]
+    assert payload["follow_up_commands"] == [
+        {
+            "available": False,
+            "command": "ace doctor",
+            "reason": "command not implemented yet",
+        },
+        {
+            "available": False,
+            "command": "ace seed",
+            "reason": "command not implemented yet",
+        },
+        {
+            "available": False,
+            "command": "ace benchmark",
+            "reason": "command not implemented yet",
+        },
+    ]
+    assert "generated_at" not in payload["config"]
+    assert "generated_at" not in config_text
+    assert payload["config"] == config_text
+
+
+def test_init_command_json_error_is_machine_readable(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "existing-agent-project"
+    project_dir.mkdir()
+    config_path = project_dir / "ace.toml"
+    config_path.write_text("existing = true\n", encoding="utf-8")
+
+    exit_code = ace_cli.main(["init", "--path", str(project_dir), "--output", "json"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert captured.err == ""
+    assert payload["status"] == "error"
+    assert payload["mode"] == "standard"
+    assert payload["deterministic"] is False
+    assert payload["project_root"] == str(project_dir.resolve())
+    assert payload["config_path"] == str(config_path.resolve())
+    assert payload["error"]["code"] == "config_exists"
+    assert "already exists" in payload["error"]["message"]
