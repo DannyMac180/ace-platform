@@ -244,6 +244,31 @@ async def test_invalid_workspace_usage_limit_strings_are_ignored(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_trialing_workspace_subscription_maps_access_status_without_crashing(monkeypatch):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.NONE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        subscription=SimpleNamespace(status=SimpleNamespace(value="trialing"), plan_code="starter"),
+        usage_limits={},
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+    )
+
+    snapshot = await resolve_workspace_entitlements(object(), user, workspace=workspace)
+
+    assert snapshot.access.subscription_status == SubscriptionStatus.ACTIVE
+    assert snapshot.access.has_feature_access is True
+
+
+@pytest.mark.asyncio
 async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
     user = _make_user(
         subscription_tier="starter",

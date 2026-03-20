@@ -207,6 +207,33 @@ def has_feature_access(
     )
 
 
+def get_access_subscription_status(
+    user: User,
+    workspace: Workspace | None = None,
+) -> SubscriptionStatus:
+    """Normalize subscription status for API-facing workspace access snapshots."""
+
+    workspace_subscription = (
+        getattr(workspace, "subscription", None) if workspace is not None else None
+    )
+    if workspace_subscription is not None:
+        raw_status = getattr(getattr(workspace_subscription, "status", None), "value", None)
+        if raw_status == "trialing":
+            return SubscriptionStatus.ACTIVE
+        try:
+            return SubscriptionStatus(raw_status)
+        except (TypeError, ValueError):
+            pass
+
+    raw_status = getattr(user, "subscription_status", SubscriptionStatus.NONE)
+    if isinstance(raw_status, SubscriptionStatus):
+        return raw_status
+    try:
+        return SubscriptionStatus(raw_status)
+    except (TypeError, ValueError):
+        return SubscriptionStatus.NONE
+
+
 def get_seat_limit(plan: WorkspacePlan) -> int | None:
     """Return the seat limit implied by the normalized workspace plan."""
 
@@ -463,9 +490,6 @@ async def resolve_workspace_entitlements(
     enabled_features = tuple(
         field.name for field in fields(WorkspaceFeatureAccess) if getattr(entitlements, field.name)
     )
-    workspace_subscription = (
-        getattr(workspace, "subscription", None) if workspace is not None else None
-    )
 
     return WorkspaceEntitlementsSnapshot(
         workspace_id=get_workspace_id(user, workspace),
@@ -476,11 +500,7 @@ async def resolve_workspace_entitlements(
         enabled_features=enabled_features,
         access=WorkspaceAccessState(
             subscription_tier=subscription_tier,
-            subscription_status=(
-                SubscriptionStatus(workspace_subscription.status.value)
-                if workspace_subscription is not None
-                else getattr(user, "subscription_status", SubscriptionStatus.NONE)
-            ),
+            subscription_status=get_access_subscription_status(user, workspace),
             effective_tier=limits_tier,
             has_feature_access=feature_access_enabled,
             is_trialing=bool(getattr(user, "trial_ends_at", None)) and is_user_trialing(user),
