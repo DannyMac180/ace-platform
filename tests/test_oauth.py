@@ -13,7 +13,7 @@ rate limit interference between tests.
 """
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 from uuid import uuid4
 
 import pytest
@@ -450,6 +450,42 @@ class TestOAuthService:
 
         assert user == mock_oauth_account.user
         assert is_new is False
+        ensure_workspace.assert_awaited_once_with(mock_db, mock_oauth_account.user)
+
+    @pytest.mark.asyncio
+    async def test_get_or_create_flushes_updated_oauth_tokens_before_refresh(
+        self, oauth_service, mock_db, mock_oauth_account, monkeypatch
+    ):
+        """Test that token rotation is flushed before refreshing the relation."""
+        from ace_platform.core import oauth_service as oauth_service_module
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_oauth_account
+        mock_db.execute.return_value = mock_result
+        ensure_workspace = AsyncMock()
+        monkeypatch.setattr(
+            oauth_service_module,
+            "ensure_personal_workspace_for_user",
+            ensure_workspace,
+        )
+
+        user, is_new = await oauth_service.get_or_create_user_from_oauth(
+            provider=OAuthProvider.GOOGLE,
+            provider_user_id="google-123",
+            email="test@example.com",
+            user_info={"sub": "google-123", "email": "test@example.com"},
+            access_token="rotated-access-token",
+            refresh_token="rotated-refresh-token",
+        )
+
+        assert user == mock_oauth_account.user
+        assert is_new is False
+        assert mock_oauth_account.access_token == "rotated-access-token"
+        assert mock_oauth_account.refresh_token == "rotated-refresh-token"
+        mock_db.flush.assert_awaited_once()
+        assert mock_db.mock_calls.index(call.flush()) < mock_db.mock_calls.index(
+            call.refresh(mock_oauth_account, ["user"])
+        )
         ensure_workspace.assert_awaited_once_with(mock_db, mock_oauth_account.user)
 
     @pytest.mark.asyncio

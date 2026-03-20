@@ -57,6 +57,7 @@ class OAuthService:
                 existing_oauth.refresh_token = refresh_token
                 existing_oauth.token_expires_at = token_expires_at
                 existing_oauth.raw_user_info = user_info
+                await self.db.flush()
 
             # Load user relationship
             await self.db.refresh(existing_oauth, ["user"])

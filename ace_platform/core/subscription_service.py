@@ -170,7 +170,14 @@ def get_subscription_tier_for_plan_code(code: str | None) -> SubscriptionTier | 
 
     entry = get_plan_catalog_entry_for_code(code)
     if entry is None:
-        return None
+        if not code:
+            return None
+        normalized = code.strip().lower()
+        legacy_code = normalized.removeprefix("personal-")
+        try:
+            return SubscriptionTier(legacy_code)
+        except ValueError:
+            return None
     return entry.subscription_tier
 
 

@@ -13,7 +13,6 @@ from ace_platform.core.limits import (
     SubscriptionTier,
     UsageStatus,
     get_billing_period_start,
-    get_effective_tier_for_limits,
     get_user_usage_status,
     is_user_trialing,
 )
@@ -118,8 +117,9 @@ def normalize_workspace_plan(user: User, workspace: Workspace | None = None) -> 
     if getattr(user, "is_admin", False):
         return "enterprise"
 
+    raw_tier = getattr(user, "subscription_tier", None)
     try:
-        tier = SubscriptionTier(user.subscription_tier) if user.subscription_tier else None
+        tier = SubscriptionTier(raw_tier) if raw_tier else None
     except ValueError:
         tier = None
 
@@ -148,12 +148,36 @@ def get_subscription_tier(
         if workspace_tier is not None:
             return workspace_tier
 
+    raw_tier = getattr(user, "subscription_tier", None)
     try:
-        return (
-            SubscriptionTier(user.subscription_tier)
-            if user.subscription_tier
-            else SubscriptionTier.FREE
-        )
+        return SubscriptionTier(raw_tier) if raw_tier else SubscriptionTier.FREE
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+def get_effective_workspace_limits_tier(
+    user: User,
+    workspace: Workspace | None = None,
+) -> SubscriptionTier:
+    """Return the effective tier used for workspace usage limits."""
+
+    if getattr(user, "is_admin", False):
+        return SubscriptionTier.ENTERPRISE
+
+    if getattr(user, "trial_ends_at", None) and is_user_trialing(user):
+        return SubscriptionTier.FREE
+
+    workspace_subscription = (
+        getattr(workspace, "subscription", None) if workspace is not None else None
+    )
+    if workspace_subscription is not None:
+        workspace_tier = get_subscription_tier_for_plan_code(workspace_subscription.plan_code)
+        if workspace_tier is not None:
+            return workspace_tier
+
+    raw_tier = getattr(user, "subscription_tier", None)
+    try:
+        return SubscriptionTier(raw_tier) if raw_tier else SubscriptionTier.FREE
     except ValueError:
         return SubscriptionTier.FREE
 
@@ -321,7 +345,7 @@ async def get_workspace_usage_limits(
 ) -> WorkspaceUsageLimits:
     """Build workspace-scoped usage counters and effective limit states."""
 
-    limits_tier = get_effective_tier_for_limits(user)
+    limits_tier = get_effective_workspace_limits_tier(user, workspace)
     usage_status = usage_status or await get_user_usage_status(db, user.id, limits_tier)
 
     storage_bytes = usage_status.current_storage_bytes if include_storage else 0
@@ -432,7 +456,7 @@ async def resolve_workspace_entitlements(
 
     plan = normalize_workspace_plan(user, workspace)
     subscription_tier = get_subscription_tier(user, workspace)
-    limits_tier = get_effective_tier_for_limits(user)
+    limits_tier = get_effective_workspace_limits_tier(user, workspace)
     usage_status = await get_user_usage_status(db, user.id, limits_tier)
     feature_access_enabled = has_feature_access(user, subscription_tier, workspace)
     entitlements = get_plan_entitlements(plan, feature_access_enabled)
@@ -459,7 +483,7 @@ async def resolve_workspace_entitlements(
             ),
             effective_tier=limits_tier,
             has_feature_access=feature_access_enabled,
-            is_trialing=is_user_trialing(user),
+            is_trialing=bool(getattr(user, "trial_ends_at", None)) and is_user_trialing(user),
         ),
         usage_limits=await get_workspace_usage_limits(
             db,
