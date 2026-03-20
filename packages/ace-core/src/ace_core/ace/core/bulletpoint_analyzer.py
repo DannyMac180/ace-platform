@@ -20,6 +20,8 @@ except ImportError:
     print("Warning: sentence-transformers or faiss not available for bulletpoint analysis.")
     print("Install with: pip install sentence-transformers faiss-cpu")
 
+from ...playbook_utils import parse_playbook_line as parse_playbook_metadata_line
+
 
 def parse_playbook_line(line: str) -> dict[str, Any] | None:
     """
@@ -35,18 +37,9 @@ def parse_playbook_line(line: str) -> dict[str, Any] | None:
     if not line or line.startswith("#") or line.startswith("##"):
         return None
 
-    # Match format: [id] helpful=X harmful=Y :: content
-    pattern = r"\[([^\]]+)\]\s*helpful=(\d+)\s*harmful=(\d+)\s*::\s*(.*)"
-    match = re.match(pattern, line)
-
-    if match:
-        bullet_id, helpful, harmful, content = match.groups()
-        return {
-            "id": bullet_id,
-            "helpful": int(helpful),
-            "harmful": int(harmful),
-            "content": content.strip(),
-        }
+    parsed = parse_playbook_metadata_line(line)
+    if parsed:
+        return parsed
 
     # If not matching standard format, might be simple text line
     if "::" in line:

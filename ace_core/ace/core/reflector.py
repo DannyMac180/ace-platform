@@ -39,7 +39,7 @@ class Reflector:
         predicted_answer: str,
         ground_truth: Optional[str],
         environment_feedback: str,
-        bullets_used: str,
+        bullets_considered: str,
         use_ground_truth: bool = True,
         use_json_mode: bool = False,
         call_id: str = "reflect",
@@ -54,7 +54,7 @@ class Reflector:
             predicted_answer: The generator's predicted answer
             ground_truth: The ground truth answer (if available)
             environment_feedback: Feedback about correctness
-            bullets_used: String representation of bullets used
+            bullets_considered: String representation of bullets considered
             use_ground_truth: Whether to use ground truth in reflection
             use_json_mode: Whether to use JSON mode
             call_id: Unique identifier for this call
@@ -71,11 +71,15 @@ class Reflector:
                 predicted_answer,
                 ground_truth,
                 environment_feedback,
-                bullets_used,
+                bullets_considered,
             )
         else:
             prompt = REFLECTOR_PROMPT_NO_GT.format(
-                question, reasoning_trace, predicted_answer, environment_feedback, bullets_used
+                question,
+                reasoning_trace,
+                predicted_answer,
+                environment_feedback,
+                bullets_considered,
             )
 
         response, call_info = timed_llm_call(

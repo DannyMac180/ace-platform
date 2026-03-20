@@ -12,8 +12,8 @@ REFLECTOR_PROMPT = """You are an expert analyst and educator. Your job is to dia
 - Provide actionable insights that could help the model avoid this mistake in the future
 - Focus on the root cause, not just surface-level errors
 - Be specific about what the model should have done differently
-- You will receive bulletpoints that are part of playbook that's used by the generator to answer the question.
-- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be ['helpful', 'harmful', 'neutral'] (for the generator to generate the correct answer)
+- You will receive bulletpoints from the playbook that the generator considered while answering.
+- You need to analyze these bulletpoints and give each one a tag from ['helpful', 'harmful', 'neutral'].
 
 Your output should be a json object, which contains the following fields
   - reasoning: your chain of thought / reasoning / thinking process, detailed analysis and calculations
@@ -69,8 +69,8 @@ REFLECTOR_PROMPT_NO_GT = """You are an expert analyst and educator. Your job is 
 - Provide actionable insights that could help the model avoid this mistake in the future
 - Focus on the root cause, not just surface-level errors
 - Be specific about what the model should have done differently
-- You will receive bulletpoints that are part of playbook that's used by the generator to answer the question.
-- You need to analyze these bulletpoints, and give the tag for each bulletpoint, tag can be ['helpful', 'harmful', 'neutral'] (for the generator to generate the correct answer)
+- You will receive bulletpoints from the playbook that the generator considered while answering.
+- You need to analyze these bulletpoints and give each one a tag from ['helpful', 'harmful', 'neutral'].
 
 Your output should be a json object, which contains the following fields
   - reasoning: your chain of thought / reasoning / thinking process, detailed analysis and calculations
