@@ -54,7 +54,14 @@ The result is simple: less prompt drift, fewer repeated mistakes, and better fir
 
 ACE is also available as a hosted agent at [aceagent.io](https://aceagent.io), with the dashboard at [app.aceagent.io](https://app.aceagent.io) and documentation at [docs.aceagent.io](https://docs.aceagent.io).
 
-## Hosted Quick Start
+## Start Here
+
+ACE currently supports two clear starting paths:
+
+- **Use ACE Cloud** if you want the fastest hosted path with no local infrastructure.
+- **Use ACE OSS / self-managed ACE** if you want the local engine, local API/MCP runtime, or your own deployment.
+
+### Hosted ACE Cloud
 
 If you want to use ACE right away, the fastest path is the hosted service:
 
@@ -73,15 +80,76 @@ Legacy SSE compatibility remains available at `https://aceagent.io/mcp/sse` thro
 
 Helpful links:
 
-- [Quick start docs](https://docs.aceagent.io/docs/getting-started/quick-start/)
+- [Hosted quick start](docs/QUICKSTART.md)
+- [Docs site quick start](https://docs.aceagent.io/docs/getting-started/quick-start/)
 - [Claude Code setup](https://docs.aceagent.io/docs/developer-guides/mcp-integration/claude-code/)
 - [MCP integration guide](docs/MCP_INTEGRATION.md)
 
-## Self-Hosting
+### ACE OSS And Self-Managed Start
 
-You can run ACE on your own infrastructure with Docker Compose or a hybrid local-dev setup.
+If you want the open-source path, start with these docs in this order:
+
+1. [OSS overview](docs/oss-overview.md) for what is public OSS versus hosted/private cloud value.
+2. [Local quickstart](docs/local-quickstart.md) for the fastest self-managed setup.
+3. [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md) if you want the full ACE platform stack on your own infrastructure.
+
+## OSS Versus Hosted
+
+ACE is being split into a genuinely useful OSS core plus hosted cloud services.
+The rule from the product spec and ADR is simple: local single-user capability
+must remain usable without ACE-operated services, while premium hosted value
+comes from server-side services ACE runs.
+
+| Offer | What you get |
+| --- | --- |
+| **ACE OSS** | Local playbook engine, local/self-managed runtime, BYO model keys, self-managed storage and operations |
+| **ACE Cloud Personal** | Hosted convenience for one user: managed runtime, cloud sync, backups, hosted evals, managed inference |
+| **ACE Cloud Team** | Shared workspaces, invites, approvals, team governance, and collaboration workflows |
+| **ACE Enterprise** | Private deployment options, governance controls, and enterprise operations/support |
+
+The full boundary and current extraction state are documented in
+[docs/oss-overview.md](docs/oss-overview.md) and
+[docs/adr/0001-oss-core-vs-cloud-boundary.md](docs/adr/0001-oss-core-vs-cloud-boundary.md).
+
+## Repository Layout Today
+
+This repository is still the transition workspace for the OSS/core versus cloud
+split. Some public-runtime and cloud-only code still live side by side, so the
+supported boundary is defined by capability, not only by folder name.
+
+| Path | Current role |
+| --- | --- |
+| `packages/ace-core/` | Extracted public OSS package for the ACE engine and shared domain logic |
+| `ace_core/` | Legacy public core tree retained during extraction and compatibility work |
+| `ace_platform/` | Transitional runtime/control-plane workspace: includes local CLI/API/MCP entrypoints plus cloud-oriented services that are still being separated |
+| `web/` | Cloud dashboard frontend and hosted web UX |
+| `playbooks/` | Public starter playbooks and portability assets |
+| `docs/` | Public docs, install docs, and architecture/boundary references |
+
+Target package layout from the next-iteration product spec:
+
+```text
+packages/
+  ace-core/
+  ace-cli/
+  ace-local-server/
+  ace-mcp/
+  ace-protocol/
+  ace-provider-openai/
+  ace-provider-anthropic/
+examples/
+  starter-project/
+  benchmark-demo/
+docs/
+  oss-overview.md
+  local-quickstart.md
+```
 
 ## Symphony
+
+Symphony is repo development tooling for ACE contributors and operators. It is
+not the primary entry point for external OSS users evaluating the product split
+or the initial local install path.
 
 This repo now vendors the official OpenAI Elixir Symphony implementation under `vendor/symphony-elixir/`.
 Use the existing `symphony` command as a thin launcher for that runtime.
@@ -141,7 +209,7 @@ Notes:
   `WORKFLOW.local.md` and your local git auth are configured for that fork.
 - If you add SSH worker hosts later, repeat the `codex mcp add ace ...` setup on every worker host.
 
-### Fastest Full-Stack Docker Setup
+## Full Self-Managed Platform Setup
 
 ```bash
 git clone https://github.com/DannyMac180/ace-platform.git
@@ -158,7 +226,7 @@ curl http://localhost:8000/health
 
 That starts PostgreSQL, Redis, migrations, the FastAPI API, the MCP server, Celery workers, and the scheduler.
 
-### Local Development Setup
+## Local Runtime Development Setup
 
 ```bash
 git clone https://github.com/DannyMac180/ace-platform.git
