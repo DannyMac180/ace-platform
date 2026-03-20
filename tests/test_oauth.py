@@ -28,6 +28,26 @@ from ace_platform.db.models import OAuthProvider, User, UserOAuthAccount
 # =============================================================================
 
 
+def make_provider_mock(
+    *,
+    key: str,
+    display_name: str,
+    enabled: bool,
+):
+    provider = MagicMock()
+    provider.key = key
+    provider.display_name = display_name
+    provider.provider = OAuthProvider(key)
+    provider.is_enabled.return_value = enabled
+    provider.authorize_redirect = AsyncMock(
+        return_value=MagicMock(
+            status_code=302,
+            headers={"location": f"https://example.com/{key}/authorize"},
+        )
+    )
+    return provider
+
+
 class TestOAuthProviders:
     """Tests for OAuth provider discovery endpoint."""
 
@@ -65,15 +85,31 @@ class TestOAuthProviders:
         assert isinstance(data["google"], bool)
         assert isinstance(data["github"], bool)
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
-    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=False)
-    def test_get_providers_reflects_config(self, mock_github, mock_google, client):
+    @patch("ace_platform.api.routes.oauth.list_identity_providers")
+    def test_get_providers_reflects_config(self, mock_list_providers, client):
         """Test that providers endpoint reflects actual configuration."""
+        mock_list_providers.return_value = [
+            make_provider_mock(key="google", display_name="Google", enabled=True),
+            make_provider_mock(key="github", display_name="GitHub", enabled=False),
+        ]
+
         response = client.get("/auth/oauth/providers")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert data["google"] is True
         assert data["github"] is False
+        assert data["providers"] == [
+            {
+                "provider": "google",
+                "display_name": "Google",
+                "enabled": True,
+            },
+            {
+                "provider": "github",
+                "display_name": "GitHub",
+                "enabled": False,
+            },
+        ]
 
 
 class TestOAuthCSRFToken:
@@ -104,15 +140,13 @@ class TestOAuthCSRFToken:
 
         assert token1 == token2
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
-    @patch("ace_platform.api.routes.oauth.oauth")
-    def test_csrf_token_is_single_use_for_login(self, mock_oauth, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_csrf_token_is_single_use_for_login(self, mock_get_provider, client):
         """Test CSRF token is invalidated after OAuth login validation."""
-        mock_oauth.google.authorize_redirect = AsyncMock(
-            return_value=MagicMock(
-                status_code=302,
-                headers={"location": "https://accounts.google.com/o/oauth2/auth"},
-            )
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=True,
         )
 
         # Get a CSRF token
@@ -121,7 +155,7 @@ class TestOAuthCSRFToken:
 
         # Use it for OAuth login - this should consume the token
         client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
-        mock_oauth.google.authorize_redirect.assert_called_once()
+        mock_get_provider.return_value.authorize_redirect.assert_called_once()
 
         # Now trying to use the same token again should fail with CSRF error
         response = client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
@@ -137,31 +171,38 @@ class TestGoogleOAuthLogin:
         """Use shared test client with rate limiting disabled and no redirects."""
         return client_no_rate_limit_no_redirect
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=False)
-    def test_google_login_disabled(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_google_login_disabled(self, mock_get_provider, client):
         """Test Google login returns 400 when not configured."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=False,
+        )
         response = client.get("/auth/oauth/google/login")
         # OAuth disabled check happens before CSRF validation
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not configured" in response.json()["error"]["message"]
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
-    def test_google_login_requires_csrf(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_google_login_requires_csrf(self, mock_get_provider, client):
         """Test Google login requires CSRF token when OAuth is enabled."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=True,
+        )
         response = client.get("/auth/oauth/google/login")
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "CSRF" in response.json()["error"]["message"]
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
-    @patch("ace_platform.api.routes.oauth.oauth")
-    def test_google_login_redirects(self, mock_oauth, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_google_login_redirects(self, mock_get_provider, client):
         """Test Google login redirects to Google OAuth with valid CSRF token."""
-        # Mock the authorize_redirect to return a redirect response
-        mock_oauth.google.authorize_redirect = AsyncMock(
-            return_value=MagicMock(
-                status_code=302,
-                headers={"location": "https://accounts.google.com/o/oauth2/auth"},
-            )
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=True,
         )
 
         # First get a CSRF token
@@ -171,21 +212,18 @@ class TestGoogleOAuthLogin:
 
         # Now call login with CSRF token
         client.get(f"/auth/oauth/google/login?csrf_token={csrf_token}")
-        # The actual redirect behavior depends on Authlib, but we verify the call was made
-        mock_oauth.google.authorize_redirect.assert_called_once()
+        mock_get_provider.return_value.authorize_redirect.assert_called_once()
 
     @patch("ace_platform.api.routes.oauth._store_oauth_signup_context")
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=True)
-    @patch("ace_platform.api.routes.oauth.oauth")
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
     def test_google_login_stores_attribution_context(
-        self, mock_oauth, mock_enabled, mock_store_context, client
+        self, mock_get_provider, mock_store_context, client
     ):
         """Test Google login stores attribution/session context for callback carry-through."""
-        mock_oauth.google.authorize_redirect = AsyncMock(
-            return_value=MagicMock(
-                status_code=302,
-                headers={"location": "https://accounts.google.com/o/oauth2/auth"},
-            )
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=True,
         )
 
         csrf_response = client.get("/auth/oauth/csrf-token")
@@ -219,30 +257,38 @@ class TestGitHubOAuthLogin:
         """Use shared test client with rate limiting disabled and no redirects."""
         return client_no_rate_limit_no_redirect
 
-    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=False)
-    def test_github_login_disabled(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_github_login_disabled(self, mock_get_provider, client):
         """Test GitHub login returns 400 when not configured."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="github",
+            display_name="GitHub",
+            enabled=False,
+        )
         response = client.get("/auth/oauth/github/login")
         # OAuth disabled check happens before CSRF validation
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not configured" in response.json()["error"]["message"]
 
-    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=True)
-    def test_github_login_requires_csrf(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_github_login_requires_csrf(self, mock_get_provider, client):
         """Test GitHub login requires CSRF token when OAuth is enabled."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="github",
+            display_name="GitHub",
+            enabled=True,
+        )
         response = client.get("/auth/oauth/github/login")
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "CSRF" in response.json()["error"]["message"]
 
-    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=True)
-    @patch("ace_platform.api.routes.oauth.oauth")
-    def test_github_login_redirects(self, mock_oauth, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_github_login_redirects(self, mock_get_provider, client):
         """Test GitHub login redirects to GitHub OAuth with valid CSRF token."""
-        mock_oauth.github.authorize_redirect = AsyncMock(
-            return_value=MagicMock(
-                status_code=302,
-                headers={"location": "https://github.com/login/oauth/authorize"},
-            )
+        mock_get_provider.return_value = make_provider_mock(
+            key="github",
+            display_name="GitHub",
+            enabled=True,
         )
 
         # First get a CSRF token
@@ -252,7 +298,7 @@ class TestGitHubOAuthLogin:
 
         # Now call login with CSRF token
         client.get(f"/auth/oauth/github/login?csrf_token={csrf_token}")
-        mock_oauth.github.authorize_redirect.assert_called_once()
+        mock_get_provider.return_value.authorize_redirect.assert_called_once()
 
 
 class TestOAuthCallback:
@@ -263,15 +309,25 @@ class TestOAuthCallback:
         """Use shared test client with rate limiting disabled and no redirects."""
         return client_no_rate_limit_no_redirect
 
-    @patch("ace_platform.api.routes.oauth.is_google_oauth_enabled", return_value=False)
-    def test_google_callback_disabled(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_google_callback_disabled(self, mock_get_provider, client):
         """Test Google callback returns 400 when not configured."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="google",
+            display_name="Google",
+            enabled=False,
+        )
         response = client.get("/auth/oauth/google/callback")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("ace_platform.api.routes.oauth.is_github_oauth_enabled", return_value=False)
-    def test_github_callback_disabled(self, mock_enabled, client):
+    @patch("ace_platform.api.routes.oauth.get_identity_provider")
+    def test_github_callback_disabled(self, mock_get_provider, client):
         """Test GitHub callback returns 400 when not configured."""
+        mock_get_provider.return_value = make_provider_mock(
+            key="github",
+            display_name="GitHub",
+            enabled=False,
+        )
         response = client.get("/auth/oauth/github/callback")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -727,21 +783,32 @@ class TestOAuthSchemas:
 
     def test_oauth_providers_response(self):
         """Test OAuthProvidersResponse schema."""
-        from ace_platform.api.routes.oauth import OAuthProvidersResponse
+        from ace_platform.api.routes.oauth import OAuthProvidersResponse, OAuthProviderStatus
 
-        response = OAuthProvidersResponse(google=True, github=False)
+        response = OAuthProvidersResponse(
+            providers=[
+                OAuthProviderStatus(provider="google", display_name="Google", enabled=True),
+            ],
+            google=True,
+            github=False,
+        )
+        assert response.providers[0].provider == "google"
         assert response.google is True
         assert response.github is False
 
     def test_linked_accounts_response(self):
         """Test LinkedAccountsResponse schema."""
-        from ace_platform.api.routes.oauth import LinkedAccountsResponse
+        from ace_platform.api.routes.oauth import LinkedAccountsResponse, LinkedAccountStatus
 
         response = LinkedAccountsResponse(
+            providers=[
+                LinkedAccountStatus(provider="github", display_name="GitHub", linked=False),
+            ],
             google=True,
             github=False,
             has_password=True,
         )
+        assert response.providers[0].provider == "github"
         assert response.google is True
         assert response.github is False
         assert response.has_password is True
@@ -822,6 +889,27 @@ class TestOAuthConfiguration:
         mock_settings.return_value.github_oauth_client_secret = ""
 
         assert is_github_oauth_enabled() is False
+
+
+class TestIdentityProviderRegistry:
+    """Tests for the provider-neutral identity registry."""
+
+    @patch("ace_platform.core.identity.get_settings")
+    def test_hosted_identity_provider_enabled_from_settings(self, mock_settings):
+        """Provider enablement should be derived from configured client credentials."""
+        from ace_platform.core.identity import get_identity_provider
+
+        mock_settings.return_value.google_oauth_client_id = "client-id"
+        mock_settings.return_value.google_oauth_client_secret = "client-secret"
+
+        provider = get_identity_provider(OAuthProvider.GOOGLE)
+        assert provider.is_enabled() is True
+
+    def test_oauth_signup_context_key(self):
+        """Signup context keys should be derived from provider ids."""
+        from ace_platform.core.identity import oauth_signup_context_key
+
+        assert oauth_signup_context_key(OAuthProvider.GITHUB) == "oauth_signup_context_github"
 
 
 # =============================================================================

@@ -158,6 +158,17 @@ export function ApiKeys() {
         </SubscriptionGate>
       </div>
 
+      <div className={styles.infoBanner}>
+        <Info size={20} />
+        <div>
+          <strong>Local auth / API-key mode</strong>
+          <p>
+            Prefer not to use hosted OAuth? Sign in with email and password, then create an
+            API key here to connect Claude Code, Codex, or another MCP client.
+          </p>
+        </div>
+      </div>
+
       {/* Warning Banner */}
       <div className={styles.warning}>
         <Shield size={20} />
@@ -368,7 +379,10 @@ function EmptyState({ onCreateClick }: { onCreateClick: () => void }) {
         <Key size={48} />
       </div>
       <h2>No API keys yet</h2>
-      <p>Create an API key to connect your playbooks with Claude or other tools</p>
+      <p>
+        Create an API key to connect your playbooks with Claude, Codex, or other tools
+        without relying on hosted OAuth.
+      </p>
       <SubscriptionGate featureName="API Keys">
         <Button icon={<Plus size={18} />} onClick={onCreateClick}>
           Create your first API key
