@@ -91,6 +91,7 @@ No. `Cloud Team` exists because shared workspaces, invites, reviews, permissions
 
 ## Related Docs
 
+- [Cloud Plans Release Notes And Migration Guide](./RELEASE_NOTES_CLOUD_PLANS.md)
 - [README](../README.md)
 - [Quick Start](./QUICKSTART.md)
 - [Self-Hosted Deployment Guide](./SELF_HOSTED_DEPLOYMENT.md)
