@@ -31,6 +31,9 @@ INT_METADATA_FIELDS = (
     "times_considered_not_used",
 )
 METADATA_PATTERN = re.compile(r"([a-z_]+)=([^\s]+)")
+ACE_BULLET_PREFIX_PATTERN = re.compile(
+    r"^\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+(?:\s+[a-z_]+=[^\s]+)*\s*::\s*"
+)
 
 
 def normalize_section_name(section_raw: str) -> str:
@@ -73,6 +76,16 @@ def parse_playbook_line(line: str) -> dict[str, Any] | None:
             parsed["status"] = raw_value
 
     return parsed
+
+
+def count_playbook_bullets(playbook_text: str) -> int:
+    """Count legacy and lifecycle-enriched ACE bullets in a playbook."""
+    return sum(1 for line in playbook_text.splitlines() if parse_playbook_line(line))
+
+
+def strip_ace_bullet_prefix(text: str) -> str:
+    """Remove an ACE bullet prefix from content while preserving the body text."""
+    return ACE_BULLET_PREFIX_PATTERN.sub("", text, count=1)
 
 
 def get_next_global_id(playbook_text: str) -> int:

@@ -15,6 +15,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ace_core.playbook_utils import count_playbook_bullets
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.db.models import (
     Playbook,
@@ -46,10 +47,7 @@ def count_bullets(content: str) -> int:
     Returns:
         Number of bullets found.
     """
-    import re
-
-    pattern = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
-    return len(re.findall(pattern, content))
+    return count_playbook_bullets(content)
 
 
 def extract_description(content: str) -> str | None:
