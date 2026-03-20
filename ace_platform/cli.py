@@ -1,8 +1,10 @@
-"""CLI for ACE project bootstrap and playbook portability."""
+"""CLI for ACE project bootstrap, benchmarking, and playbook portability."""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
+import json
 import os
 import sys
 from dataclasses import dataclass
@@ -11,6 +13,7 @@ from pathlib import Path
 
 import httpx
 
+from ace_core import EvalCase, EvalResult, EvalSpec, LocalEvalRunner
 from ace_core.portability import bundle_from_json, bundle_to_json
 
 ACE_API_URL_ENV = "ACE_API_URL"
@@ -33,12 +36,32 @@ class InitLayout:
     git_enabled: bool
 
 
+@dataclass(frozen=True)
+class BenchmarkCase:
+    id: str
+    prompt: str
+    expected_output: str
+    baseline_output: str
+    ace_output: str
+    metadata: dict[str, object]
+
+
+@dataclass(frozen=True)
+class BenchmarkSuite:
+    id: str
+    metric: str
+    cases: list[BenchmarkCase]
+    metadata: dict[str, object]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "init":
         return _run_init(args)
+    if args.command == "benchmark":
+        return _run_benchmark(args)
     if args.command == "export":
         return _run_export(args, parser)
     if args.command == "import":
@@ -97,6 +120,22 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Overwrite an existing ace.toml file in the target directory.",
+    )
+
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="Compare baseline and ACE-assisted outputs against a local benchmark file.",
+    )
+    benchmark_parser.add_argument(
+        "--input",
+        required=True,
+        help="Source benchmark JSON path, or '-' for stdin.",
+    )
+    benchmark_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format for the benchmark summary. Defaults to text.",
     )
 
     common = argparse.ArgumentParser(add_help=False)
@@ -202,6 +241,26 @@ def _run_init(args: argparse.Namespace) -> int:
             default_profile=args.default_profile,
         )
     )
+    return 0
+
+
+def _run_benchmark(args: argparse.Namespace) -> int:
+    try:
+        suite = _load_benchmark_suite(args.input)
+        baseline_result, ace_result = asyncio.run(_evaluate_benchmark_suite(suite))
+        payload = _build_benchmark_summary(
+            suite=suite,
+            baseline_result=baseline_result,
+            ace_result=ace_result,
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
+        print(f"ACE benchmark failed: {exc}", file=sys.stderr)
+        return 1
+
+    if args.format == "json":
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(_format_benchmark_summary(payload))
     return 0
 
 
@@ -359,6 +418,233 @@ def _format_init_summary(
 
 def _format_toml_bool(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _load_benchmark_suite(path: str) -> BenchmarkSuite:
+    payload = json.loads(_read_text(path))
+    if not isinstance(payload, dict):
+        raise ValueError("benchmark input must be a JSON object.")
+
+    raw_cases = payload.get("cases")
+    if not isinstance(raw_cases, list) or not raw_cases:
+        raise ValueError("benchmark input must include a non-empty 'cases' list.")
+
+    raw_metadata = payload.get("metadata")
+    if raw_metadata is not None and not isinstance(raw_metadata, dict):
+        raise ValueError("benchmark 'metadata' must be an object when provided.")
+
+    suite_id = payload.get("id") or payload.get("name") or "ace-benchmark"
+    metric = _benchmark_required_string(payload, "metric", "benchmark input")
+    cases = [
+        _parse_benchmark_case(raw_case, index=index)
+        for index, raw_case in enumerate(raw_cases, start=1)
+    ]
+    return BenchmarkSuite(
+        id=str(suite_id),
+        metric=metric,
+        cases=cases,
+        metadata=dict(raw_metadata or {}),
+    )
+
+
+def _parse_benchmark_case(raw_case: object, *, index: int) -> BenchmarkCase:
+    if not isinstance(raw_case, dict):
+        raise ValueError(f"benchmark case {index} must be an object.")
+
+    raw_metadata = raw_case.get("metadata")
+    if raw_metadata is not None and not isinstance(raw_metadata, dict):
+        raise ValueError(f"benchmark case {index} metadata must be an object when provided.")
+
+    case_id = raw_case.get("id") or f"case-{index}"
+    return BenchmarkCase(
+        id=str(case_id),
+        prompt=_benchmark_required_string(raw_case, "prompt", f"benchmark case {index}"),
+        expected_output=_benchmark_required_string(
+            raw_case,
+            "expected_output",
+            f"benchmark case {index}",
+        ),
+        baseline_output=_benchmark_required_string(
+            raw_case,
+            "baseline_output",
+            f"benchmark case {index}",
+        ),
+        ace_output=_benchmark_required_string(raw_case, "ace_output", f"benchmark case {index}"),
+        metadata=dict(raw_metadata or {}),
+    )
+
+
+def _benchmark_required_string(
+    payload: dict[str, object],
+    field_name: str,
+    context: str,
+) -> str:
+    value = payload.get(field_name)
+    if not isinstance(value, str):
+        raise ValueError(f"{context} field '{field_name}' must be a string.")
+    return value
+
+
+async def _evaluate_benchmark_suite(suite: BenchmarkSuite) -> tuple[EvalResult, EvalResult]:
+    runner = LocalEvalRunner()
+    baseline_result = await runner.run(_build_eval_spec(suite, variant="baseline"))
+    ace_result = await runner.run(_build_eval_spec(suite, variant="ace"))
+    return baseline_result, ace_result
+
+
+def _build_eval_spec(suite: BenchmarkSuite, *, variant: str) -> EvalSpec:
+    output_field = "baseline_output" if variant == "baseline" else "ace_output"
+    return EvalSpec(
+        id=f"{suite.id}:{variant}",
+        metric=suite.metric,
+        metadata=dict(suite.metadata),
+        cases=[
+            EvalCase(
+                id=case.id,
+                prompt=case.prompt,
+                expected_output=case.expected_output,
+                metadata={
+                    **case.metadata,
+                    "actual_output": getattr(case, output_field),
+                },
+            )
+            for case in suite.cases
+        ],
+    )
+
+
+def _build_benchmark_summary(
+    *,
+    suite: BenchmarkSuite,
+    baseline_result: EvalResult,
+    ace_result: EvalResult,
+) -> dict[str, object]:
+    case_rows: list[dict[str, object]] = []
+    ace_wins = 0
+    baseline_wins = 0
+    ties = 0
+    improved_case_ids: list[str] = []
+    regressed_case_ids: list[str] = []
+
+    for baseline_case, ace_case in zip(
+        baseline_result.case_results,
+        ace_result.case_results,
+        strict=True,
+    ):
+        if ace_case.passed and not baseline_case.passed:
+            outcome = "ace_win"
+            ace_wins += 1
+            improved_case_ids.append(ace_case.case_id)
+        elif baseline_case.passed and not ace_case.passed:
+            outcome = "baseline_win"
+            baseline_wins += 1
+            regressed_case_ids.append(ace_case.case_id)
+        else:
+            outcome = "tie"
+            ties += 1
+
+        case_rows.append(
+            {
+                "id": ace_case.case_id,
+                "baseline_passed": baseline_case.passed,
+                "ace_passed": ace_case.passed,
+                "baseline_score": baseline_case.score,
+                "ace_score": ace_case.score,
+                "outcome": outcome,
+            }
+        )
+
+    baseline_summary = _summarize_eval_result(baseline_result)
+    ace_summary = _summarize_eval_result(ace_result)
+    return {
+        "benchmark_id": suite.id,
+        "metric": suite.metric,
+        "case_count": len(case_rows),
+        "baseline": baseline_summary,
+        "ace": ace_summary,
+        "comparison": {
+            "net_passed_delta": ace_summary["passed_cases"] - baseline_summary["passed_cases"],
+            "pass_rate_delta": ace_summary["pass_rate"] - baseline_summary["pass_rate"],
+            "score_delta": (ace_summary["score"] or 0.0) - (baseline_summary["score"] or 0.0),
+            "ace_wins": ace_wins,
+            "baseline_wins": baseline_wins,
+            "ties": ties,
+            "improved_case_ids": improved_case_ids,
+            "regressed_case_ids": regressed_case_ids,
+        },
+        "cases": case_rows,
+    }
+
+
+def _summarize_eval_result(result: EvalResult) -> dict[str, float | int | None]:
+    total_cases = len(result.case_results)
+    passed_cases = sum(1 for case_result in result.case_results if case_result.passed)
+    return {
+        "passed_cases": passed_cases,
+        "case_count": total_cases,
+        "pass_rate": (passed_cases / total_cases) if total_cases else 0.0,
+        "score": result.score,
+    }
+
+
+def _format_benchmark_summary(payload: dict[str, object]) -> str:
+    baseline = payload["baseline"]
+    ace = payload["ace"]
+    comparison = payload["comparison"]
+    improved_cases = comparison["improved_case_ids"]
+    regressed_cases = comparison["regressed_case_ids"]
+    lines = [
+        f"Benchmark: {payload['benchmark_id']}",
+        f"Metric: {payload['metric']}",
+        f"Cases: {payload['case_count']}",
+        "",
+        "Baseline",
+        (
+            f"- Passed: {baseline['passed_cases']}/{baseline['case_count']} "
+            f"({_format_ratio(float(baseline['pass_rate']))})"
+        ),
+        f"- Average score: {_format_score(baseline['score'])}",
+        "",
+        "ACE-assisted",
+        f"- Passed: {ace['passed_cases']}/{ace['case_count']} ({_format_ratio(float(ace['pass_rate']))})",
+        f"- Average score: {_format_score(ace['score'])}",
+        "",
+        "Comparison",
+        f"- Net passed cases: {_format_signed_int(int(comparison['net_passed_delta']))}",
+        f"- Pass rate delta: {_format_signed_ratio(float(comparison['pass_rate_delta']))}",
+        f"- Average score delta: {_format_signed_score(float(comparison['score_delta']))}",
+        (
+            f"- Head-to-head: {comparison['ace_wins']} ACE wins, "
+            f"{comparison['baseline_wins']} baseline wins, {comparison['ties']} ties"
+        ),
+    ]
+    if improved_cases:
+        lines.append(f"- Improved cases: {', '.join(improved_cases)}")
+    if regressed_cases:
+        lines.append(f"- Regressed cases: {', '.join(regressed_cases)}")
+    return "\n".join(lines)
+
+
+def _format_ratio(value: float) -> str:
+    return f"{value * 100:.1f}%"
+
+
+def _format_score(value: object) -> str:
+    if value is None:
+        return "n/a"
+    return f"{float(value):.3f}"
+
+
+def _format_signed_ratio(value: float) -> str:
+    return f"{value * 100:+.1f} pts"
+
+
+def _format_signed_score(value: float) -> str:
+    return f"{value:+.3f}"
+
+
+def _format_signed_int(value: int) -> str:
+    return f"{value:+d}"
 
 
 __all__ = ["main"]
