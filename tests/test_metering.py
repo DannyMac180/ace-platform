@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.dialects import postgresql
 
 from ace_platform.core.metering import (
     DailyUsage,
@@ -288,6 +289,39 @@ class TestUsageCounterSummary:
         assert summary.request_count == 4
         assert summary.total_tokens == 1200
         assert summary.total_cost_usd == Decimal("0.33")
+
+    @pytest.mark.asyncio
+    async def test_applies_workspace_filter_when_requested(self):
+        user_id = uuid4()
+        workspace_id = uuid4()
+        mock_db = AsyncMock()
+
+        mock_row = MagicMock()
+        mock_row.request_count = 1
+        mock_row.total_tokens = 42
+        mock_row.total_cost_usd = Decimal("0.01")
+
+        mock_result = MagicMock()
+        mock_result.one.return_value = mock_row
+        mock_db.execute.return_value = mock_result
+
+        await get_usage_counter_summary(
+            mock_db,
+            user_id,
+            operation_prefixes=("managed_inference",),
+            workspace_id=workspace_id,
+        )
+
+        query = mock_db.execute.await_args.args[0]
+        compiled = str(
+            query.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+        assert "usage_records.extra_data ->> 'workspace_id'" in compiled
+        assert str(workspace_id) in compiled
 
 
 class TestModelUsage:

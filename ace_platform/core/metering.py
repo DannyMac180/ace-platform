@@ -394,6 +394,7 @@ async def get_usage_counter_summary(
     end_date: datetime | None = None,
     *,
     operation_prefixes: tuple[str, ...] | None = None,
+    workspace_id: UUID | None = None,
 ) -> UsageCounterSummary:
     """Get aggregate counters, optionally filtered by usage operation prefix."""
 
@@ -416,6 +417,8 @@ async def get_usage_counter_summary(
         query = query.where(
             or_(*(UsageRecord.operation.like(f"{prefix}%") for prefix in operation_prefixes))
         )
+    if workspace_id is not None:
+        query = query.where(UsageRecord.extra_data["workspace_id"].astext == str(workspace_id))
 
     result = await db.execute(query)
     row = result.one()

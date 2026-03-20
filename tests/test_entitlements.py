@@ -10,7 +10,10 @@ from uuid import uuid4
 
 import pytest
 
-from ace_platform.core.entitlements import resolve_workspace_entitlements
+from ace_platform.core.entitlements import (
+    check_workspace_managed_inference_allowed,
+    resolve_workspace_entitlements,
+)
 from ace_platform.core.limits import SubscriptionTier, UsageStatus, get_tier_limits
 from ace_platform.db.models import SubscriptionStatus
 
@@ -206,3 +209,62 @@ async def test_workspace_usage_config_adds_soft_and_hard_thresholds(monkeypatch)
     assert snapshot.usage_limits.blocked_fields == ("managed_inference_requests",)
     assert snapshot.usage_limits.is_within_limits is False
     assert snapshot.usage_limits.limit_exceeded == "managed_inference_requests"
+
+
+@pytest.mark.asyncio
+async def test_invalid_workspace_usage_limit_strings_are_ignored(monkeypatch):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.ACTIVE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        usage_limits={
+            "storage_bytes": "100MB",
+            "managed_inference_requests": "unlimited",
+            "managed_inference_tokens": {"soft_limit": "soon", "hard_limit": "later"},
+        },
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+    )
+
+    snapshot = await resolve_workspace_entitlements(object(), user, workspace=workspace)
+    starter_limits = get_tier_limits(SubscriptionTier.STARTER)
+
+    assert snapshot.usage_limits.storage_bytes.soft_limit is None
+    assert snapshot.usage_limits.storage_bytes.hard_limit == starter_limits.storage_limit_bytes
+    assert snapshot.usage_limits.managed_inference_requests.hard_limit is None
+    assert snapshot.usage_limits.managed_inference_tokens.soft_limit is None
+    assert snapshot.usage_limits.managed_inference_tokens.hard_limit is None
+
+
+@pytest.mark.asyncio
+async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
+    user = _make_user()
+    workspace = SimpleNamespace(id=uuid4(), usage_limits={})
+    get_usage_counter_summary = AsyncMock(
+        return_value=SimpleNamespace(
+            request_count=0,
+            total_tokens=0,
+            total_cost_usd=Decimal("0"),
+        )
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_usage_counter_summary",
+        get_usage_counter_summary,
+    )
+
+    allowed, error_message = await check_workspace_managed_inference_allowed(
+        object(),
+        user,
+        workspace=workspace,
+    )
+
+    assert allowed is True
+    assert error_message is None
+    assert get_usage_counter_summary.await_args.kwargs["workspace_id"] == workspace.id

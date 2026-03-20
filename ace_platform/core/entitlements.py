@@ -227,7 +227,10 @@ def _coerce_int(value: object) -> int | None:
     if isinstance(value, float):
         return int(value)
     if isinstance(value, str) and value.strip():
-        return int(value)
+        try:
+            return int(value)
+        except ValueError:
+            return None
     return None
 
 
@@ -483,6 +486,7 @@ async def check_workspace_managed_inference_allowed(
         period_start,
         period_end,
         operation_prefixes=("managed_inference",),
+        workspace_id=getattr(workspace, "id", None),
     )
 
     request_soft_limit, request_hard_limit = _resolve_counter_thresholds(
