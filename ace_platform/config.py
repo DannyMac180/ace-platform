@@ -4,12 +4,15 @@ Environment variables are loaded from .env file and can be overridden
 by actual environment variables.
 """
 
+import json
 from functools import lru_cache
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ALLOWED_SESSION_COOKIE_SAMESITE = {"lax", "strict", "none"}
+DEFAULT_EVOLUTION_MODEL = "gpt-5.4"
+DEFAULT_EVOLUTION_REASONING_EFFORT = "medium"
 
 
 class Settings(BaseSettings):
@@ -42,6 +45,10 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(
         default="",
         description="OpenAI API key for LLM calls",
+    )
+    anthropic_api_key: str = Field(
+        default="",
+        description="Anthropic API key for managed inference and direct calls",
     )
     playbook_embedding_model: str = Field(
         default="text-embedding-3-small",
@@ -108,19 +115,19 @@ class Settings(BaseSettings):
         description="LLM provider for evolution (openai, anthropic, together)",
     )
     evolution_generator_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Generator agent",
     )
     evolution_reflector_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Reflector agent",
     )
     evolution_curator_model: str = Field(
-        default="gpt-5.2",
+        default=DEFAULT_EVOLUTION_MODEL,
         description="Model for Curator agent",
     )
     evolution_reasoning_effort: str = Field(
-        default="medium",
+        default=DEFAULT_EVOLUTION_REASONING_EFFORT,
         description="Reasoning effort for GPT-5.x models (none, low, medium, high)",
     )
     evolution_max_tokens: int = Field(
@@ -297,6 +304,15 @@ class Settings(BaseSettings):
         description="Bearer token required to access /metrics endpoint. Leave empty to allow unauthenticated access.",
     )
 
+    # Pre-GA rollout controls
+    pre_ga_rollouts: dict[str, dict[str, object]] = Field(
+        default_factory=dict,
+        description=(
+            "JSON mapping of pre-GA plan/capability rollout keys to rules. "
+            "Supported rule fields: enabled, environments, emails, user_ids."
+        ),
+    )
+
     # Security Headers
     security_headers_enabled: bool = Field(
         default=True,
@@ -395,6 +411,21 @@ class Settings(BaseSettings):
             )
 
         return domain
+
+    @field_validator("pre_ga_rollouts", mode="before")
+    @classmethod
+    def parse_pre_ga_rollouts(cls, v: object) -> dict[str, dict[str, object]]:
+        """Parse rollout rules from JSON environment input."""
+        if v in (None, "", {}):
+            return {}
+        if isinstance(v, str):
+            loaded = json.loads(v)
+            if not isinstance(loaded, dict):
+                raise ValueError("PRE_GA_ROLLOUTS must decode to an object")
+            return loaded
+        if isinstance(v, dict):
+            return v
+        raise ValueError("PRE_GA_ROLLOUTS must be a JSON object or mapping")
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

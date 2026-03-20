@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+venv_python="$repo_root/venv/bin/python"
+
+if [[ -x "$venv_python" ]]; then
+  exec "$venv_python" -m ace_platform.symphony.pr_media "$@"
+fi
+
+exec python3 -m ace_platform.symphony.pr_media "$@"

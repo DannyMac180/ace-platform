@@ -15,6 +15,14 @@ const mocks = vi.hoisted(() => ({
   listAuditLogs: vi.fn(),
   exportData: vi.fn(),
   deleteAccount: vi.fn(),
+  listWorkspaces: vi.fn(),
+  listMemberships: vi.fn(),
+  listInvitations: vi.fn(),
+  listMyInvitations: vi.fn(),
+  createInvitation: vi.fn(),
+  deleteInvitation: vi.fn(),
+  acceptInvitation: vi.fn(),
+  removeMembership: vi.fn(),
 }));
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -48,6 +56,16 @@ vi.mock('../../utils/api', () => ({
     exportData: mocks.exportData,
     deleteAccount: mocks.deleteAccount,
   },
+  workspacesApi: {
+    list: mocks.listWorkspaces,
+    listMemberships: mocks.listMemberships,
+    listInvitations: mocks.listInvitations,
+    listMyInvitations: mocks.listMyInvitations,
+    createInvitation: mocks.createInvitation,
+    deleteInvitation: mocks.deleteInvitation,
+    acceptInvitation: mocks.acceptInvitation,
+    removeMembership: mocks.removeMembership,
+  },
 }));
 
 function renderSettings() {
@@ -79,6 +97,14 @@ describe('Settings', () => {
       page_size: 20,
       total_pages: 1,
     });
+    mocks.listWorkspaces.mockResolvedValue([]);
+    mocks.listMemberships.mockResolvedValue([]);
+    mocks.listInvitations.mockResolvedValue([]);
+    mocks.listMyInvitations.mockResolvedValue([]);
+    mocks.createInvitation.mockResolvedValue({});
+    mocks.deleteInvitation.mockResolvedValue(undefined);
+    mocks.acceptInvitation.mockResolvedValue({});
+    mocks.removeMembership.mockResolvedValue(undefined);
   });
 
   it('sets a password via modal when account has no password', async () => {
@@ -123,6 +149,73 @@ describe('Settings', () => {
     await waitFor(() => {
       expect(mocks.deleteAccount).toHaveBeenCalledWith('DELETE', undefined);
       expect(mocks.logout).toHaveBeenCalled();
+    });
+  });
+
+  it('creates a workspace invitation from the members section', async () => {
+    const user = userEvent.setup();
+    mocks.listWorkspaces.mockResolvedValue([
+      {
+        id: 'workspace-1',
+        name: 'Team Alpha',
+        plan: 'team',
+        deployment_mode: 'cloud',
+        seat_limit: 5,
+        inference_config: {
+          mode: 'managed_provider',
+          provider: 'openai',
+          available_modes: ['byo_provider', 'managed_provider'],
+        },
+        member_count: 1,
+        current_user_role: 'owner',
+      },
+    ]);
+    mocks.listMemberships.mockResolvedValue([
+      {
+        id: 'member-1',
+        workspace_id: 'workspace-1',
+        user_id: 'user-1',
+        user_email: 'test@example.com',
+        role: 'owner',
+      },
+    ]);
+
+    renderSettings();
+
+    await screen.findByRole('heading', { name: 'Workspace Members' });
+    await user.type(screen.getByLabelText('Invite by email'), 'teammate@example.com');
+    await user.click(screen.getByRole('button', { name: 'Send invite' }));
+
+    await waitFor(() => {
+      expect(mocks.createInvitation).toHaveBeenCalledWith('workspace-1', {
+        email: 'teammate@example.com',
+        role: 'member',
+      });
+    });
+  });
+
+  it('accepts an inbound workspace invitation', async () => {
+    const user = userEvent.setup();
+    mocks.listMyInvitations.mockResolvedValue([
+      {
+        id: 'invite-1',
+        workspace_id: 'workspace-1',
+        workspace_name: 'Team Alpha',
+        invited_email: 'test@example.com',
+        role: 'member',
+        invited_by_user_id: 'user-2',
+        invited_by_email: 'owner@example.com',
+        created_at: '2026-03-18T12:00:00Z',
+      },
+    ]);
+
+    renderSettings();
+
+    await user.click(await screen.findByRole('button', { name: 'Accept' }));
+
+    await waitFor(() => {
+      expect(mocks.acceptInvitation).toHaveBeenCalledWith('invite-1');
+      expect(mocks.refreshUser).toHaveBeenCalled();
     });
   });
 });

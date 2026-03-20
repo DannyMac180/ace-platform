@@ -48,6 +48,8 @@ export interface Playbook {
   name: string;
   description: string | null;
   status: 'active' | 'paused' | 'archived';
+  review_status: 'draft' | 'proposed' | 'approved' | 'archived';
+  review_status_updated_at: string | null;
   source: 'user_created' | 'starter' | 'imported';
   created_at: string;
   updated_at: string;
@@ -57,6 +59,16 @@ export interface Playbook {
 export interface PlaybookListItem extends Omit<Playbook, 'current_version'> {
   version_count: number;
   outcome_count: number;
+}
+
+export interface SharedPlaybookOwner {
+  user_id: string;
+  email: string;
+}
+
+export interface WorkspaceSharedPlaybook extends PlaybookListItem {
+  owner: SharedPlaybookOwner;
+  is_owned_by_current_user: boolean;
 }
 
 export interface PlaybookVersion {
@@ -79,6 +91,20 @@ export interface PlaybookUpdate {
   name?: string;
   description?: string;
   status?: 'active' | 'paused' | 'archived';
+}
+
+export interface PlaybookReviewActionRequest {
+  action: 'proposed' | 'approved' | 'returned_to_draft' | 'archived';
+}
+
+export interface PlaybookReviewActivityItem {
+  id: string;
+  action: 'created' | 'proposed' | 'approved' | 'returned_to_draft' | 'archived';
+  from_review_status: 'draft' | 'proposed' | 'approved' | 'archived' | null;
+  to_review_status: 'draft' | 'proposed' | 'approved' | 'archived';
+  actor_user_id: string | null;
+  actor_email: string | null;
+  created_at: string;
 }
 
 export interface VersionCreate {
@@ -114,6 +140,155 @@ export interface EvolutionJob {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+}
+
+export interface HostedEvalRunVersion {
+  id: string;
+  version_number: number;
+  created_at: string;
+  diff_summary: string | null;
+}
+
+export interface HostedEvalRun {
+  id: string;
+  workspace_id: string;
+  playbook_id: string;
+  playbook_name: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  outcomes_processed: number;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  ace_core_version: string | null;
+  token_totals: Record<string, unknown> | null;
+  has_changes: boolean | null;
+  from_version: HostedEvalRunVersion | null;
+  to_version: HostedEvalRunVersion | null;
+}
+
+export interface TriggerHostedEvalRunResponse extends HostedEvalRun {
+  is_new: boolean;
+}
+
+export type WorkspaceRole = 'owner' | 'member' | 'reviewer' | 'admin';
+
+export interface WorkspaceInferenceConfig {
+  mode: 'byo_provider' | 'managed_provider';
+  provider: 'openai' | 'anthropic';
+  available_modes: Array<'byo_provider' | 'managed_provider'>;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number;
+  inference_config: WorkspaceInferenceConfig;
+  member_count: number;
+  current_user_role: WorkspaceRole;
+}
+
+export interface WorkspaceMembership {
+  id: string;
+  workspace_id: string;
+  user_id: string;
+  user_email: string;
+  role: WorkspaceRole;
+}
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspace_id: string;
+  workspace_name: string;
+  invited_email: string;
+  role: WorkspaceRole;
+  invited_by_user_id: string;
+  invited_by_email: string;
+  created_at: string;
+}
+
+export interface WorkspaceFeatureAccess {
+  cloud_sync: boolean;
+  hosted_backups: boolean;
+  managed_inference: boolean;
+  hosted_evals: boolean;
+  invite_members: boolean;
+  shared_workspace: boolean;
+  approvals: boolean;
+  rbac: boolean;
+  sso: boolean;
+  audit_logs: boolean;
+}
+
+export interface WorkspaceAccessState {
+  subscription_tier: string;
+  subscription_status: string;
+  effective_tier: string;
+  has_feature_access: boolean;
+  is_trialing: boolean;
+}
+
+export interface WorkspaceUsageCounter {
+  current: number;
+  soft_limit: number | null;
+  hard_limit: number | null;
+  remaining_soft: number | null;
+  remaining_hard: number | null;
+  status: 'ok' | 'warning' | 'blocked';
+}
+
+export interface WorkspaceUsageLimits {
+  monthly_evolution_runs: number | null;
+  current_evolution_runs: number;
+  remaining_evolution_runs: number | null;
+  monthly_cost_limit_usd: string | number | null;
+  current_cost_usd: string | number;
+  remaining_cost_usd: string | number | null;
+  current_total_tokens: number;
+  max_playbooks: number | null;
+  storage_bytes: WorkspaceUsageCounter;
+  hosted_eval_runs: WorkspaceUsageCounter;
+  managed_inference_requests: WorkspaceUsageCounter;
+  managed_inference_tokens: WorkspaceUsageCounter;
+  warning_fields: string[];
+  blocked_fields: string[];
+  is_within_limits: boolean;
+  limit_exceeded: string | null;
+}
+
+export interface WorkspaceEntitlements {
+  workspace_id: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number | null;
+  enabled_features: string[];
+  access: WorkspaceAccessState;
+  entitlements: WorkspaceFeatureAccess;
+  usage_limits: WorkspaceUsageLimits;
+}
+
+export interface WorkspaceInferenceConfig {
+  mode: 'byo_provider' | 'managed_provider';
+  provider: 'openai' | 'anthropic';
+  available_modes: Array<'byo_provider' | 'managed_provider'>;
+}
+
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  plan: 'personal' | 'team' | 'enterprise';
+  deployment_mode: 'cloud' | 'self_hosted';
+  seat_limit: number;
+  inference_config: WorkspaceInferenceConfig;
+  member_count: number;
+  current_user_role: 'owner' | 'member' | 'reviewer' | 'admin';
+}
+
+export interface UpgradePersonalWorkspaceToTeamRequest {
+  name?: string;
+  seat_limit?: number;
 }
 
 export interface UsageSummary {

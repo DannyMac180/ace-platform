@@ -66,6 +66,12 @@ class TestCeleryAppConfiguration:
         assert "default" in queues
         assert "evolution" in queues
 
+    def test_workspace_backup_schedule_registered(self):
+        """Test hosted personal workspace backups are scheduled."""
+        from ace_platform.workers import celery_app
+
+        assert "backup-hosted-personal-workspaces" in celery_app.conf.beat_schedule
+
     def test_result_expires_set(self):
         """Test result expiration is configured."""
         from ace_platform.workers import celery_app
@@ -125,3 +131,9 @@ class TestCeleryAppImports:
         from ace_platform.workers.celery_app import health_check
 
         assert health_check is not None
+
+    def test_import_workspace_backup_task(self):
+        """Test workspace backup task is exported from the workers package."""
+        from ace_platform.workers import backup_hosted_personal_workspaces_task
+
+        assert backup_hosted_personal_workspaces_task is not None

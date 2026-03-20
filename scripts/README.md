@@ -28,6 +28,7 @@ You also need:
 - `LINEAR_API_KEY` in your shell
 - `codex` on your `PATH`
 - `mise` installed
+- a Linear token that resolves to workspace `danmac` and a project attached to team `DAN`
 
 #### Usage
 
@@ -36,12 +37,80 @@ You also need:
 ```
 
 The script starts the dashboard at `http://127.0.0.1:4000/` by default.
+Before launch, it validates that `LINEAR_API_KEY` points at the expected Linear
+workspace and that the configured workflow project belongs to the expected team.
+By default this repo expects workspace URL key `danmac` and team key `DAN`.
 
 Override the port with:
 
 ```bash
 SYMPHONY_PORT=4001 ./scripts/run-symphony.sh
 ```
+
+If you intentionally need to repoint the guard for another workspace or team:
+
+```bash
+SYMPHONY_LINEAR_WORKSPACE_URL_KEY=your-workspace \
+SYMPHONY_LINEAR_TEAM_KEY=ENG \
+./scripts/run-symphony.sh
+```
+
+### launch-app
+
+Runtime validation wrapper for app-touching Symphony tasks.
+
+The wrapper can start the local backend and frontend, wait for them to become
+reachable, fetch one or more frontend routes, and write a manifest plus captured
+artifacts under `.artifacts/launch-app/`.
+
+Example:
+
+```bash
+./scripts/launch-app \
+  --start-backend \
+  --start-frontend \
+  --replace-frontend \
+  --route / \
+  --route /pricing \
+  --issue DAN-35
+```
+
+Notes:
+
+- Artifacts always include `manifest.json`.
+- If a headless Chrome/Chromium executable is available, the wrapper also saves
+  PNG screenshots for each route.
+- If no browser executable is available, the wrapper still saves HTML/JSON/text
+  snapshots and records the screenshot limitation in the manifest.
+
+### github-pr-media
+
+Upload runtime artifacts to the associated Linear issue and link them from the
+current PR.
+
+The wrapper:
+
+1. reads the artifacts from `.artifacts/launch-app/`
+2. uploads them to Linear private storage using `LINEAR_API_KEY`
+3. creates issue attachments and a Linear issue comment summarizing the files
+4. posts a GitHub PR comment linking back to the Linear issue/comment and the
+   uploaded asset URLs
+
+Example:
+
+```bash
+LINEAR_API_KEY=lin_api_xxx ./scripts/github-pr-media \
+  --issue DAN-35 \
+  --pr 243 \
+  --summary "Validated the updated usage page locally."
+```
+
+Notes:
+
+- By default the wrapper infers the Linear issue from the current Symphony
+  workspace path or branch name.
+- Linear asset URLs require Linear authentication outside the Linear app, so the
+  PR comment links both the Linear issue and the uploaded files.
 
 ## Load Testing
 

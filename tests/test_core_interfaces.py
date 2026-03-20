@@ -7,6 +7,7 @@ import pytest
 
 import ace_core
 from ace_core.contracts import (
+    BYOProviderConfig,
     Entitlements,
     EvalCase,
     EvalCaseResult,
@@ -16,6 +17,7 @@ from ace_core.contracts import (
     Feature,
     InferenceGateway,
     InferenceMessage,
+    ManagedProviderConfig,
     ModelRequest,
     ModelResponse,
     PlaybookRecord,
@@ -218,8 +220,32 @@ def test_feature_catalog_matches_product_spec() -> None:
 
 
 def test_contracts_are_re_exported_from_ace_core() -> None:
+    assert ace_core.BYOProviderConfig is BYOProviderConfig
     assert ace_core.PlaybookStore is PlaybookStore
     assert ace_core.SyncBackend is SyncBackend
     assert ace_core.InferenceGateway is InferenceGateway
+    assert ace_core.ManagedProviderConfig is ManagedProviderConfig
     assert ace_core.EvalRunner is EvalRunner
     assert ace_core.Entitlements is Entitlements
+
+
+def test_model_request_supports_byo_and_managed_inference_configs() -> None:
+    byo_request = ModelRequest(
+        model="gpt-5.4",
+        messages=[InferenceMessage(role="user", content="hello")],
+        inference_config=BYOProviderConfig(provider="openai", api_key="sk-byo"),
+    )
+    managed_request = ModelRequest(
+        model="gpt-5.4",
+        messages=[InferenceMessage(role="user", content="hello")],
+        inference_config=ManagedProviderConfig(provider="openai", workspace_id="ws-1"),
+    )
+
+    assert byo_request.inference_config == BYOProviderConfig(
+        provider="openai",
+        api_key="sk-byo",
+    )
+    assert managed_request.inference_config == ManagedProviderConfig(
+        provider="openai",
+        workspace_id="ws-1",
+    )

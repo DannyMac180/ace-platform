@@ -8,7 +8,7 @@ from ace_platform.core.workspaces import (
     resolve_workspace_usage,
     validate_workspace_shape,
 )
-from ace_platform.db.models import DeploymentMode, Workspace, WorkspacePlan
+from ace_platform.db.models import DeploymentMode, Workspace, WorkspaceEntitlement, WorkspacePlan
 
 
 @pytest.mark.asyncio
@@ -91,8 +91,14 @@ def test_workspace_entitlement_and_usage_overrides_merge_with_plan_defaults():
         plan=WorkspacePlan.TEAM,
         deployment_mode=DeploymentMode.CLOUD,
         seat_limit=12,
-        entitlement_overrides={"audit_logs": False},
-        usage_limit_overrides={"monthly_evolution_runs": 500, "max_members": 12},
+        usage_limits={"monthly_evolution_runs": 500, "max_members": 12},
+        inference_config={},
+        entitlements=WorkspaceEntitlement(
+            **{
+                **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.TEAM),
+                "audit_logs": False,
+            }
+        ),
     )
 
     entitlements = resolve_workspace_entitlements(workspace)

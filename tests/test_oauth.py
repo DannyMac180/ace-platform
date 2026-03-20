@@ -543,6 +543,36 @@ class TestOAuthService:
         ensure_workspace.assert_awaited_once_with(mock_db, user)
 
     @pytest.mark.asyncio
+    async def test_get_or_create_new_user_bootstraps_personal_workspace(
+        self, oauth_service, mock_db, monkeypatch
+    ):
+        """Test that new OAuth users are bootstrapped into a personal workspace."""
+        from ace_platform.core import oauth_service as oauth_service_module
+
+        mock_oauth_result = MagicMock()
+        mock_oauth_result.scalar_one_or_none.return_value = None
+
+        mock_user_result = MagicMock()
+        mock_user_result.scalar_one_or_none.return_value = None
+
+        ensure_workspace = AsyncMock()
+        monkeypatch.setattr(
+            oauth_service_module,
+            "ensure_personal_workspace_for_user",
+            ensure_workspace,
+        )
+        mock_db.execute.side_effect = [mock_oauth_result, mock_user_result]
+
+        await oauth_service.get_or_create_user_from_oauth(
+            provider=OAuthProvider.GITHUB,
+            provider_user_id="github-123",
+            email="new-bootstrap@example.com",
+            user_info={"id": "github-123", "email": "new-bootstrap@example.com"},
+        )
+
+        ensure_workspace.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_unlink_prevents_orphaning(self, oauth_service, mock_db, mock_user):
         """Test that unlinking is prevented when it's the only auth method."""
         # User has no password and only one OAuth account

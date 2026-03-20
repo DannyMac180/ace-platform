@@ -32,6 +32,14 @@ from ace_platform.core.limits import (
 from ace_platform.db.models import SubscriptionStatus
 
 
+def _mock_managed_inference_summary():
+    summary = MagicMock()
+    summary.request_count = 0
+    summary.total_tokens = 0
+    summary.total_cost_usd = Decimal("0")
+    return summary
+
+
 class TestTierLimits:
     """Tests for tier limit definitions."""
 
@@ -46,6 +54,7 @@ class TestTierLimits:
         limits = get_tier_limits(SubscriptionTier.FREE)
         assert limits.monthly_evolution_runs == 5
         assert limits.max_playbooks == 1
+        assert limits.storage_limit_bytes == 5 * 1024 * 1024
         assert limits.can_use_premium_models is False
 
     def test_starter_tier_limits(self):
@@ -121,9 +130,13 @@ class TestUsageStatus:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under $1 limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=512)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
 
@@ -134,6 +147,7 @@ class TestUsageStatus:
         assert status.current_total_tokens == 1234
         assert status.current_cost_usd == Decimal("0.50")
         assert status.remaining_cost_usd == Decimal("0.50")  # $1 - $0.50
+        assert status.current_storage_bytes == 512
 
     @pytest.mark.asyncio
     async def test_usage_status_exceeds_limit(self):
@@ -146,9 +160,13 @@ class TestUsageStatus:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
 
@@ -167,9 +185,13 @@ class TestUsageStatus:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("4.50")  # Under $9 limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.STARTER)
 
@@ -188,9 +210,13 @@ class TestUsageStatus:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("10000.00")  # Huge cost
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.ENTERPRISE)
 
@@ -213,9 +239,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             can_proceed, error = await check_can_evolve(
                 mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
@@ -234,9 +264,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0")
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             can_proceed, error = await check_can_evolve(
                 mock_db, user_id, SubscriptionTier.FREE, has_payment_method=False
@@ -257,9 +291,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             # Starter tier doesn't require has_payment_method check (subscription implies card)
             can_proceed, error = await check_can_evolve(
@@ -280,9 +318,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0.50")  # Under cost limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             can_proceed, error = await check_can_evolve(
                 mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
@@ -303,9 +345,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("1.50")  # Over $1 cost limit for FREE tier
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             can_proceed, error = await check_can_evolve(
                 mock_db, user_id, SubscriptionTier.FREE, has_payment_method=True
@@ -326,9 +372,13 @@ class TestCheckCanEvolve:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("0")
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             can_proceed, error = await check_can_evolve(
                 mock_db, user_id, SubscriptionTier.FREE, has_payment_method=False
@@ -400,8 +450,13 @@ class TestDataclasses:
             current_cost_usd=Decimal("4.50"),
             remaining_evolution_runs=50,
             remaining_cost_usd=Decimal("4.50"),
+            remaining_storage_bytes=1000,
             is_within_limits=True,
             limit_exceeded=None,
+            current_managed_inference_requests=12,
+            current_managed_inference_tokens=600,
+            current_managed_inference_cost_usd=Decimal("0.90"),
+            current_storage_bytes=2048,
         )
         assert status.tier == SubscriptionTier.STARTER
         assert status.is_within_limits is True
@@ -409,6 +464,8 @@ class TestDataclasses:
         assert status.remaining_evolution_runs == 50
         assert status.current_cost_usd == Decimal("4.50")
         assert status.remaining_cost_usd == Decimal("4.50")
+        assert status.current_storage_bytes == 2048
+        assert status.current_managed_inference_requests == 12
 
 
 class TestSpendingCap:
@@ -433,9 +490,13 @@ class TestSpendingCap:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
 
@@ -453,9 +514,13 @@ class TestSpendingCap:
         mock_summary.total_tokens = 1234
         mock_summary.total_cost_usd = Decimal("2.00")  # Over $1 cost limit
 
-        with patch(
-            "ace_platform.core.limits.get_user_usage_summary",
-            return_value=mock_summary,
+        with (
+            patch("ace_platform.core.limits.get_user_usage_summary", return_value=mock_summary),
+            patch(
+                "ace_platform.core.limits.get_usage_counter_summary",
+                AsyncMock(return_value=_mock_managed_inference_summary()),
+            ),
+            patch("ace_platform.core.limits.get_user_storage_bytes", AsyncMock(return_value=0)),
         ):
             status = await get_user_usage_status(mock_db, user_id, SubscriptionTier.FREE)
 
