@@ -35,6 +35,7 @@ from ace_platform.api.routes.admin import (
     create_workspace_backup,
     get_conversion_funnel,
     get_operational_health,
+    get_sync_health_snapshot,
     list_workspace_backups,
     restore_workspace_backup,
 )
@@ -646,6 +647,42 @@ class TestAdminQueryParams:
 
 class TestAdminOperationalHealth:
     """Tests for the operational health admin route."""
+
+    @pytest.mark.asyncio
+    async def test_get_sync_health_snapshot_counts_all_active_workspaces_for_shared_user(self):
+        """User activity should mark every hosted personal workspace they belong to as active."""
+        now = datetime.now(timezone.utc)
+        user_id = uuid4()
+        first_workspace_id = uuid4()
+        second_workspace_id = uuid4()
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                SimpleNamespace(
+                    all=lambda: [
+                        SimpleNamespace(id=first_workspace_id, user_id=user_id),
+                        SimpleNamespace(id=second_workspace_id, user_id=user_id),
+                    ]
+                ),
+                SimpleNamespace(
+                    all=lambda: [
+                        SimpleNamespace(
+                            user_id=user_id,
+                            event_count=2,
+                            last_activity_at=now,
+                        )
+                    ]
+                ),
+                SimpleNamespace(all=lambda: []),
+            ]
+        )
+
+        response = await get_sync_health_snapshot(db, now=now)
+
+        assert response.status == "healthy"
+        assert response.enabled_workspaces == 2
+        assert response.active_workspaces_24h == 2
+        assert response.sync_events_24h == 2
 
     @pytest.mark.asyncio
     async def test_get_operational_health_combines_component_snapshots(self, monkeypatch):

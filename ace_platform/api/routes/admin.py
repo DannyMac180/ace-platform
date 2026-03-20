@@ -318,10 +318,12 @@ async def get_sync_health_snapshot(
     ).all()
 
     workspace_ids = {row.id for row in workspace_rows}
-    user_to_workspace = {row.user_id: row.id for row in workspace_rows}
+    user_to_workspaces: dict[UUID, set[UUID]] = {}
+    for row in workspace_rows:
+        user_to_workspaces.setdefault(row.user_id, set()).add(row.id)
 
     playbook_rows = []
-    if user_to_workspace:
+    if user_to_workspaces:
         playbook_rows = (
             await db.execute(
                 select(
@@ -330,7 +332,7 @@ async def get_sync_health_snapshot(
                     func.max(Playbook.updated_at).label("last_activity_at"),
                 )
                 .where(
-                    Playbook.user_id.in_(list(user_to_workspace.keys())),
+                    Playbook.user_id.in_(list(user_to_workspaces.keys())),
                     Playbook.updated_at >= window_start,
                 )
                 .group_by(Playbook.user_id)
@@ -354,9 +356,9 @@ async def get_sync_health_snapshot(
             )
         ).all()
 
-    active_workspace_ids = {
-        user_to_workspace[row.user_id] for row in playbook_rows if row.user_id in user_to_workspace
-    }
+    active_workspace_ids: set[UUID] = set()
+    for row in playbook_rows:
+        active_workspace_ids.update(user_to_workspaces.get(row.user_id, set()))
     active_workspace_ids.update(row.workspace_id for row in tombstone_rows)
 
     last_activity_at = None
