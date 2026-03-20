@@ -13,7 +13,8 @@ import openai
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ace_platform.db.models import UsageRecord
+from ace_platform.core.entitlements import check_workspace_managed_inference_allowed
+from ace_platform.db.models import UsageRecord, Workspace
 
 # Pricing per 1M tokens (as of Dec 2024)
 # Format: {model_name: (input_price, output_price)}
@@ -58,6 +59,21 @@ class UsageInfo:
     model: str
     cost_usd: Decimal
     request_id: str | None = None
+
+
+def _merge_extra_data(
+    extra_data: dict[str, Any] | None,
+    *,
+    workspace_id: UUID | None,
+) -> dict[str, Any] | None:
+    """Persist workspace attribution alongside any caller-provided extra data."""
+
+    if workspace_id is None:
+        return extra_data
+
+    merged = dict(extra_data or {})
+    merged.setdefault("workspace_id", str(workspace_id))
+    return merged
 
 
 def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> Decimal:
@@ -134,6 +150,7 @@ class MeteredLLMClient:
         operation: str,
         *,
         playbook_id: UUID | None = None,
+        workspace_id: UUID | None = None,
         evolution_job_id: UUID | None = None,
         max_tokens: int | None = None,
         temperature: float = 0.0,
@@ -159,6 +176,8 @@ class MeteredLLMClient:
         Raises:
             openai.OpenAIError: On API errors.
         """
+        extra_data = _merge_extra_data(extra_data, workspace_id=workspace_id)
+
         # Prepare API call parameters
         api_params: dict[str, Any] = {
             "model": model,
@@ -301,6 +320,7 @@ class AsyncMeteredLLMClient:
         operation: str,
         *,
         playbook_id: UUID | None = None,
+        workspace_id: UUID | None = None,
         evolution_job_id: UUID | None = None,
         max_tokens: int | None = None,
         temperature: float = 0.0,
@@ -326,6 +346,18 @@ class AsyncMeteredLLMClient:
         Raises:
             openai.OpenAIError: On API errors.
         """
+        extra_data = _merge_extra_data(extra_data, workspace_id=workspace_id)
+
+        if operation.startswith("managed_inference") and workspace_id is not None:
+            workspace = await self._db.get(Workspace, workspace_id)
+            allowed, error_message = await check_workspace_managed_inference_allowed(
+                self._db,
+                type("UsageUser", (), {"id": self._user_id})(),
+                workspace=workspace,
+            )
+            if not allowed:
+                raise ValueError(error_message or "Managed inference limit reached.")
+
         # Prepare API call parameters
         api_params: dict[str, Any] = {
             "model": model,

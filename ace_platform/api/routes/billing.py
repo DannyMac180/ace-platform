@@ -42,6 +42,9 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 class TierLimitsResponse(BaseModel):
     """Response schema for tier limits."""
 
+    storage_limit_bytes: int | None = None
+    monthly_hosted_eval_runs: int | None = None
+    monthly_managed_inference_cost_limit_usd: Decimal | None = None
     monthly_requests: int | None
     monthly_tokens: int | None
     monthly_cost_usd: Decimal | None
@@ -100,6 +103,17 @@ class UsageResponse(BaseModel):
 
     period_start: datetime
     period_end: datetime
+    storage_used_bytes: int = 0
+    storage_limit_bytes: int | None = None
+    storage_remaining_bytes: int | None = None
+    hosted_eval_runs_used: int = 0
+    hosted_eval_runs_limit: int | None = None
+    hosted_eval_runs_remaining: int | None = None
+    managed_inference_requests_used: int = 0
+    managed_inference_tokens_used: int = 0
+    managed_inference_cost_usd: Decimal = Decimal("0")
+    managed_inference_cost_limit_usd: Decimal | None = None
+    managed_inference_cost_remaining_usd: Decimal | None = None
     requests_used: int
     requests_limit: int | None
     requests_remaining: int | None
@@ -204,6 +218,11 @@ def _build_subscription_response(
         current_period_start=get_billing_period_start(),
         current_period_end=_get_user_period_end(current_user),
         limits=TierLimitsResponse(
+            storage_limit_bytes=limits.storage_limit_bytes,
+            monthly_hosted_eval_runs=limits.monthly_hosted_eval_runs,
+            monthly_managed_inference_cost_limit_usd=(
+                limits.monthly_managed_inference_cost_limit_usd
+            ),
             monthly_requests=limits.monthly_evolution_runs,
             monthly_tokens=None,  # Not tracked separately
             monthly_cost_usd=limits.monthly_cost_limit_usd,
@@ -282,6 +301,17 @@ async def get_billing_usage(
     return UsageResponse(
         period_start=get_billing_period_start(),
         period_end=_get_user_period_end(current_user),
+        storage_used_bytes=status.current_storage_bytes,
+        storage_limit_bytes=status.limits.storage_limit_bytes,
+        storage_remaining_bytes=status.remaining_storage_bytes,
+        hosted_eval_runs_used=status.current_hosted_eval_runs,
+        hosted_eval_runs_limit=status.limits.monthly_hosted_eval_runs,
+        hosted_eval_runs_remaining=status.remaining_hosted_eval_runs,
+        managed_inference_requests_used=status.current_managed_inference_requests,
+        managed_inference_tokens_used=status.current_managed_inference_tokens,
+        managed_inference_cost_usd=status.current_managed_inference_cost_usd,
+        managed_inference_cost_limit_usd=status.limits.monthly_managed_inference_cost_limit_usd,
+        managed_inference_cost_remaining_usd=status.remaining_managed_inference_cost_usd,
         requests_used=status.current_evolution_runs,
         requests_limit=status.limits.monthly_evolution_runs,
         requests_remaining=status.remaining_evolution_runs,

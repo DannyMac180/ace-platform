@@ -73,6 +73,10 @@ def test_managed_inference_returns_normalized_response():
             new=AsyncMock(return_value=None),
         ),
         patch(
+            "ace_platform.api.routes.workspaces.check_workspace_managed_inference_allowed",
+            new=AsyncMock(return_value=(True, None)),
+        ),
+        patch(
             "ace_platform.api.routes.workspaces.ManagedInferenceGateway.call",
             new=AsyncMock(return_value=response_model),
         ),
@@ -111,6 +115,10 @@ def test_managed_inference_returns_service_unavailable_when_provider_is_unconfig
         patch(
             "ace_platform.api.routes.workspaces._resolve_entitlements_workspace",
             new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.check_workspace_managed_inference_allowed",
+            new=AsyncMock(return_value=(True, None)),
         ),
         patch(
             "ace_platform.api.routes.workspaces.ManagedInferenceGateway.call",

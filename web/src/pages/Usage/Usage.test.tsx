@@ -77,7 +77,7 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 function buildEntitlements(overrides: Record<string, unknown> = {}) {
-  return {
+  const base = {
     workspace_id: 'me',
     plan: 'personal',
     deployment_mode: 'cloud',
@@ -111,10 +111,60 @@ function buildEntitlements(overrides: Record<string, unknown> = {}) {
       remaining_cost_usd: '6.60',
       current_total_tokens: 4000,
       max_playbooks: 5,
+      storage_bytes: {
+        current: 2048,
+        soft_limit: 1024,
+        hard_limit: 4096,
+        remaining_soft: 0,
+        remaining_hard: 2048,
+        status: 'warning',
+      },
+      hosted_eval_runs: {
+        current: 24,
+        soft_limit: 80,
+        hard_limit: 100,
+        remaining_soft: 56,
+        remaining_hard: 76,
+        status: 'ok',
+      },
+      managed_inference_requests: {
+        current: 18,
+        soft_limit: 40,
+        hard_limit: 100,
+        remaining_soft: 22,
+        remaining_hard: 82,
+        status: 'ok',
+      },
+      managed_inference_tokens: {
+        current: 4000,
+        soft_limit: 10000,
+        hard_limit: 20000,
+        remaining_soft: 6000,
+        remaining_hard: 16000,
+        status: 'ok',
+      },
+      warning_fields: ['storage_bytes'],
+      blocked_fields: [],
       is_within_limits: true,
       limit_exceeded: null,
     },
+  };
+
+  return {
+    ...base,
     ...overrides,
+    access: {
+      ...base.access,
+      ...((overrides.access as Record<string, unknown> | undefined) ?? {}),
+    },
+    entitlements: {
+      ...base.entitlements,
+      ...((overrides.entitlements as Record<string, unknown> | undefined) ?? {}),
+    },
+    usage_limits: {
+      ...base.usage_limits,
+      ...((overrides.usage_limits as Record<string, unknown> | undefined) ?? {}),
+    },
   };
 }
 
@@ -222,6 +272,40 @@ describe('Usage', () => {
           remaining_cost_usd: '1.00',
           current_total_tokens: 0,
           max_playbooks: 1,
+          storage_bytes: {
+            current: 0,
+            soft_limit: null,
+            hard_limit: 1024,
+            remaining_soft: null,
+            remaining_hard: 1024,
+            status: 'ok',
+          },
+          hosted_eval_runs: {
+            current: 0,
+            soft_limit: null,
+            hard_limit: 5,
+            remaining_soft: null,
+            remaining_hard: 5,
+            status: 'ok',
+          },
+          managed_inference_requests: {
+            current: 0,
+            soft_limit: null,
+            hard_limit: null,
+            remaining_soft: null,
+            remaining_hard: null,
+            status: 'ok',
+          },
+          managed_inference_tokens: {
+            current: 0,
+            soft_limit: null,
+            hard_limit: null,
+            remaining_soft: null,
+            remaining_hard: null,
+            status: 'ok',
+          },
+          warning_fields: [],
+          blocked_fields: [],
           is_within_limits: true,
           limit_exceeded: null,
         },
@@ -256,6 +340,15 @@ describe('Usage', () => {
           remaining_cost_usd: '4.50',
           current_total_tokens: 12345,
           max_playbooks: 5,
+          hosted_eval_runs: {
+            current: 92,
+            soft_limit: 80,
+            hard_limit: 100,
+            remaining_soft: 0,
+            remaining_hard: 8,
+            status: 'warning',
+          },
+          warning_fields: ['hosted_eval_runs'],
           is_within_limits: true,
           limit_exceeded: null,
         },
@@ -273,10 +366,12 @@ describe('Usage', () => {
     expect(mockGetSummary).toHaveBeenCalled();
     expect(mockGetDaily).toHaveBeenCalled();
     expect(mockGetByPlaybook).toHaveBeenCalled();
+    expect(screen.getByText('Hosted Storage')).toBeInTheDocument();
+    expect(screen.getByText('Managed Requests')).toBeInTheDocument();
     expect(screen.getByText('Evolution Activity')).toBeInTheDocument();
     expect(screen.getByText('Most Active Playbooks')).toBeInTheDocument();
     expect(screen.getByText('Customer Support')).toBeInTheDocument();
-    expect(screen.getByText('92')).toBeInTheDocument();
+    expect(screen.getAllByText('92 / 100').length).toBeGreaterThan(0);
   });
 
   it('shows an upgrade prompt when the evolution limit has been reached', async () => {
@@ -300,6 +395,16 @@ describe('Usage', () => {
           remaining_cost_usd: '0.10',
           current_total_tokens: 9999,
           max_playbooks: 5,
+          hosted_eval_runs: {
+            current: 100,
+            soft_limit: 80,
+            hard_limit: 100,
+            remaining_soft: 0,
+            remaining_hard: 0,
+            status: 'blocked',
+          },
+          blocked_fields: ['hosted_eval_runs'],
+          warning_fields: [],
           is_within_limits: false,
           limit_exceeded: 'monthly_evolution_runs',
         },
@@ -313,7 +418,8 @@ describe('Usage', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Upgrade Plan' })).toBeInTheDocument();
-    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByText(/hosted evals are blocked until the limit resets or the plan changes/i)).toBeInTheDocument();
+    expect(screen.getByText('Hard limit reached')).toBeInTheDocument();
   });
 
   it('shows budget-specific limit messaging when the managed usage cap is reached', async () => {
@@ -337,6 +443,8 @@ describe('Usage', () => {
           remaining_cost_usd: '0.00',
           current_total_tokens: 16888,
           max_playbooks: 5,
+          warning_fields: [],
+          blocked_fields: ['monthly_cost_limit'],
           is_within_limits: false,
           limit_exceeded: 'monthly_cost_limit',
         },
@@ -350,8 +458,8 @@ describe('Usage', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Upgrade Plan' })).toBeInTheDocument();
-    expect(screen.getByText(/\$9\.00 used/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$0\.00 remaining/i)).toBeInTheDocument();
+    expect(screen.getByText(/you have used \$9\.00 of \$9\.00/i)).toBeInTheDocument();
+    expect(screen.getByText(/\$9\.00 managed budget/i)).toBeInTheDocument();
   });
 
   it('offers a personal-to-team workspace upgrade action', async () => {
