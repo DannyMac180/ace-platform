@@ -319,9 +319,9 @@ def test_init_command_agent_mode_emits_deterministic_json(tmp_path, capsys) -> N
             "reason": None,
         },
         {
-            "available": False,
+            "available": True,
             "command": "ace seed",
-            "reason": "command not implemented yet",
+            "reason": None,
         },
         {
             "available": False,

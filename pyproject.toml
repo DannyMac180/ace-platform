@@ -50,6 +50,7 @@ dependencies = [
     # Templates
     "jinja2>=3.1.0",
     "PyYAML>=6.0",
+    "tomli>=2.0.0; python_version < '3.11'",
 
     # HTTP client
     "httpx>=0.26.0",

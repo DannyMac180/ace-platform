@@ -32,7 +32,7 @@ DEFAULT_DOCS_URL = "https://docs.aceagent.io"
 MINIMUM_PYTHON = (3, 10)
 SUPPORTED_MCP_TRANSPORTS = {"stdio", "http"}
 INIT_NEXT_COMMANDS = ["ace doctor", "ace seed", "ace benchmark"]
-IMPLEMENTED_COMMANDS = frozenset({"doctor", "export", "import", "init"})
+IMPLEMENTED_COMMANDS = frozenset({"doctor", "export", "import", "init", "seed"})
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "init":
         return _run_init(args)
+    if args.command == "seed":
+        return _run_seed(args)
     if args.command == "doctor":
         return _run_doctor(args)
     if args.command == "export":
@@ -135,6 +137,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--agent",
         action="store_true",
         help="Enable deterministic, machine-readable init output for coding agents.",
+    )
+
+    seed_parser = subparsers.add_parser(
+        "seed",
+        help="Scan a project and generate starter ACE playbooks from repo/docs/examples.",
+    )
+    seed_parser.add_argument(
+        "--path",
+        default=".",
+        help="Project directory to scan. Defaults to the current directory.",
+    )
+    seed_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing generated playbooks in the target playbooks directory.",
     )
 
     doctor_parser = subparsers.add_parser(
@@ -278,6 +295,19 @@ def _run_init(args: argparse.Namespace) -> int:
                 default_profile=args.default_profile,
             )
         )
+    return 0
+
+
+def _run_seed(args: argparse.Namespace) -> int:
+    from ace_platform.project_seed import format_seed_summary, seed_project_playbooks
+
+    project_root = Path(args.path).expanduser().resolve()
+    try:
+        result = seed_project_playbooks(project_root, force=args.force)
+    except ValueError as exc:
+        print(f"ACE seed aborted: {exc}", file=sys.stderr)
+        return 1
+    print(format_seed_summary(result))
     return 0
 
 
