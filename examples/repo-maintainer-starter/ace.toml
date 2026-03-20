@@ -1,0 +1,6 @@
+[project]
+name = "Repo Maintainer Starter"
+docs_dir = "docs"
+examples_dir = "examples"
+playbooks_dir = ".ace/playbooks"
+readme_path = "README.md"

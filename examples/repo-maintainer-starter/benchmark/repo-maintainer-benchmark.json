@@ -1,0 +1,31 @@
+{
+  "id": "repo-maintainer-starter",
+  "metric": "contains",
+  "metadata": {
+    "scenario": "local-oss-demo",
+    "scope": "repo-maintainer"
+  },
+  "cases": [
+    {
+      "id": "release-checklist",
+      "prompt": "Summarize the release checklist for this project.",
+      "expected_output": "draft the release note before tagging",
+      "baseline_output": "tag the version after the code is merged",
+      "ace_output": "draft the release note before tagging and confirm example commands still run from the repo root"
+    },
+    {
+      "id": "command-testing",
+      "prompt": "What should happen before a new command is merged?",
+      "expected_output": "one happy-path test and one failure-path test",
+      "baseline_output": "add a command and wait for CI",
+      "ace_output": "add one happy-path test and one failure-path test for every new command"
+    },
+    {
+      "id": "triage",
+      "prompt": "What is the first step during issue triage?",
+      "expected_output": "reproduce the problem before changing code or docs",
+      "baseline_output": "reproduce the problem before changing code or docs",
+      "ace_output": "reproduce the problem before changing code or docs and log the failing command or file path"
+    }
+  ]
+}
