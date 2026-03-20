@@ -41,6 +41,8 @@ from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
+from ace_platform.core.oauth_tokens import decrypt_oauth_token, encrypt_oauth_token
+
 if TYPE_CHECKING:
     pass
 
@@ -1086,8 +1088,12 @@ class UserOAuthAccount(Base):
     provider: Mapped[OAuthProvider] = mapped_column(Enum(OAuthProvider), nullable=False)
     provider_user_id: Mapped[str] = mapped_column(String(255), nullable=False)
     provider_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    refresh_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    _access_token_ciphertext: Mapped[str | None] = mapped_column(
+        "access_token", Text, nullable=True
+    )
+    _refresh_token_ciphertext: Mapped[str | None] = mapped_column(
+        "refresh_token", Text, nullable=True
+    )
     token_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -1107,6 +1113,26 @@ class UserOAuthAccount(Base):
         UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_user"),
         Index("ix_oauth_accounts_user_provider", "user_id", "provider"),
     )
+
+    @property
+    def access_token(self) -> str | None:
+        """Return the decrypted provider access token."""
+
+        return decrypt_oauth_token(self._access_token_ciphertext)
+
+    @access_token.setter
+    def access_token(self, value: str | None) -> None:
+        self._access_token_ciphertext = encrypt_oauth_token(value)
+
+    @property
+    def refresh_token(self) -> str | None:
+        """Return the decrypted provider refresh token."""
+
+        return decrypt_oauth_token(self._refresh_token_ciphertext)
+
+    @refresh_token.setter
+    def refresh_token(self, value: str | None) -> None:
+        self._refresh_token_ciphertext = encrypt_oauth_token(value)
 
     def __repr__(self) -> str:
         return f"<UserOAuthAccount {self.provider.value}:{self.provider_email}>"
