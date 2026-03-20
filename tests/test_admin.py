@@ -23,13 +23,18 @@ from ace_platform.api.routes.admin import (
     AuditEventItem,
     ConversionFunnelResponse,
     DailySignupResponse,
+    InferenceGatewayHealthResponse,
+    JobQueueHealthResponse,
+    OperationalHealthResponse,
     PlatformStatsResponse,
+    SyncHealthResponse,
     TopUserResponse,
     WorkspaceBackupItem,
     WorkspaceBackupRestoreResponse,
     build_conversion_funnel_response,
     create_workspace_backup,
     get_conversion_funnel,
+    get_operational_health,
     list_workspace_backups,
     restore_workspace_backup,
 )
@@ -77,6 +82,42 @@ class TestAdminSchemas:
         response = DailySignupResponse(date="2024-01-15", count=5)
         assert response.date == "2024-01-15"
         assert response.count == 5
+
+    def test_operational_health_response(self):
+        """Test operational health response schema."""
+        now = datetime.now(timezone.utc)
+        response = OperationalHealthResponse(
+            generated_at=now,
+            sync=SyncHealthResponse(
+                status="healthy",
+                enabled_workspaces=3,
+                active_workspaces_24h=2,
+                sync_events_24h=9,
+                last_activity_at=now,
+            ),
+            job_queue=JobQueueHealthResponse(
+                status="attention",
+                queued_jobs=2,
+                running_jobs=1,
+                failed_jobs_24h=0,
+                jobs_observed_24h=7,
+                oldest_queued_at=now,
+                last_completed_at=now,
+            ),
+            inference_gateway=InferenceGatewayHealthResponse(
+                status="idle",
+                enabled_workspaces=4,
+                configured_providers=["openai"],
+                requests_24h=0,
+                total_tokens_24h=0,
+                total_cost_usd_24h="0",
+                last_request_at=None,
+            ),
+        )
+
+        assert response.sync.enabled_workspaces == 3
+        assert response.job_queue.queued_jobs == 2
+        assert response.inference_gateway.configured_providers == ["openai"]
 
     def test_conversion_funnel_response(self):
         """Test conversion funnel schema."""
@@ -462,6 +503,7 @@ class TestAdminRoutesIntegration:
         """Test that admin routes are registered."""
         routes = [route.path for route in app.routes]
         assert "/admin/stats" in routes
+        assert "/admin/operational-health" in routes
         assert "/admin/users" in routes
         assert "/admin/users/{user_id}" in routes
         assert "/admin/workspaces/{workspace_id}/backups" in routes
@@ -474,6 +516,11 @@ class TestAdminRoutesIntegration:
     def test_admin_stats_requires_auth(self, client):
         """Test that /admin/stats requires authentication (401)."""
         response = client.get("/admin/stats")
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_admin_operational_health_requires_auth(self, client):
+        """Test that /admin/operational-health requires authentication (401)."""
+        response = client.get("/admin/operational-health")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_admin_users_requires_auth(self, client):
@@ -595,3 +642,59 @@ class TestAdminQueryParams:
         """Test that /admin/funnel accepts experiment_variant query parameter."""
         response = client.get("/admin/funnel", params={"experiment_variant": "control"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+class TestAdminOperationalHealth:
+    """Tests for the operational health admin route."""
+
+    @pytest.mark.asyncio
+    async def test_get_operational_health_combines_component_snapshots(self, monkeypatch):
+        """Operational health route should compose all three cloud health sections."""
+        now = datetime.now(timezone.utc)
+        sync = SyncHealthResponse(
+            status="healthy",
+            enabled_workspaces=2,
+            active_workspaces_24h=1,
+            sync_events_24h=5,
+            last_activity_at=now,
+        )
+        queue = JobQueueHealthResponse(
+            status="attention",
+            queued_jobs=1,
+            running_jobs=0,
+            failed_jobs_24h=0,
+            jobs_observed_24h=3,
+            oldest_queued_at=now,
+            last_completed_at=now,
+        )
+        inference = InferenceGatewayHealthResponse(
+            status="idle",
+            enabled_workspaces=2,
+            configured_providers=["openai"],
+            requests_24h=0,
+            total_tokens_24h=0,
+            total_cost_usd_24h="0",
+            last_request_at=None,
+        )
+
+        monkeypatch.setattr(
+            admin_routes,
+            "get_sync_health_snapshot",
+            AsyncMock(return_value=sync),
+        )
+        monkeypatch.setattr(
+            admin_routes,
+            "get_job_queue_health_snapshot",
+            AsyncMock(return_value=queue),
+        )
+        monkeypatch.setattr(
+            admin_routes,
+            "get_inference_gateway_health_snapshot",
+            AsyncMock(return_value=inference),
+        )
+
+        response = await get_operational_health(_admin=object(), db=AsyncMock())
+
+        assert response.sync == sync
+        assert response.job_queue == queue
+        assert response.inference_gateway == inference

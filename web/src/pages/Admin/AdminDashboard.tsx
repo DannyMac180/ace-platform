@@ -12,7 +12,13 @@ import {
   AlertCircle,
   Shield,
 } from 'lucide-react';
-import type { PlatformStats, DailySignup, TopUser, ConversionFunnel } from '../../types';
+import type {
+  PlatformStats,
+  DailySignup,
+  TopUser,
+  ConversionFunnel,
+  OperationalHealth,
+} from '../../types';
 import styles from './AdminDashboard.module.css';
 
 export function AdminDashboard() {
@@ -25,6 +31,12 @@ export function AdminDashboard() {
   const statsQuery = useQuery<PlatformStats>({
     queryKey: ['admin-stats'],
     queryFn: adminApi.getStats,
+    enabled: isAdmin,
+  });
+
+  const operationalHealthQuery = useQuery<OperationalHealth>({
+    queryKey: ['admin-operational-health'],
+    queryFn: adminApi.getOperationalHealth,
     enabled: isAdmin,
   });
 
@@ -56,18 +68,21 @@ export function AdminDashboard() {
   }
 
   const isLoading = (
+    operationalHealthQuery.isLoading ||
     statsQuery.isLoading ||
     signupsQuery.isLoading ||
     funnelQuery.isLoading ||
     topUsersQuery.isLoading
   );
   const isError = (
+    operationalHealthQuery.isError ||
     statsQuery.isError ||
     signupsQuery.isError ||
     funnelQuery.isError ||
     topUsersQuery.isError
   );
 
+  const operationalHealth = operationalHealthQuery.data;
   const stats = statsQuery.data;
   const signups = signupsQuery.data;
   const funnel = funnelQuery.data;
@@ -94,6 +109,7 @@ export function AdminDashboard() {
           <h2>Failed to load admin data</h2>
           <p>Something went wrong. Please try again.</p>
           <button className={styles.retryButton} onClick={() => {
+            operationalHealthQuery.refetch();
             statsQuery.refetch();
             signupsQuery.refetch();
             funnelQuery.refetch();
@@ -104,6 +120,99 @@ export function AdminDashboard() {
         </div>
       ) : (
         <>
+          {operationalHealth && (
+            <Card variant="default" padding="lg" className={styles.operationalSection}>
+              <div className={styles.operationalHeader}>
+                <div>
+                  <h3 className={styles.sectionTitle}>Cloud Rollout Health</h3>
+                  <p className={styles.operationalTimestamp}>
+                    Updated {formatTimestamp(operationalHealth.generated_at)}
+                  </p>
+                </div>
+              </div>
+              <div className={styles.operationalGrid}>
+                <OperationalHealthCard
+                  title="Sync health"
+                  status={operationalHealth.sync.status}
+                  summary={
+                    operationalHealth.sync.enabled_workspaces === 0
+                      ? 'No hosted workspaces have cloud sync enabled yet.'
+                      : `${operationalHealth.sync.active_workspaces_24h} of ${operationalHealth.sync.enabled_workspaces} sync-enabled workspaces showed activity in the last 24 hours.`
+                  }
+                  metrics={[
+                    {
+                      label: 'Enabled workspaces',
+                      value: operationalHealth.sync.enabled_workspaces.toLocaleString(),
+                    },
+                    {
+                      label: 'Active in 24h',
+                      value: operationalHealth.sync.active_workspaces_24h.toLocaleString(),
+                    },
+                    {
+                      label: 'Sync events in 24h',
+                      value: operationalHealth.sync.sync_events_24h.toLocaleString(),
+                    },
+                    {
+                      label: 'Last activity',
+                      value: formatTimestamp(operationalHealth.sync.last_activity_at),
+                    },
+                  ]}
+                />
+                <OperationalHealthCard
+                  title="Job queue health"
+                  status={operationalHealth.job_queue.status}
+                  summary={`${operationalHealth.job_queue.queued_jobs} queued, ${operationalHealth.job_queue.running_jobs} running, ${operationalHealth.job_queue.failed_jobs_24h} failed in the last 24 hours.`}
+                  metrics={[
+                    {
+                      label: 'Queued jobs',
+                      value: operationalHealth.job_queue.queued_jobs.toLocaleString(),
+                    },
+                    {
+                      label: 'Running jobs',
+                      value: operationalHealth.job_queue.running_jobs.toLocaleString(),
+                    },
+                    {
+                      label: 'Failed in 24h',
+                      value: operationalHealth.job_queue.failed_jobs_24h.toLocaleString(),
+                    },
+                    {
+                      label: 'Oldest queued',
+                      value: formatTimestamp(operationalHealth.job_queue.oldest_queued_at),
+                    },
+                  ]}
+                />
+                <OperationalHealthCard
+                  title="Inference gateway health"
+                  status={operationalHealth.inference_gateway.status}
+                  summary={
+                    operationalHealth.inference_gateway.configured_providers.length > 0
+                      ? `Configured providers: ${operationalHealth.inference_gateway.configured_providers.join(', ')}.`
+                      : 'No managed inference providers are configured on this server.'
+                  }
+                  metrics={[
+                    {
+                      label: 'Enabled workspaces',
+                      value: operationalHealth.inference_gateway.enabled_workspaces.toLocaleString(),
+                    },
+                    {
+                      label: 'Requests in 24h',
+                      value: operationalHealth.inference_gateway.requests_24h.toLocaleString(),
+                    },
+                    {
+                      label: 'Tokens in 24h',
+                      value: operationalHealth.inference_gateway.total_tokens_24h.toLocaleString(),
+                    },
+                    {
+                      label: 'Last request',
+                      value: formatTimestamp(operationalHealth.inference_gateway.last_request_at),
+                    },
+                  ]}
+                  footer={`24h spend: $${operationalHealth.inference_gateway.total_cost_usd_24h}`}
+                />
+              </div>
+            </Card>
+          )}
+
           {/* Stats Cards */}
           {stats && (
             <div className={styles.statsGrid}>
@@ -341,6 +450,82 @@ export function AdminDashboard() {
       )}
     </div>
   );
+}
+
+function OperationalHealthCard({
+  title,
+  status,
+  summary,
+  metrics,
+  footer,
+}: {
+  title: string;
+  status: string;
+  summary: string;
+  metrics: Array<{ label: string; value: string }>;
+  footer?: string;
+}) {
+  return (
+    <div className={styles.operationalCard}>
+      <div className={styles.operationalCardTop}>
+        <div>
+          <h4 className={styles.operationalTitle}>{title}</h4>
+          <p className={styles.operationalSummary}>{summary}</p>
+        </div>
+        <span className={`${styles.statusBadge} ${statusClassName(status)}`}>
+          {formatStatus(status)}
+        </span>
+      </div>
+      <div className={styles.metricGrid}>
+        {metrics.map((metric) => (
+          <div key={metric.label} className={styles.metricItem}>
+            <span className={styles.metricValue}>{metric.value}</span>
+            <span className={styles.metricLabel}>{metric.label}</span>
+          </div>
+        ))}
+      </div>
+      {footer && <p className={styles.operationalFooter}>{footer}</p>}
+    </div>
+  );
+}
+
+function formatStatus(status: string) {
+  switch (status) {
+    case 'healthy':
+      return 'Healthy';
+    case 'attention':
+      return 'Attention';
+    case 'degraded':
+      return 'Degraded';
+    default:
+      return 'Idle';
+  }
+}
+
+function statusClassName(status: string) {
+  switch (status) {
+    case 'healthy':
+      return styles.statusHealthy;
+    case 'attention':
+      return styles.statusAttention;
+    case 'degraded':
+      return styles.statusDegraded;
+    default:
+      return styles.statusIdle;
+  }
+}
+
+function formatTimestamp(value: string | null) {
+  if (!value) {
+    return 'None in window';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString();
 }
 
 function FunnelRow({
