@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -21,10 +22,21 @@ def normalize_database_url(database_url: str) -> str:
     """Normalize DB URLs for SQLAlchemy async usage."""
 
     if database_url.startswith("postgresql://"):
-        return database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
-    if database_url.startswith("postgres://"):
-        return database_url.replace("postgres://", "postgresql+asyncpg://", 1)
-    return database_url
+        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    else:
+        return database_url
+
+    parsed = urlsplit(database_url)
+    query_params = parse_qsl(parsed.query, keep_blank_values=True)
+    sslmode_values = [value for key, value in query_params if key == "sslmode"]
+    filtered_params = [(key, value) for key, value in query_params if key != "sslmode"]
+
+    if "disable" in sslmode_values and not any(key == "ssl" for key, _ in filtered_params):
+        filtered_params.append(("ssl", "disable"))
+
+    return urlunsplit(parsed._replace(query=urlencode(filtered_params, doseq=True)))
 
 
 def load_database_url() -> str:

@@ -17,6 +17,7 @@ from ace_platform.db.models import (
     WorkspacePlan,
     WorkspaceRole,
 )
+from scripts.migrate_hosted_solo_users_to_personal_workspaces import normalize_database_url
 
 
 def _make_user(**overrides) -> User:
@@ -68,6 +69,27 @@ def test_classify_hosted_solo_user_without_workspace_is_eligible():
     assert eligible is True
     assert workspace is None
     assert reasons == ("missing_workspace",)
+
+
+def test_normalize_database_url_translates_sslmode_disable_for_asyncpg():
+    url = "postgresql://user:pass@localhost:5432/ace_platform?sslmode=disable"
+
+    assert (
+        normalize_database_url(url)
+        == "postgresql+asyncpg://user:pass@localhost:5432/ace_platform?ssl=disable"
+    )
+
+
+def test_normalize_database_url_strips_sslmode_and_preserves_other_query_params():
+    url = (
+        "postgres://user:pass@localhost:5432/ace_platform"
+        "?application_name=ace&sslmode=require&connect_timeout=10"
+    )
+
+    assert (
+        normalize_database_url(url) == "postgresql+asyncpg://user:pass@localhost:5432/ace_platform"
+        "?application_name=ace&connect_timeout=10"
+    )
 
 
 @pytest.mark.asyncio
