@@ -12,7 +12,13 @@ import {
   AlertCircle,
   Shield,
 } from 'lucide-react';
-import type { PlatformStats, DailySignup, TopUser, ConversionFunnel } from '../../types';
+import type {
+  PlatformStats,
+  DailySignup,
+  TopUser,
+  ConversionFunnel,
+  ProductAnalyticsReport,
+} from '../../types';
 import styles from './AdminDashboard.module.css';
 
 export function AdminDashboard() {
@@ -50,6 +56,11 @@ export function AdminDashboard() {
     queryFn: () => adminApi.getTopUsers(10),
     enabled: isAdmin,
   });
+  const productAnalyticsQuery = useQuery<ProductAnalyticsReport>({
+    queryKey: ['admin-product-analytics'],
+    queryFn: () => adminApi.getProductAnalytics(30),
+    enabled: isAdmin,
+  });
 
   if (!isAdmin) {
     return <Navigate to="/dashboard" replace />;
@@ -59,19 +70,22 @@ export function AdminDashboard() {
     statsQuery.isLoading ||
     signupsQuery.isLoading ||
     funnelQuery.isLoading ||
-    topUsersQuery.isLoading
+    topUsersQuery.isLoading ||
+    productAnalyticsQuery.isLoading
   );
   const isError = (
     statsQuery.isError ||
     signupsQuery.isError ||
     funnelQuery.isError ||
-    topUsersQuery.isError
+    topUsersQuery.isError ||
+    productAnalyticsQuery.isError
   );
 
   const stats = statsQuery.data;
   const signups = signupsQuery.data;
   const funnel = funnelQuery.data;
   const topUsers = topUsersQuery.data;
+  const productAnalytics = productAnalyticsQuery.data;
 
   return (
     <div className={styles.container}>
@@ -98,6 +112,7 @@ export function AdminDashboard() {
             signupsQuery.refetch();
             funnelQuery.refetch();
             topUsersQuery.refetch();
+            productAnalyticsQuery.refetch();
           }}>
             Retry
           </button>
@@ -240,6 +255,47 @@ export function AdminDashboard() {
                   stepRate={funnel.conversion_first_playbook_to_paid_active_non_trial_pct}
                   overallRate={funnel.conversion_signup_to_paid_active_non_trial_pct}
                 />
+              </div>
+            </Card>
+          )}
+
+          {productAnalytics && (
+            <Card variant="default" padding="lg" className={styles.funnelCard}>
+              <div className={styles.funnelHeader}>
+                <h3 className={styles.sectionTitle}>
+                  Activation &amp; Retention (Last {productAnalytics.days} Days)
+                </h3>
+                <span className={styles.funnelMeta}>
+                  Returning users: {productAnalytics.retention.returning_users}
+                </span>
+              </div>
+              <div className={styles.metricGrid}>
+                {productAnalytics.metrics.map((metric) => (
+                  <div key={metric.key} className={styles.metricTile}>
+                    <span className={styles.metricLabel}>{metric.label}</span>
+                    <span className={styles.metricValue}>{metric.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div className={styles.retentionGrid}>
+                <div className={styles.retentionTile}>
+                  <span className={styles.metricLabel}>Retained after day 1</span>
+                  <span className={styles.metricValue}>
+                    {productAnalytics.retention.retained_after_day_1}
+                  </span>
+                </div>
+                <div className={styles.retentionTile}>
+                  <span className={styles.metricLabel}>Retained after day 7</span>
+                  <span className={styles.metricValue}>
+                    {productAnalytics.retention.retained_after_day_7}
+                  </span>
+                </div>
+                <div className={styles.retentionTile}>
+                  <span className={styles.metricLabel}>Retained after day 30</span>
+                  <span className={styles.metricValue}>
+                    {productAnalytics.retention.retained_after_day_30}
+                  </span>
+                </div>
               </div>
             </Card>
           )}

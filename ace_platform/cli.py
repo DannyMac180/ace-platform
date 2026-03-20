@@ -35,6 +35,10 @@ MINIMUM_PYTHON = (3, 10)
 SUPPORTED_MCP_TRANSPORTS = {"stdio", "http"}
 INIT_NEXT_COMMANDS = ["ace doctor", "ace seed", "ace benchmark"]
 IMPLEMENTED_COMMANDS = frozenset({"benchmark", "doctor", "export", "import", "init", "seed"})
+ANALYTICS_ROUTE = "/analytics/events"
+CLI_INIT_COMPLETED_EVENT = "cli_init_completed"
+CLI_SEED_COMPLETED_EVENT = "cli_seed_completed"
+CLI_BENCHMARK_COMPLETED_EVENT = "cli_benchmark_completed"
 
 
 @dataclass(frozen=True)
@@ -333,6 +337,18 @@ def _run_init(args: argparse.Namespace) -> int:
                 default_profile=args.default_profile,
             )
         )
+
+    _emit_cli_analytics_event(
+        CLI_INIT_COMPLETED_EVENT,
+        project_root=project_root,
+        event_data={
+            "project_name": layout.project_name,
+            "default_profile": args.default_profile,
+            "git_enabled": layout.git_enabled,
+            "agent_mode": args.agent,
+            "output_mode": output_mode,
+        },
+    )
     return 0
 
 
@@ -346,6 +362,17 @@ def _run_seed(args: argparse.Namespace) -> int:
         print(f"ACE seed aborted: {exc}", file=sys.stderr)
         return 1
     print(format_seed_summary(result))
+    _emit_cli_analytics_event(
+        CLI_SEED_COMPLETED_EVENT,
+        project_root=project_root,
+        event_data={
+            "created_count": len(result.created),
+            "overwritten_count": len(result.overwritten),
+            "skipped_count": len(result.skipped),
+            "scanned_input_count": len(result.scanned_inputs),
+            "force": args.force,
+        },
+    )
     return 0
 
 
@@ -388,6 +415,21 @@ def _run_benchmark(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(_format_benchmark_summary(payload))
+
+    benchmark_root = _benchmark_project_root(args.input)
+    _emit_cli_analytics_event(
+        CLI_BENCHMARK_COMPLETED_EVENT,
+        project_root=benchmark_root,
+        event_data={
+            "benchmark_id": suite.id,
+            "case_count": payload["case_count"],
+            "ace_wins": payload["comparison"]["ace_wins"],
+            "baseline_wins": payload["comparison"]["baseline_wins"],
+            "ties": payload["comparison"]["ties"],
+            "net_passed_delta": payload["comparison"]["net_passed_delta"],
+            "format": args.format,
+        },
+    )
     return 0
 
 
@@ -816,6 +858,71 @@ def _request(
     return response
 
 
+def _find_config_path(start: Path) -> Path | None:
+    current = start if start.is_dir() else start.parent
+    current = current.resolve()
+    for candidate in (current, *current.parents):
+        config_path = candidate / DEFAULT_CONFIG_FILENAME
+        if config_path.exists():
+            return config_path
+    return None
+
+
+def _resolve_cli_analytics_api_url(project_root: Path | None) -> str | None:
+    env_url = os.environ.get(ACE_API_URL_ENV)
+    if env_url and _is_http_url(env_url):
+        return env_url.rstrip("/")
+
+    if project_root is None:
+        return None
+
+    config_path = _find_config_path(project_root)
+    if config_path is None:
+        return None
+
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+
+    profiles = config.get("profiles")
+    if not isinstance(profiles, dict):
+        return None
+
+    hosted_profile = profiles.get("hosted")
+    if not isinstance(hosted_profile, dict):
+        return None
+
+    api_url = hosted_profile.get("api_url")
+    if isinstance(api_url, str) and _is_http_url(api_url):
+        return api_url.rstrip("/")
+    return None
+
+
+def _emit_cli_analytics_event(
+    event_type: str,
+    *,
+    project_root: Path | None,
+    event_data: dict[str, object] | None = None,
+) -> None:
+    api_url = _resolve_cli_analytics_api_url(project_root)
+    if api_url is None:
+        return
+
+    payload = {
+        "event_type": event_type,
+        "source": "cli",
+        "channel": "product",
+        "event_data": event_data or {},
+    }
+
+    try:
+        with httpx.Client(timeout=5.0) as client:
+            client.post(f"{api_url}{ANALYTICS_ROUTE}", json=payload)
+    except httpx.HTTPError:
+        return
+
+
 def _required_value(
     value: str | None,
     flag_name: str,
@@ -949,6 +1056,12 @@ def _format_init_summary(
 
 def _format_toml_bool(value: bool) -> str:
     return "true" if value else "false"
+
+
+def _benchmark_project_root(input_path: str) -> Path | None:
+    if input_path == "-":
+        return Path.cwd()
+    return Path(input_path).expanduser().resolve()
 
 
 def _load_benchmark_suite(path: str) -> BenchmarkSuite:

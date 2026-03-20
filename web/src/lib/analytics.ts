@@ -10,6 +10,16 @@ let queue: AnalyticsEventPayload[] = [];
 let flushTimer: number | null = null;
 let lifecycleHooksRegistered = false;
 
+interface RetentionTrackingInput {
+  userId: string;
+  createdAt: string;
+  path: string;
+  subscriptionStatus: string;
+  subscriptionTier: string | null;
+  hasUsedTrial: boolean;
+  trialEndsAt: string | null;
+}
+
 function getExperimentVariant(attribution: AttributionSnapshot): string | undefined {
   return attribution.exp_trial_disclosure ?? attribution.experiment_variant;
 }
@@ -127,5 +137,49 @@ export function trackAcquisitionEvent(
     scheduleFlush();
   }
 
+  return payload;
+}
+
+function retentionStorageKey(userId: string, dayKey: string): string {
+  return `ace_retention_active_${userId}_${dayKey}`;
+}
+
+function currentDayKey(now = new Date()): string {
+  return now.toISOString().slice(0, 10);
+}
+
+function accountAgeDays(createdAt: string, now = new Date()): number {
+  const createdAtMs = Date.parse(createdAt);
+  if (Number.isNaN(createdAtMs)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.floor((now.getTime() - createdAtMs) / 86_400_000));
+}
+
+export function trackAuthenticatedRetention(
+  input: RetentionTrackingInput,
+  now = new Date(),
+): AnalyticsEventPayload | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const dayKey = currentDayKey(now);
+  const storageKey = retentionStorageKey(input.userId, dayKey);
+  if (window.localStorage.getItem(storageKey)) {
+    return null;
+  }
+
+  const payload = trackAcquisitionEvent('retention_active', {
+    path: input.path,
+    account_age_days: accountAgeDays(input.createdAt, now),
+    subscription_status: input.subscriptionStatus,
+    subscription_tier: input.subscriptionTier,
+    has_used_trial: input.hasUsedTrial,
+    has_active_trial: Boolean(input.trialEndsAt && Date.parse(input.trialEndsAt) > now.getTime()),
+  });
+
+  window.localStorage.setItem(storageKey, '1');
   return payload;
 }

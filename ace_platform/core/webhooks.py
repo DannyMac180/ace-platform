@@ -412,6 +412,26 @@ async def _handle_checkout_completed(
                 },
             )
         )
+    else:
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.UPGRADE_COMPLETED,
+                anonymous_id=user.signup_anonymous_id,
+                source=user.signup_source,
+                channel=user.signup_channel,
+                campaign=user.signup_campaign,
+                experiment_variant=user.signup_variant,
+                event_data={
+                    "source": "stripe_webhook",
+                    "upgrade_kind": "subscription",
+                    "target_tier": tier,
+                    "target_plan_code": metadata.get("plan_code"),
+                    "stripe_event_type": event.type,
+                    "stripe_subscription_id": subscription_id,
+                },
+            )
+        )
 
     await db.commit()
 
@@ -584,6 +604,7 @@ async def _handle_subscription_updated(
     customer_id = _stripe_get(subscription, "customer")
 
     user = await _get_user_by_customer_id(db, customer_id)
+    prior_tier = user.subscription_tier if user else None
 
     # Metadata fallback (same race condition guard as subscription.created)
     if not user:
@@ -640,6 +661,29 @@ async def _handle_subscription_updated(
         current_period_end=period_end,
         trial_ends_at=update_values["trial_ends_at"],
     )
+
+    if tier is not None and prior_tier != tier.value:
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.UPGRADE_COMPLETED,
+                anonymous_id=user.signup_anonymous_id,
+                source=user.signup_source,
+                channel=user.signup_channel,
+                campaign=user.signup_campaign,
+                experiment_variant=user.signup_variant,
+                event_data={
+                    "source": "stripe_webhook",
+                    "upgrade_kind": "subscription",
+                    "target_tier": tier.value,
+                    "target_plan_code": plan_code,
+                    "stripe_event_type": event.type,
+                    "stripe_subscription_id": sub_id,
+                    "previous_tier": prior_tier,
+                },
+            )
+        )
+
     await db.commit()
 
     logger.info(f"Subscription updated for user {user.id}: status={status}")

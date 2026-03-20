@@ -1,6 +1,6 @@
 """Tests for first-party analytics ingestion routes."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -45,6 +45,14 @@ class TestAnalyticsEventRequest:
         with pytest.raises(ValidationError):
             AnalyticsEventRequest(event_type="not_real")
 
+    def test_accepts_product_analytics_event_types(self):
+        payload = AnalyticsEventRequest(
+            event_type="cli_init_completed",
+            source="cli",
+            event_data={"project_name": "ace-platform"},
+        )
+        assert payload.event_type.value == "cli_init_completed"
+
 
 class TestAnalyticsIngestion:
     """Route-level ingestion tests with mocked DB session."""
@@ -52,6 +60,7 @@ class TestAnalyticsIngestion:
     @pytest.mark.asyncio
     async def test_dedupes_by_event_id(self):
         db = AsyncMock()
+        db.add = Mock()
         db.scalar = AsyncMock(return_value=uuid4())
 
         response = await ingest_analytics_event(
@@ -74,6 +83,7 @@ class TestAnalyticsIngestion:
     @pytest.mark.asyncio
     async def test_normalizes_source_and_persists_event(self):
         db = AsyncMock()
+        db.add = Mock()
         db.scalar = AsyncMock(return_value=None)
 
         response = await ingest_analytics_event(

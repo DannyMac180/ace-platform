@@ -30,6 +30,7 @@ import type {
   PlaybookUsage,
   PlaybookVersion,
   PlatformStats,
+  ProductAnalyticsReport,
   RecentEvolution,
   WorkspaceSharedPlaybook,
   WorkspaceSummary,
@@ -600,6 +601,11 @@ export const adminApi = {
     if (filters.source) params.set('source', filters.source);
     if (filters.experiment_variant) params.set('experiment_variant', filters.experiment_variant);
     const response = await api.get<ConversionFunnel>(`/admin/funnel?${params.toString()}`);
+    return response.data;
+  },
+
+  getProductAnalytics: async (days = 30): Promise<ProductAnalyticsReport> => {
+    const response = await api.get<ProductAnalyticsReport>(`/admin/product-analytics?days=${days}`);
     return response.data;
   },
 

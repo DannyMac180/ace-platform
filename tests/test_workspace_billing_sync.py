@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import selectinload
 from sqlalchemy.pool import NullPool
@@ -17,6 +17,8 @@ from ace_platform.core.subscription_service import FREE_PLAN_CODE
 from ace_platform.core.webhooks import WebhookEventType, handle_webhook_event
 from ace_platform.core.workspaces import bootstrap_workspace_for_user
 from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
     Base,
     User,
     Workspace,
@@ -177,6 +179,13 @@ async def test_enterprise_subscription_lifecycle_updates_workspace_plan(
     assert upgraded_workspace.subscription.status == WorkspaceSubscriptionStatus.ACTIVE
     assert upgraded_workspace.entitlements is not None
     assert upgraded_workspace.entitlements.sso is True
+    upgrade_event_count = await async_session.scalar(
+        select(func.count(AcquisitionEvent.id)).where(
+            AcquisitionEvent.user_id == user.id,
+            AcquisitionEvent.event_type == AcquisitionEventType.UPGRADE_COMPLETED,
+        )
+    )
+    assert upgrade_event_count == 1
 
     cancel_event = MagicMock()
     cancel_event.id = "evt_workspace_enterprise_cancel"
