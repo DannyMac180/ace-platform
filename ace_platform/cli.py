@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "init":
         return _run_init(args)
+    if args.command == "seed":
+        return _run_seed(args)
     if args.command == "export":
         return _run_export(args, parser)
     if args.command == "import":
@@ -97,6 +99,21 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Overwrite an existing ace.toml file in the target directory.",
+    )
+
+    seed_parser = subparsers.add_parser(
+        "seed",
+        help="Scan a project and generate starter ACE playbooks from repo/docs/examples.",
+    )
+    seed_parser.add_argument(
+        "--path",
+        default=".",
+        help="Project directory to scan. Defaults to the current directory.",
+    )
+    seed_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing generated playbooks in the target playbooks directory.",
     )
 
     common = argparse.ArgumentParser(add_help=False)
@@ -202,6 +219,15 @@ def _run_init(args: argparse.Namespace) -> int:
             default_profile=args.default_profile,
         )
     )
+    return 0
+
+
+def _run_seed(args: argparse.Namespace) -> int:
+    from ace_platform.project_seed import format_seed_summary, seed_project_playbooks
+
+    project_root = Path(args.path).expanduser().resolve()
+    result = seed_project_playbooks(project_root, force=args.force)
+    print(format_seed_summary(result))
     return 0
 
 
