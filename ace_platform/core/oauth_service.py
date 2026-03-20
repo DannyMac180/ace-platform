@@ -57,10 +57,12 @@ class OAuthService:
                 existing_oauth.refresh_token = refresh_token
                 existing_oauth.token_expires_at = token_expires_at
                 existing_oauth.raw_user_info = user_info
-                await self.db.commit()
+                await self.db.flush()
 
             # Load user relationship
             await self.db.refresh(existing_oauth, ["user"])
+            await ensure_personal_workspace_for_user(self.db, existing_oauth.user)
+            await self.db.commit()
             return existing_oauth.user, False
 
         # 2. Check for existing user by email (only auto-link if email is verified)
@@ -78,6 +80,7 @@ class OAuthService:
                 raw_user_info=user_info,
             )
             self.db.add(oauth_account)
+            await ensure_personal_workspace_for_user(self.db, existing_user)
             await self.db.commit()
             return existing_user, False
         # Note: If existing_user exists but email is NOT verified, we create a new
