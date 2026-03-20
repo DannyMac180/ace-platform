@@ -522,8 +522,8 @@ async def check_workspace_managed_inference_allowed(
 ) -> tuple[bool, str | None]:
     """Return whether managed inference can proceed for the workspace."""
 
-    snapshot = await resolve_workspace_entitlements(db, user, workspace=workspace)
-    if not snapshot.access.has_feature_access:
+    subscription_tier = get_subscription_tier(user, workspace)
+    if not has_feature_access(user, subscription_tier, workspace):
         return False, "Managed inference is not enabled for this workspace plan."
 
     workspace_entitlements = (

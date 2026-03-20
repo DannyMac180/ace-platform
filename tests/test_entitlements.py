@@ -290,9 +290,10 @@ async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
             total_cost_usd=Decimal("0"),
         )
     )
+    get_user_usage_status = AsyncMock()
     monkeypatch.setattr(
         "ace_platform.core.entitlements.get_user_usage_status",
-        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+        get_user_usage_status,
     )
     monkeypatch.setattr(
         "ace_platform.core.entitlements.get_usage_counter_summary",
@@ -307,6 +308,7 @@ async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
 
     assert allowed is True
     assert error_message is None
+    get_user_usage_status.assert_not_awaited()
     assert get_usage_counter_summary.await_args.kwargs["workspace_id"] == workspace.id
 
 
@@ -350,7 +352,53 @@ async def test_managed_inference_check_accepts_lightweight_user_with_workspace_s
 
     assert allowed is True
     assert error_message is None
-    get_user_usage_status.assert_awaited_once_with(db, user.id, SubscriptionTier.STARTER)
+    get_user_usage_status.assert_not_awaited()
+    assert get_usage_counter_summary.await_args.kwargs["workspace_id"] == workspace.id
+
+
+@pytest.mark.asyncio
+async def test_managed_inference_check_accepts_trialing_workspace_without_full_snapshot(
+    monkeypatch,
+):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.NONE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        entitlements=None,
+        subscription=SimpleNamespace(status=SimpleNamespace(value="trialing"), plan_code="starter"),
+        usage_limits={},
+    )
+    get_user_usage_status = AsyncMock()
+    get_usage_counter_summary = AsyncMock(
+        return_value=SimpleNamespace(
+            request_count=0,
+            total_tokens=0,
+            total_cost_usd=Decimal("0"),
+        )
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        get_user_usage_status,
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_usage_counter_summary",
+        get_usage_counter_summary,
+    )
+
+    allowed, error_message = await check_workspace_managed_inference_allowed(
+        object(),
+        user,
+        workspace=workspace,
+    )
+
+    assert allowed is True
+    assert error_message is None
+    get_user_usage_status.assert_not_awaited()
     assert get_usage_counter_summary.await_args.kwargs["workspace_id"] == workspace.id
 
 
