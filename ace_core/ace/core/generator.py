@@ -5,7 +5,7 @@ Generates answers to questions using playbook and reflection.
 
 import json
 import re
-from typing import Any, Optional
+from typing import Any
 
 from llm import timed_llm_call
 
@@ -41,7 +41,7 @@ class Generator:
         reflection: str = "(empty)",
         use_json_mode: bool = False,
         call_id: str = "gen",
-        log_dir: Optional[str] = None,
+        log_dir: str | None = None,
     ) -> tuple[str, list[str], list[str], dict[str, Any]]:
         """
         Generate an answer to a question using the playbook.
@@ -98,12 +98,17 @@ class Generator:
         if use_json_mode:
             try:
                 response_json = json.loads(response)
-                considered_bullet_ids = response_json.get("considered_bullet_ids", [])
-                used_bullet_ids = response_json.get("used_bullet_ids", [])
+                considered_bullet_ids = self._normalize_bullet_ids(
+                    response_json.get("considered_bullet_ids")
+                )
+                used_bullet_ids = self._normalize_bullet_ids(response_json.get("used_bullet_ids"))
                 if not considered_bullet_ids and "bullet_ids" in response_json:
-                    legacy_bullet_ids = response_json.get("bullet_ids", [])
+                    legacy_bullet_ids = self._normalize_bullet_ids(response_json.get("bullet_ids"))
                     considered_bullet_ids = legacy_bullet_ids
-                    used_bullet_ids = legacy_bullet_ids
+                    if "used_bullet_ids" not in response_json:
+                        used_bullet_ids = legacy_bullet_ids
+                if considered_bullet_ids and "used_bullet_ids" not in response_json:
+                    used_bullet_ids = considered_bullet_ids
             except (json.JSONDecodeError, KeyError):
                 considered_bullet_ids = self._extract_bullet_ids_regex(response)
                 used_bullet_ids = considered_bullet_ids
@@ -112,6 +117,12 @@ class Generator:
             used_bullet_ids = considered_bullet_ids
 
         return considered_bullet_ids, used_bullet_ids
+
+    def _normalize_bullet_ids(self, raw_bullet_ids: Any) -> list[str]:
+        """Normalize model output into a list of bullet ID strings."""
+        if not isinstance(raw_bullet_ids, list):
+            return []
+        return [bullet_id for bullet_id in raw_bullet_ids if isinstance(bullet_id, str)]
 
     def _extract_bullet_ids_regex(self, text: str) -> list[str]:
         """

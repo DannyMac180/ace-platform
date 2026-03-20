@@ -6,7 +6,7 @@ intelligent deduplication and merging using embeddings and LLM.
 """
 
 import re
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -20,10 +20,15 @@ except ImportError:
     print("Warning: sentence-transformers or faiss not available for bulletpoint analysis.")
     print("Install with: pip install sentence-transformers faiss-cpu")
 
-from playbook_utils import parse_playbook_line as parse_playbook_metadata_line
+from playbook_utils import (
+    ACTIVE_BULLET_STATUSES,
+)
+from playbook_utils import (
+    parse_playbook_line as parse_playbook_metadata_line,
+)
 
 
-def parse_playbook_line(line: str) -> Optional[dict[str, Any]]:
+def parse_playbook_line(line: str) -> dict[str, Any] | None:
     """
     Parse playbook line format: [sec-00001] helpful=4 harmful=1 :: Actual bullet content here...
 
@@ -112,6 +117,8 @@ class BulletpointAnalyzer:
         for line_idx, line in enumerate(lines):
             parsed = parse_playbook_line(line)
             if parsed:
+                if parsed.get("status") not in ACTIVE_BULLET_STATUSES:
+                    continue
                 parsed["line_number"] = line_idx + 1
                 parsed["original_line"] = line
                 bullet_index = len(bullets)
@@ -184,9 +191,7 @@ class BulletpointAnalyzer:
 
         return duplicate_groups
 
-    def _merge_bullets_with_llm(
-        self, bullets_group: list[dict[str, Any]]
-    ) -> Optional[dict[str, Any]]:
+    def _merge_bullets_with_llm(self, bullets_group: list[dict[str, Any]]) -> dict[str, Any] | None:
         """
         Merge a group of similar bullets using LLM.
 

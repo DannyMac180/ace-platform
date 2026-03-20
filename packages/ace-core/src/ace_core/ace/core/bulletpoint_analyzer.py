@@ -20,7 +20,12 @@ except ImportError:
     print("Warning: sentence-transformers or faiss not available for bulletpoint analysis.")
     print("Install with: pip install sentence-transformers faiss-cpu")
 
-from ...playbook_utils import parse_playbook_line as parse_playbook_metadata_line
+from ...playbook_utils import (
+    ACTIVE_BULLET_STATUSES,
+)
+from ...playbook_utils import (
+    parse_playbook_line as parse_playbook_metadata_line,
+)
 
 
 def parse_playbook_line(line: str) -> dict[str, Any] | None:
@@ -112,6 +117,8 @@ class BulletpointAnalyzer:
         for line_idx, line in enumerate(lines):
             parsed = parse_playbook_line(line)
             if parsed:
+                if parsed.get("status") not in ACTIVE_BULLET_STATUSES:
+                    continue
                 parsed["line_number"] = line_idx + 1
                 parsed["original_line"] = line
                 bullet_index = len(bullets)

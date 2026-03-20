@@ -50,6 +50,49 @@ def test_package_generator_returns_considered_and_used_ids(monkeypatch) -> None:
     assert used_ids == ["str-00001"]
 
 
+def test_package_generator_defaults_missing_used_ids_to_considered_ids(monkeypatch) -> None:
+    (generator_module,) = _load_package_modules("ace_core.ace.core.generator")
+
+    response = json.dumps(
+        {
+            "reasoning": "demo",
+            "considered_bullet_ids": ["str-00001", "mis-00002"],
+            "final_answer": "42",
+        }
+    )
+
+    monkeypatch.setattr(
+        generator_module,
+        "timed_llm_call",
+        lambda *args, **kwargs: (response, {"role": "generator", "call_id": "test"}),
+    )
+
+    generator = generator_module.Generator(api_client=None, api_provider="openai", model="test")
+    _, considered_ids, used_ids, _ = generator.generate(
+        question="What is 6 * 7?",
+        playbook="## STRATEGIES & INSIGHTS",
+        use_json_mode=True,
+    )
+
+    assert considered_ids == ["str-00001", "mis-00002"]
+    assert used_ids == ["str-00001", "mis-00002"]
+
+
+def test_package_bulletpoint_analyzer_excludes_archived_bullets() -> None:
+    (analyzer_module,) = _load_package_modules("ace_core.ace.core.bulletpoint_analyzer")
+
+    analyzer = analyzer_module.BulletpointAnalyzer(client=None, model="test")
+    _lines, bullets, _mapping = analyzer._parse_playbook(
+        """## STRATEGIES & INSIGHTS
+[str-00001] helpful=1 harmful=0 neutral=0 created_step=1 last_considered_step=4 last_used_step=4 times_considered_not_used=0 status=active :: Use a table for multi-step reasoning.
+[mis-00002] helpful=0 harmful=2 neutral=1 created_step=1 last_considered_step=4 last_used_step=0 times_considered_not_used=2 status=archived :: Guess before checking constraints.
+[str-00003] helpful=0 harmful=0 neutral=0 created_step=2 last_considered_step=0 last_used_step=0 times_considered_not_used=0 status=candidate :: Verify each constraint before choosing a path.
+"""
+    )
+
+    assert [bullet["id"] for bullet in bullets] == ["str-00001", "str-00003"]
+
+
 def test_package_playbook_utils_supports_lifecycle_operations_and_metadata() -> None:
     (playbook_utils,) = _load_package_modules("ace_core.playbook_utils")
 
