@@ -20,6 +20,22 @@ hosted control-plane code.
 - Finance benchmark datasets and scripts, which remain in the legacy upstream
   tree until later extraction work
 
+## Install
+
+From the repo root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install ./packages/ace-core
+python -c "from ace_core import ACE; print(ACE.__name__)"
+```
+
+If you want the broader OSS/local-runtime picture, see:
+
+- [`docs/oss-overview.md`](../../docs/oss-overview.md)
+- [`docs/local-quickstart.md`](../../docs/local-quickstart.md)
+
 ## Build
 
 ```bash

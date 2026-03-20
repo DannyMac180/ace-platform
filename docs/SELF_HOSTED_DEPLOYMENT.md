@@ -2,6 +2,10 @@
 
 This guide covers deploying ACE Platform on your own infrastructure using Docker Compose.
 
+If you first need the OSS/core boundary or the fastest local install path, read
+[OSS overview](./oss-overview.md) and [local quickstart](./local-quickstart.md)
+before using this full-stack deployment guide.
+
 ## Table of Contents
 
 - [Prerequisites](#prerequisites)
