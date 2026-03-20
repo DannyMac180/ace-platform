@@ -11,6 +11,8 @@ from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewAction,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -18,9 +20,11 @@ from ace_platform.db.models import (
     User,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceInvitation,
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
+    WorkspaceSyncTombstone,
 )
 from ace_platform.db.session import (
     AsyncSessionLocal,
@@ -42,6 +46,8 @@ __all__ = [
     "User",
     "Workspace",
     "WorkspaceMembership",
+    "WorkspaceInvitation",
+    "WorkspaceSyncTombstone",
     "Playbook",
     "PlaybookVersion",
     "Outcome",
@@ -50,6 +56,8 @@ __all__ = [
     "ApiKey",
     # Enums
     "PlaybookStatus",
+    "PlaybookReviewStatus",
+    "PlaybookReviewAction",
     "PlaybookSource",
     "OutcomeStatus",
     "EvolutionJobStatus",

@@ -95,3 +95,80 @@ def test_import_command_posts_bundle(monkeypatch, tmp_path, capsys) -> None:
     assert "Imported 1 playbooks" in stdout
     assert client.calls[0]["url"] == "https://ace.example/playbooks/import"
     assert client.calls[0]["json"] == json.loads(bundle_to_json(bundle))
+
+
+def test_init_command_writes_default_config(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "starter-project"
+    project_dir.mkdir()
+    (project_dir / "docs").mkdir()
+    (project_dir / "playbooks").mkdir()
+    (project_dir / "README.md").write_text("# Starter Project\n", encoding="utf-8")
+
+    exit_code = ace_cli.main(["init", "--path", str(project_dir)])
+
+    stdout = capsys.readouterr().out
+    config_path = project_dir / "ace.toml"
+    config_text = config_path.read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert "Initialized ACE in" in stdout
+    assert "- Default profile: local" in stdout
+    assert config_path.exists()
+    assert 'name = "starter-project"' in config_text
+    assert 'docs_dir = "docs"' in config_text
+    assert 'playbooks_dir = "playbooks"' in config_text
+    assert 'readme_path = "README.md"' in config_text
+    assert 'default_profile = "local"' in config_text
+    assert 'api_url_env = "ACE_API_URL"' in config_text
+    assert 'mcp_args = ["-m", "ace_platform.mcp.server", "stdio"]' in config_text
+    assert 'mcp_url = "https://aceagent.io/mcp"' in config_text
+
+
+def test_init_command_refuses_to_overwrite_existing_config(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "existing-project"
+    project_dir.mkdir()
+    config_path = project_dir / "ace.toml"
+    config_path.write_text("existing = true\n", encoding="utf-8")
+
+    exit_code = ace_cli.main(["init", "--path", str(project_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "already exists" in captured.err
+    assert config_path.read_text(encoding="utf-8") == "existing = true\n"
+
+
+def test_init_command_force_overwrites_with_custom_settings(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "custom-project"
+    project_dir.mkdir()
+    (project_dir / "ace.toml").write_text("old = true\n", encoding="utf-8")
+
+    exit_code = ace_cli.main(
+        [
+            "init",
+            "--path",
+            str(project_dir),
+            "--project-name",
+            "ACE Sandbox",
+            "--default-profile",
+            "hosted",
+            "--api-url",
+            "https://staging.example",
+            "--local-api-url",
+            "http://127.0.0.1:9000",
+            "--docs-url",
+            "https://docs.example",
+            "--force",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    config_text = (project_dir / "ace.toml").read_text(encoding="utf-8")
+
+    assert exit_code == 0
+    assert "- Default profile: hosted" in stdout
+    assert 'name = "ACE Sandbox"' in config_text
+    assert 'default_profile = "hosted"' in config_text
+    assert 'docs_url = "https://docs.example"' in config_text
+    assert 'api_url = "http://127.0.0.1:9000"' in config_text
+    assert 'mcp_url = "https://staging.example/mcp"' in config_text

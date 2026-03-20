@@ -4,23 +4,34 @@ import os
 
 import pytest
 from sqlalchemy import select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from ace_platform.core.security import hash_password
 from ace_platform.core.workspaces import (
+    DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT,
+    accept_workspace_invitation,
     add_workspace_member,
     bootstrap_workspace_for_user,
     create_workspace,
+    create_workspace_invitation,
     delete_workspace,
     list_user_workspaces,
+    normalize_workspace_inference_config,
+    normalize_workspace_settings,
     remove_workspace_membership,
+    update_workspace,
+    upgrade_personal_workspace_to_team,
 )
 from ace_platform.db.models import (
     Base,
     User,
     Workspace,
     WorkspaceDeploymentMode,
+    WorkspaceInferenceMode,
+    WorkspaceInferenceProvider,
+    WorkspaceInvitation,
     WorkspacePlan,
     WorkspaceRole,
 )
@@ -30,6 +41,30 @@ TEST_DATABASE_URL_ASYNC = os.environ.get(
     "TEST_DATABASE_URL_ASYNC",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/ace_platform_test",
 )
+
+
+def test_normalize_workspace_settings_defaults_team_seat_limit():
+    plan, deployment_mode, seat_limit, inference_config = normalize_workspace_settings(
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=None,
+        inference_config=None,
+    )
+
+    assert plan == WorkspacePlan.TEAM
+    assert deployment_mode == WorkspaceDeploymentMode.CLOUD
+    assert seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+    assert inference_config["mode"] == WorkspaceInferenceMode.MANAGED_PROVIDER.value
+
+
+def test_normalize_workspace_settings_rejects_single_seat_team_workspace():
+    with pytest.raises(ValueError, match="at least 2"):
+        normalize_workspace_settings(
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+            inference_config=None,
+        )
 
 
 @pytest.mark.skipif(
@@ -88,6 +123,10 @@ class TestWorkspaceService:
         assert workspace.plan == WorkspacePlan.PERSONAL
         assert workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD
         assert workspace.seat_limit == 1
+        assert workspace.inference_config == {
+            "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+            "provider": WorkspaceInferenceProvider.OPENAI.value,
+        }
 
         workspaces = await list_user_workspaces(async_session, user.id)
         assert len(workspaces) == 1
@@ -125,6 +164,198 @@ class TestWorkspaceService:
                 user=teammate,
                 role=WorkspaceRole.MEMBER,
             )
+
+    async def test_add_workspace_member_counts_pending_invitations(
+        self, async_session: AsyncSession
+    ):
+        owner = await self._create_user(async_session, "invite-seat-owner@example.com")
+        teammate = await self._create_user(async_session, "invite-seat-teammate@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Reserved Seat Limit",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=2,
+        )
+        await async_session.refresh(workspace, ["entitlements"])
+        await create_workspace_invitation(
+            async_session,
+            workspace=workspace,
+            invited_by_user=owner,
+            invited_email="reserved-seat@example.com",
+            role=WorkspaceRole.MEMBER,
+        )
+        await async_session.commit()
+
+        with pytest.raises(ValueError, match="seat limit"):
+            await add_workspace_member(
+                async_session,
+                workspace=workspace,
+                user=teammate,
+                role=WorkspaceRole.MEMBER,
+            )
+
+    async def test_accept_workspace_invitation_uses_reserved_seat(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "accept-seat-owner@example.com")
+        invited_user = await self._create_user(async_session, "accept-seat-user@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Accept Reserved Seat",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=2,
+        )
+        await async_session.refresh(workspace, ["entitlements"])
+        invitation = await create_workspace_invitation(
+            async_session,
+            workspace=workspace,
+            invited_by_user=owner,
+            invited_email=invited_user.email,
+            role=WorkspaceRole.MEMBER,
+        )
+
+        membership = await accept_workspace_invitation(
+            async_session,
+            invitation=invitation,
+            user=invited_user,
+        )
+        await async_session.commit()
+
+        assert membership.user_id == invited_user.id
+        assert membership.workspace_id == workspace.id
+        assert invitation.accepted_by_user_id == invited_user.id
+
+    async def test_workspace_invitation_unique_index_blocks_duplicate_active_invites(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "invite-unique-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Invitation Uniqueness",
+            plan=WorkspacePlan.TEAM,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=3,
+        )
+
+        async_session.add_all(
+            [
+                WorkspaceInvitation(
+                    workspace_id=workspace.id,
+                    invited_by_user_id=owner.id,
+                    invited_email="duplicate-active@example.com",
+                    role=WorkspaceRole.MEMBER,
+                ),
+                WorkspaceInvitation(
+                    workspace_id=workspace.id,
+                    invited_by_user_id=owner.id,
+                    invited_email="duplicate-active@example.com",
+                    role=WorkspaceRole.MEMBER,
+                ),
+            ]
+        )
+
+        with pytest.raises(IntegrityError):
+            await async_session.commit()
+        await async_session.rollback()
+
+    async def test_update_workspace_falls_back_to_byo_when_managed_becomes_unsupported(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "inference-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Inference Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        await async_session.commit()
+
+        await update_workspace(
+            async_session,
+            workspace,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+        )
+        await async_session.commit()
+
+        assert workspace.inference_config == {
+            "mode": WorkspaceInferenceMode.BYO_PROVIDER.value,
+            "provider": WorkspaceInferenceProvider.OPENAI.value,
+        }
+
+    async def test_update_workspace_promotes_personal_workspace_to_team_defaults(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "upgrade-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Upgrade Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        workspace_id = workspace.id
+        await async_session.commit()
+
+        await upgrade_personal_workspace_to_team(
+            async_session,
+            workspace,
+        )
+        await async_session.commit()
+
+        upgraded_workspace = (await list_user_workspaces(async_session, owner.id))[0]
+
+        assert upgraded_workspace.id == workspace_id
+        assert upgraded_workspace.plan == WorkspacePlan.TEAM
+        assert upgraded_workspace.seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+        assert upgraded_workspace.memberships[0].user_id == owner.id
+        assert upgraded_workspace.memberships[0].role == WorkspaceRole.OWNER
+        assert upgraded_workspace.entitlements is not None
+        assert upgraded_workspace.entitlements.shared_workspace is True
+        assert upgraded_workspace.entitlements.invite_members is True
+
+    async def test_upgrade_personal_workspace_to_team_reuses_existing_workspace_id(
+        self,
+        async_session: AsyncSession,
+    ):
+        owner = await self._create_user(async_session, "upgrade-route-owner@example.com")
+
+        workspace = await create_workspace(
+            async_session,
+            owner_user=owner,
+            name="Personal Workspace",
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+        )
+        original_id = workspace.id
+        await async_session.commit()
+
+        await upgrade_personal_workspace_to_team(async_session, workspace, name="Product Team")
+        await async_session.commit()
+
+        upgraded_workspace = (await list_user_workspaces(async_session, owner.id))[0]
+
+        assert upgraded_workspace.id == original_id
+        assert upgraded_workspace.name == "Product Team"
+        assert upgraded_workspace.plan == WorkspacePlan.TEAM
+        assert upgraded_workspace.seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
 
     async def test_remove_membership_rejects_last_workspace(self, async_session: AsyncSession):
         owner = await self._create_user(async_session, "remove-owner@example.com")
@@ -168,3 +399,32 @@ class TestWorkspaceService:
         ).scalar_one()
         with pytest.raises(ValueError, match="without any workspace"):
             await delete_workspace(async_session, refreshed_workspace)
+
+
+def test_normalize_workspace_inference_config_rejects_unsupported_managed_mode():
+    with pytest.raises(ValueError, match="ACE-managed inference is not supported"):
+        normalize_workspace_inference_config(
+            plan=WorkspacePlan.ENTERPRISE,
+            deployment_mode=WorkspaceDeploymentMode.SELF_HOSTED,
+            inference_config={
+                "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+                "provider": WorkspaceInferenceProvider.OPENAI.value,
+            },
+        )
+
+
+def test_normalize_workspace_settings_defaults_team_to_multi_seat():
+    plan, deployment_mode, seat_limit, inference_config = normalize_workspace_settings(
+        plan=WorkspacePlan.TEAM,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=None,
+        inference_config=None,
+    )
+
+    assert plan == WorkspacePlan.TEAM
+    assert deployment_mode == WorkspaceDeploymentMode.CLOUD
+    assert seat_limit == DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
+    assert inference_config == {
+        "mode": WorkspaceInferenceMode.MANAGED_PROVIDER.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }

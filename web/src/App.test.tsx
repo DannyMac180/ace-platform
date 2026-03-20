@@ -25,11 +25,10 @@ describe('App routing', () => {
     vi.clearAllMocks();
   });
 
-  it('allows unsubscribed users to view the dashboard', async () => {
+  it('routes the authenticated dashboard entry point to activity', async () => {
     window.history.pushState({}, '', '/dashboard');
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Playbooks' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Activity' })).toBeInTheDocument();
   });
 });
-

@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
+  Activity as ActivityIcon,
   BookOpen,
   Key,
   BarChart3,
@@ -28,8 +29,8 @@ export function Layout({ children }: LayoutProps) {
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 
@@ -48,9 +49,10 @@ export function Layout({ children }: LayoutProps) {
   const docsUrl = import.meta.env.VITE_DOCS_URL || 'https://docs.aceagent.io/docs';
 
   const navItems = [
-    { to: '/dashboard', icon: BookOpen, label: 'Playbooks' },
-    { to: '/api-keys', icon: Key, label: 'API Keys' },
+    { to: '/activity', icon: ActivityIcon, label: 'Activity' },
+    { to: '/playbooks', icon: BookOpen, label: 'Playbooks' },
     { to: '/usage', icon: BarChart3, label: 'Usage' },
+    { to: '/api-keys', icon: Key, label: 'API Keys' },
     { to: '/pricing', icon: CreditCard, label: 'Pricing' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/support', icon: HelpCircle, label: 'Support' },

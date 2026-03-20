@@ -58,7 +58,7 @@ def _normalize_text(value: Any, *, max_length: int = 255) -> str | None:
 
     if isinstance(value, bool):
         raw = "true" if value else "false"
-    elif isinstance(value, (int, float)):
+    elif isinstance(value, int | float):
         raw = str(value)
     elif isinstance(value, str):
         raw = value

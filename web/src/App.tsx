@@ -9,8 +9,10 @@ import { OAuthCallback } from './pages/OAuthCallback/OAuthCallback';
 import { VerifyEmail } from './pages/VerifyEmail/VerifyEmail';
 import { ForgotPassword } from './pages/ForgotPassword/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword/ResetPassword';
+import { Activity } from './pages/Activity/Activity';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { PlaybookDetail } from './pages/PlaybookDetail/PlaybookDetail';
+import { HostedEvalRunDetail } from './pages/HostedEvalRunDetail/HostedEvalRunDetail';
 import { PlaybookContentEditor } from './pages/PlaybookContentEditor/PlaybookContentEditor';
 import { ApiKeys } from './pages/ApiKeys/ApiKeys';
 import { Usage } from './pages/Usage/Usage';
@@ -157,6 +159,22 @@ function AppRoutes() {
         path="/dashboard"
         element={
           <ProtectedRoute>
+            <Navigate to="/activity" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/activity"
+        element={
+          <ProtectedRoute>
+            <Activity />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/playbooks"
+        element={
+          <ProtectedRoute>
             <Dashboard />
           </ProtectedRoute>
         }
@@ -174,6 +192,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <PlaybookContentEditor />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/playbooks/:id/evolutions/:runId"
+        element={
+          <ProtectedRoute>
+            <HostedEvalRunDetail />
           </ProtectedRoute>
         }
       />

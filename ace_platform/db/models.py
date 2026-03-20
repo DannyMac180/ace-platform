@@ -2,8 +2,11 @@
 
 This module defines all database models for the platform:
 - User: Platform users with auth
-- Workspace: Multi-tenant workspace container for cloud users
-- WorkspaceMembership: User membership and role inside a workspace
+- Workspace: Hosted tenancy container for personal, team, and enterprise plans
+- Membership: User membership within a workspace
+- WorkspaceInvitation: Pending team-workspace invitation records
+- WorkspaceSubscription: Workspace-level billing state and provider linkage
+- WorkspaceEntitlement: Workspace-level feature flags
 - Playbook: User playbooks with version tracking
 - PlaybookVersion: Immutable playbook versions
 - Outcome: Task outcomes for evolution
@@ -20,6 +23,7 @@ from uuid import uuid4
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -29,8 +33,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -44,17 +51,37 @@ class Base(DeclarativeBase):
     pass
 
 
-def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
-    """Return stable database values for a Python enum."""
-    return [str(member.value) for member in enum_cls]
-
-
 class PlaybookStatus(str, enum.Enum):
     """Status of a playbook."""
 
     ACTIVE = "active"
     PAUSED = "paused"
     ARCHIVED = "archived"
+
+
+class PlaybookReviewStatus(str, enum.Enum):
+    """Review lifecycle state for a promoted playbook."""
+
+    DRAFT = "draft"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    ARCHIVED = "archived"
+
+
+class PlaybookReviewAction(str, enum.Enum):
+    """Tracked review activity actions for a playbook."""
+
+    CREATED = "created"
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    RETURNED_TO_DRAFT = "returned_to_draft"
+    ARCHIVED = "archived"
+
+
+def _enum_values(enum_cls: type[enum.Enum]) -> list[str]:
+    """Return SQLAlchemy enum labels using the enum values instead of member names."""
+
+    return [str(member.value) for member in enum_cls]
 
 
 class PlaybookSource(str, enum.Enum):
@@ -92,15 +119,8 @@ class SubscriptionStatus(str, enum.Enum):
     UNPAID = "unpaid"
 
 
-class OAuthProvider(str, enum.Enum):
-    """Supported OAuth providers."""
-
-    GOOGLE = "google"
-    GITHUB = "github"
-
-
 class WorkspacePlan(str, enum.Enum):
-    """Supported workspace plans."""
+    """Workspace packaging tier."""
 
     PERSONAL = "personal"
     TEAM = "team"
@@ -108,19 +128,145 @@ class WorkspacePlan(str, enum.Enum):
 
 
 class WorkspaceDeploymentMode(str, enum.Enum):
-    """Where the workspace is hosted."""
+    """Workspace deployment mode."""
 
     CLOUD = "cloud"
     SELF_HOSTED = "self_hosted"
 
 
-class WorkspaceRole(str, enum.Enum):
-    """Membership roles within a workspace."""
+class WorkspaceInferenceMode(str, enum.Enum):
+    """How a workspace resolves model inference."""
+
+    BYO_PROVIDER = "byo_provider"
+    MANAGED_PROVIDER = "managed_provider"
+
+
+class WorkspaceInferenceProvider(str, enum.Enum):
+    """Supported provider identifiers for workspace inference configuration."""
+
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
+class MembershipRole(str, enum.Enum):
+    """Role for a user inside a workspace."""
 
     OWNER = "owner"
     MEMBER = "member"
     REVIEWER = "reviewer"
     ADMIN = "admin"
+
+
+class WorkspaceBillingProvider(str, enum.Enum):
+    """Supported billing providers for workspace subscriptions."""
+
+    STRIPE = "stripe"
+    MANUAL = "manual"
+
+
+class WorkspaceSubscriptionStatus(str, enum.Enum):
+    """Status of a workspace subscription."""
+
+    TRIALING = "trialing"
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    CANCELED = "canceled"
+    UNPAID = "unpaid"
+
+
+WORKSPACE_PLAN_ENTITLEMENTS: dict[WorkspacePlan, dict[str, bool]] = {
+    WorkspacePlan.PERSONAL: {
+        "cloud_sync": True,
+        "hosted_backups": True,
+        "managed_inference": True,
+        "hosted_evals": True,
+        "invite_members": False,
+        "shared_workspace": False,
+        "approvals": False,
+        "rbac": False,
+        "sso": False,
+        "audit_logs": False,
+    },
+    WorkspacePlan.TEAM: {
+        "cloud_sync": True,
+        "hosted_backups": True,
+        "managed_inference": True,
+        "hosted_evals": True,
+        "invite_members": True,
+        "shared_workspace": True,
+        "approvals": True,
+        "rbac": True,
+        "sso": False,
+        "audit_logs": True,
+    },
+    WorkspacePlan.ENTERPRISE: {
+        "cloud_sync": True,
+        "hosted_backups": True,
+        "managed_inference": True,
+        "hosted_evals": True,
+        "invite_members": True,
+        "shared_workspace": True,
+        "approvals": True,
+        "rbac": True,
+        "sso": True,
+        "audit_logs": True,
+    },
+}
+
+
+def get_default_workspace_entitlements(plan: WorkspacePlan) -> dict[str, bool]:
+    """Return the default feature flags for a workspace plan."""
+
+    return dict(WORKSPACE_PLAN_ENTITLEMENTS[plan])
+
+
+def workspace_supports_managed_inference(
+    *,
+    plan: WorkspacePlan,
+    deployment_mode: WorkspaceDeploymentMode,
+) -> bool:
+    """Return whether a workspace can use ACE-managed inference."""
+
+    return (
+        deployment_mode == WorkspaceDeploymentMode.CLOUD
+        and get_default_workspace_entitlements(plan)["managed_inference"]
+    )
+
+
+def get_default_workspace_inference_config(
+    *,
+    plan: WorkspacePlan,
+    deployment_mode: WorkspaceDeploymentMode,
+) -> dict[str, str]:
+    """Return the default workspace inference configuration."""
+
+    mode = (
+        WorkspaceInferenceMode.MANAGED_PROVIDER
+        if workspace_supports_managed_inference(
+            plan=plan,
+            deployment_mode=deployment_mode,
+        )
+        else WorkspaceInferenceMode.BYO_PROVIDER
+    )
+    return {
+        "mode": mode.value,
+        "provider": WorkspaceInferenceProvider.OPENAI.value,
+    }
+
+
+def get_workspace_plan_from_legacy_tier(subscription_tier: str | None) -> WorkspacePlan:
+    """Map the legacy user-level billing tier to the new workspace plan."""
+
+    if subscription_tier == "enterprise":
+        return WorkspacePlan.ENTERPRISE
+    return WorkspacePlan.PERSONAL
+
+
+class OAuthProvider(str, enum.Enum):
+    """Supported OAuth providers."""
+
+    GOOGLE = "google"
+    GITHUB = "github"
 
 
 class AuditEventType(str, enum.Enum):
@@ -245,14 +391,23 @@ class User(Base):
     usage_records: Mapped[list["UsageRecord"]] = relationship(
         "UsageRecord", back_populates="user", cascade="all, delete-orphan"
     )
+    workspace_backups: Mapped[list["WorkspaceBackup"]] = relationship(
+        "WorkspaceBackup", back_populates="owner_user"
+    )
     oauth_accounts: Mapped[list["UserOAuthAccount"]] = relationship(
         "UserOAuthAccount", back_populates="user", cascade="all, delete-orphan"
     )
     acquisition_events: Mapped[list["AcquisitionEvent"]] = relationship(
         "AcquisitionEvent", back_populates="user", cascade="all, delete-orphan"
     )
-    workspace_memberships: Mapped[list["WorkspaceMembership"]] = relationship(
-        "WorkspaceMembership", back_populates="user", cascade="all, delete-orphan"
+    memberships: Mapped[list["Membership"]] = relationship(
+        "Membership", back_populates="user", cascade="all, delete-orphan"
+    )
+    workspace_invitations_sent: Mapped[list["WorkspaceInvitation"]] = relationship(
+        "WorkspaceInvitation",
+        back_populates="invited_by_user",
+        cascade="all, delete-orphan",
+        foreign_keys="WorkspaceInvitation.invited_by_user_id",
     )
 
     def __repr__(self) -> str:
@@ -260,35 +415,23 @@ class User(Base):
 
 
 class Workspace(Base):
-    """Workspace tenancy boundary for hosted users."""
+    """Primary tenancy boundary for hosted and enterprise customers."""
 
     __tablename__ = "workspaces"
-    __table_args__ = (
-        Index("ix_workspaces_plan", "plan"),
-        Index("ix_workspaces_deployment_mode", "deployment_mode"),
-    )
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     plan: Mapped[WorkspacePlan] = mapped_column(
-        Enum(
-            WorkspacePlan,
-            name="workspaceplan",
-            values_callable=_enum_values,
-        ),
-        default=WorkspacePlan.PERSONAL,
-        nullable=False,
+        Enum(WorkspacePlan), default=WorkspacePlan.PERSONAL, nullable=False, index=True
     )
     deployment_mode: Mapped[WorkspaceDeploymentMode] = mapped_column(
-        Enum(
-            WorkspaceDeploymentMode,
-            name="workspacedeploymentmode",
-            values_callable=_enum_values,
-        ),
+        Enum(WorkspaceDeploymentMode),
         default=WorkspaceDeploymentMode.CLOUD,
         nullable=False,
     )
-    seat_limit: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    seat_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    usage_limits: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    inference_config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -296,50 +439,55 @@ class Workspace(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    memberships: Mapped[list["WorkspaceMembership"]] = relationship(
-        "WorkspaceMembership", back_populates="workspace", cascade="all, delete-orphan"
+    memberships: Mapped[list["Membership"]] = relationship(
+        "Membership", back_populates="workspace", cascade="all, delete-orphan"
+    )
+    invitations: Mapped[list["WorkspaceInvitation"]] = relationship(
+        "WorkspaceInvitation",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+    )
+    subscription: Mapped["WorkspaceSubscription | None"] = relationship(
+        "WorkspaceSubscription",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    entitlements: Mapped["WorkspaceEntitlement | None"] = relationship(
+        "WorkspaceEntitlement",
+        back_populates="workspace",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    __table_args__ = (
+        CheckConstraint("seat_limit >= 1", name="ck_workspaces_seat_limit"),
+        CheckConstraint(
+            "(plan != 'PERSONAL') OR (seat_limit = 1)",
+            name="ck_workspaces_personal_seat_limit",
+        ),
     )
 
     def __repr__(self) -> str:
-        return f"<Workspace {self.name}>"
+        return f"<Workspace {self.name} ({self.plan.value})>"
 
 
-class WorkspaceMembership(Base):
+class Membership(Base):
     """User membership in a workspace."""
 
     __tablename__ = "workspace_memberships"
 
-    __table_args__ = (
-        UniqueConstraint(
-            "workspace_id",
-            "user_id",
-            name="uq_workspace_memberships_workspace_user",
-        ),
-        Index("ix_workspace_memberships_workspace_user", "workspace_id", "user_id"),
-        Index("ix_workspace_memberships_user_workspace", "user_id", "workspace_id"),
-    )
-
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        primary_key=True,
     )
     user_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        primary_key=True,
     )
-    role: Mapped[WorkspaceRole] = mapped_column(
-        Enum(
-            WorkspaceRole,
-            name="workspacerole",
-            values_callable=_enum_values,
-        ),
-        default=WorkspaceRole.MEMBER,
-        nullable=False,
+    role: Mapped[MembershipRole] = mapped_column(
+        Enum(MembershipRole), default=MembershipRole.MEMBER, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -349,10 +497,252 @@ class WorkspaceMembership(Base):
     )
 
     workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="memberships")
-    user: Mapped["User"] = relationship("User", back_populates="workspace_memberships")
+    user: Mapped["User"] = relationship("User", back_populates="memberships")
+
+    __table_args__ = (Index("ix_workspace_memberships_user_role", "user_id", "role"),)
+
+    @hybrid_property
+    def id(self) -> UUID:
+        """Compatibility identifier used by the workspace service routes."""
+        return self.user_id
+
+    @id.expression
+    def id(self):
+        """Map compatibility lookups onto the membership's user id."""
+        return self.user_id
 
     def __repr__(self) -> str:
-        return f"<WorkspaceMembership workspace={self.workspace_id} user={self.user_id}>"
+        return f"<Membership workspace={self.workspace_id} user={self.user_id} {self.role.value}>"
+
+
+# Backward-compatible aliases for the newer workspace service naming.
+WorkspaceMembership = Membership
+
+
+class WorkspaceInvitation(Base):
+    """Pending invitation to join a workspace."""
+
+    __tablename__ = "workspace_invitations"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    invited_by_user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    invited_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    role: Mapped[MembershipRole] = mapped_column(
+        Enum(MembershipRole), default=MembershipRole.MEMBER, nullable=False
+    )
+    accepted_by_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    revoked_by_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="invitations")
+    invited_by_user: Mapped["User"] = relationship(
+        "User",
+        back_populates="workspace_invitations_sent",
+        foreign_keys=[invited_by_user_id],
+    )
+
+    __table_args__ = (
+        Index(
+            "uq_workspace_invitations_active_workspace_email",
+            "workspace_id",
+            "invited_email",
+            unique=True,
+            postgresql_where=text("accepted_at IS NULL AND revoked_at IS NULL"),
+        ),
+        Index("ix_workspace_invitations_workspace_email", "workspace_id", "invited_email"),
+        Index("ix_workspace_invitations_workspace_created_at", "workspace_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WorkspaceInvitation workspace={self.workspace_id} "
+            f"email={self.invited_email} role={self.role.value}>"
+        )
+
+
+WorkspaceRole = MembershipRole
+
+
+class WorkspaceSubscription(Base):
+    """Billing state for one workspace."""
+
+    __tablename__ = "workspace_subscriptions"
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    billing_provider: Mapped[WorkspaceBillingProvider] = mapped_column(
+        Enum(WorkspaceBillingProvider), nullable=False
+    )
+    status: Mapped[WorkspaceSubscriptionStatus] = mapped_column(
+        Enum(WorkspaceSubscriptionStatus), nullable=False
+    )
+    plan_code: Mapped[str] = mapped_column(String(100), nullable=False)
+    provider_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="subscription")
+
+    __table_args__ = (
+        Index("ix_workspace_subscriptions_status", "status"),
+        Index(
+            "ix_workspace_subscriptions_provider_customer",
+            "billing_provider",
+            "provider_customer_id",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceSubscription {self.workspace_id} ({self.status.value})>"
+
+
+class WorkspaceEntitlement(Base):
+    """Boolean entitlement flags for one workspace."""
+
+    __tablename__ = "workspace_entitlements"
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    cloud_sync: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hosted_backups: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    managed_inference: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    hosted_evals: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    invite_members: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    shared_workspace: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    approvals: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    rbac: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sso: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    audit_logs: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace", back_populates="entitlements")
+
+    @classmethod
+    def defaults_for_plan(cls, plan: WorkspacePlan) -> dict[str, bool]:
+        """Return column-compatible entitlement defaults for a workspace plan."""
+
+        return get_default_workspace_entitlements(plan)
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceEntitlement {self.workspace_id}>"
+
+
+class WorkspaceBackup(Base):
+    """Persisted backup snapshot for one hosted personal workspace."""
+
+    __tablename__ = "workspace_backups"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
+    owner_user_id: Mapped[UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    trigger_source: Mapped[str] = mapped_column(String(50), nullable=False, default="scheduled")
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    backup_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    owner_user: Mapped["User | None"] = relationship("User", back_populates="workspace_backups")
+
+    __table_args__ = (
+        Index("ix_workspace_backups_workspace_created", "workspace_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkspaceBackup {self.workspace_id} {self.created_at}>"
+
+
+class WorkspaceSyncTombstone(Base):
+    """Delete tombstone used to propagate playbook removals through workspace sync."""
+
+    __tablename__ = "workspace_sync_tombstones"
+
+    workspace_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspaces.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    entity_type: Mapped[str] = mapped_column(String(50), primary_key=True)
+    entity_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+    workspace: Mapped["Workspace"] = relationship("Workspace")
+
+    __table_args__ = (
+        Index(
+            "ix_workspace_sync_tombstones_workspace_deleted_at",
+            "workspace_id",
+            "deleted_at",
+        ),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<WorkspaceSyncTombstone workspace={self.workspace_id} "
+            f"entity={self.entity_type}:{self.entity_id}>"
+        )
 
 
 class Playbook(Base):
@@ -373,6 +763,26 @@ class Playbook(Base):
     )
     status: Mapped[PlaybookStatus] = mapped_column(
         Enum(PlaybookStatus), default=PlaybookStatus.ACTIVE, nullable=False
+    )
+    review_status: Mapped[PlaybookReviewStatus] = mapped_column(
+        Enum(
+            PlaybookReviewStatus,
+            name="playbookreviewstatus",
+            values_callable=_enum_values,
+            validate_strings=True,
+        ),
+        default=PlaybookReviewStatus.DRAFT,
+        nullable=False,
+    )
+    review_status_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    review_history: Mapped[list[dict]] = mapped_column(
+        MutableList.as_mutable(JSONB),
+        default=list,
+        nullable=False,
     )
     source: Mapped[PlaybookSource] = mapped_column(
         Enum(PlaybookSource), default=PlaybookSource.USER_CREATED, nullable=False
