@@ -27,7 +27,7 @@
 <p align="center">
   <a href="https://github.com/DannyMac180/ace-platform/actions/workflows/ci.yml"><img src="https://github.com/DannyMac180/ace-platform/actions/workflows/ci.yml/badge.svg" alt="CI status" /></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-1f3b5c" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/license-Apache%202.0-b8860b" alt="Apache 2.0 license" />
+  <img src="https://img.shields.io/badge/license-MIT-2f855a" alt="MIT license" />
 </p>
 
 ![ACE social card](web/public/ace-social-card.png)
@@ -234,7 +234,12 @@ Start from [.env.example](.env.example) for the full list.
 
 ## Contributing
 
-Contributions are welcome. If you want to improve ACE, the best path is a focused PR with a clear test plan.
+Contributions are welcome. If you want to improve ACE, the best path is a
+focused PR with a clear test plan.
+
+Before opening a PR, read [CONTRIBUTING.md](CONTRIBUTING.md) for the MIT
+licensing terms and the OSS/core versus private cloud boundary that governs this
+public repository.
 
 1. Create a feature branch instead of working on `main`.
 2. Add tests for new behavior.
@@ -271,4 +276,4 @@ Dan is focused on making AI systems more durable, compounding, and useful in rea
 - [Changelog](CHANGELOG.md)
 - [Troubleshooting guide](docs/TROUBLESHOOTING.md)
 - [ACE core README](ace_core/README.md)
-- [Apache 2.0 license](LICENSE.txt)
+- [MIT License](LICENSE.txt)
