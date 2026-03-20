@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from ace_platform.core.identity import OAuthIdentity
 from ace_platform.core.oauth_tokens import is_encrypted_oauth_token
 from ace_platform.db.models import OAuthProvider, User, UserOAuthAccount
 
@@ -155,25 +156,30 @@ async def test_google_callback_redirects_with_fragment_tokens(monkeypatch):
     oauth_service = MagicMock()
     oauth_service.get_or_create_user_from_oauth = AsyncMock(return_value=(user, True))
 
-    monkeypatch.setattr(oauth_routes, "is_google_oauth_enabled", lambda: True)
-    monkeypatch.setattr(
-        oauth_routes.oauth,
-        "google",
-        SimpleNamespace(),
-        raising=False,
-    )
-    monkeypatch.setattr(
-        oauth_routes.oauth.google,
-        "authorize_access_token",
-        AsyncMock(
+    provider = SimpleNamespace(
+        provider=OAuthProvider.GOOGLE,
+        display_name="Google",
+        key="google",
+        session_state_key="_state_google_",
+        is_enabled=lambda: True,
+        exchange_token=AsyncMock(
             return_value={
                 "userinfo": {"sub": "google-123", "email": user.email},
                 "access_token": "provider-access-token",
                 "refresh_token": "provider-refresh-token",
             }
         ),
-        raising=False,
+        resolve_identity=AsyncMock(
+            return_value=OAuthIdentity(
+                provider_user_id="google-123",
+                email=user.email,
+                user_info={"sub": "google-123", "email": user.email},
+                access_token="provider-access-token",
+                refresh_token="provider-refresh-token",
+            )
+        ),
     )
+    monkeypatch.setattr(oauth_routes, "get_identity_provider", lambda _provider: provider)
     monkeypatch.setattr(oauth_routes, "OAuthService", lambda _db: oauth_service)
     monkeypatch.setattr(oauth_routes, "bootstrap_workspace_for_user", AsyncMock())
     monkeypatch.setattr(oauth_routes, "audit_oauth_login_success", AsyncMock())
