@@ -269,3 +269,14 @@ def test_benchmark_command_rejects_missing_case_fields(tmp_path, capsys) -> None
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "field 'ace_output' must be a string" in captured.err
+
+
+def test_benchmark_command_reports_missing_input_file(capsys) -> None:
+    missing_path = "/tmp/ace-benchmark-does-not-exist.json"
+
+    exit_code = ace_cli.main(["benchmark", "--input", missing_path])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "ACE benchmark failed:" in captured.err
+    assert missing_path in captured.err

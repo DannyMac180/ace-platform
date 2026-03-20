@@ -253,7 +253,7 @@ def _run_benchmark(args: argparse.Namespace) -> int:
             baseline_result=baseline_result,
             ace_result=ace_result,
         )
-    except (ValueError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"ACE benchmark failed: {exc}", file=sys.stderr)
         return 1
 
