@@ -16,10 +16,13 @@ import type {
   ConversionFunnel,
   EvolutionJob,
   EvolutionSummary,
+  HostedEvalRun,
   Outcome,
   OutcomeCreate,
   PaginatedResponse,
   Playbook,
+  PlaybookReviewActionRequest,
+  PlaybookReviewActivityItem,
   PlaybookCreate,
   PlaybookEvolutionStats,
   PlaybookListItem,
@@ -28,15 +31,26 @@ import type {
   PlaybookVersion,
   PlatformStats,
   RecentEvolution,
+  WorkspaceSharedPlaybook,
+  WorkspaceSummary,
   TokenResponse,
+  TriggerHostedEvalRunResponse,
   TopUser,
+  UpgradePersonalWorkspaceToTeamRequest,
   UsageSummary,
   User,
   VersionCreate,
+  WorkspaceEntitlements,
+  WorkspaceInvitation,
+  WorkspaceMembership,
+  WorkspaceRole,
 } from '../types';
 
 // Use empty string for proxy in dev, or VITE_API_URL in production
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+const PERSONAL_WORKSPACE_ID = 'me';
+const HOSTED_AUTH_BASE = '/v1/auth';
+const HOSTED_PROFILE_PATH = '/v1/me';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -99,7 +113,7 @@ api.interceptors.response.use(
         // Reuse existing refresh promise to prevent race conditions
         if (!refreshPromise) {
           refreshPromise = axios
-            .post<TokenResponse>(`${API_BASE_URL}/auth/refresh`, {
+            .post<TokenResponse>(`${API_BASE_URL}${HOSTED_AUTH_BASE}/refresh`, {
               refresh_token: currentRefreshToken,
             })
             .then((res) => res.data)
@@ -144,18 +158,22 @@ export const authApi = {
   },
 
   login: async (email: string, password: string): Promise<TokenResponse> => {
-    const response = await api.post<TokenResponse>('/auth/login', { email, password });
+    const response = await api.post<TokenResponse>(`${HOSTED_AUTH_BASE}/login`, { email, password });
     setTokens(response.data);
     return response.data;
   },
 
-  logout: () => {
-    clearTokens();
+  logout: async (): Promise<void> => {
+    try {
+      await api.post(`${HOSTED_AUTH_BASE}/logout`);
+    } finally {
+      clearTokens();
+    }
   },
 
   refresh: async (): Promise<TokenResponse> => {
     const currentRefreshToken = localStorage.getItem('refresh_token');
-    const response = await api.post<TokenResponse>('/auth/refresh', {
+    const response = await api.post<TokenResponse>(`${HOSTED_AUTH_BASE}/refresh`, {
       refresh_token: currentRefreshToken,
     });
     setTokens(response.data);
@@ -163,7 +181,7 @@ export const authApi = {
   },
 
   getMe: async (): Promise<User> => {
-    const response = await api.get<User>('/auth/me');
+    const response = await api.get<User>(HOSTED_PROFILE_PATH);
     return response.data;
   },
 
@@ -281,10 +299,10 @@ export const playbooksApi = {
   list: async (
     page = 1,
     pageSize = 20,
-    status?: string
+    reviewStatus?: string
   ): Promise<PaginatedResponse<PlaybookListItem>> => {
     const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-    if (status) params.set('status_filter', status);
+    if (reviewStatus) params.set('review_status_filter', reviewStatus);
     const response = await api.get<PaginatedResponse<PlaybookListItem>>(
       `/playbooks?${params}`
     );
@@ -349,6 +367,22 @@ export const playbooksApi = {
     return response.data;
   },
 
+  runReviewAction: async (id: string, data: PlaybookReviewActionRequest): Promise<Playbook> => {
+    const response = await api.post<Playbook>(`/playbooks/${id}/review-actions`, data);
+    return response.data;
+  },
+
+  getActivity: async (
+    id: string,
+    page = 1,
+    pageSize = 20
+  ): Promise<PaginatedResponse<PlaybookReviewActivityItem>> => {
+    const response = await api.get<PaginatedResponse<PlaybookReviewActivityItem>>(
+      `/playbooks/${id}/activity?page=${page}&page_size=${pageSize}`
+    );
+    return response.data;
+  },
+
   getEvolutions: async (
     id: string,
     page = 1,
@@ -364,6 +398,106 @@ export const playbooksApi = {
     const response = await api.post<{ job_id: string; is_new: boolean; status: string }>(
       `/playbooks/${id}/evolve`
     );
+    return response.data;
+  },
+};
+
+export const hostedEvalRunsApi = {
+  trigger: async (playbookId: string): Promise<TriggerHostedEvalRunResponse> => {
+    const response = await api.post<TriggerHostedEvalRunResponse>(
+      `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/evals/run`,
+      { playbook_id: playbookId }
+    );
+    return response.data;
+  },
+
+  get: async (runId: string): Promise<HostedEvalRun> => {
+    const response = await api.get<HostedEvalRun>(
+      `/v1/workspaces/${PERSONAL_WORKSPACE_ID}/evals/${runId}`
+    );
+    return response.data;
+  },
+};
+
+export const workspacesApi = {
+  list: async (): Promise<WorkspaceSummary[]> => {
+    const response = await api.get<WorkspaceSummary[]>('/workspaces');
+    return response.data;
+  },
+
+  listMemberships: async (workspaceId: string): Promise<WorkspaceMembership[]> => {
+    const response = await api.get<WorkspaceMembership[]>(`/workspaces/${workspaceId}/memberships`);
+    return response.data;
+  },
+
+  removeMembership: async (workspaceId: string, membershipId: string): Promise<void> => {
+    await api.delete(`/workspaces/${workspaceId}/memberships/${membershipId}`);
+  },
+
+  listInvitations: async (workspaceId: string): Promise<WorkspaceInvitation[]> => {
+    const response = await api.get<WorkspaceInvitation[]>(`/workspaces/${workspaceId}/invitations`);
+    return response.data;
+  },
+
+  createInvitation: async (
+    workspaceId: string,
+    data: { email: string; role: WorkspaceRole }
+  ): Promise<WorkspaceInvitation> => {
+    const response = await api.post<WorkspaceInvitation>(
+      `/workspaces/${workspaceId}/invitations`,
+      data
+    );
+    return response.data;
+  },
+
+  deleteInvitation: async (workspaceId: string, invitationId: string): Promise<void> => {
+    await api.delete(`/workspaces/${workspaceId}/invitations/${invitationId}`);
+  },
+
+  listMyInvitations: async (): Promise<WorkspaceInvitation[]> => {
+    const response = await api.get<WorkspaceInvitation[]>('/workspace-invitations');
+    return response.data;
+  },
+
+  acceptInvitation: async (invitationId: string): Promise<WorkspaceMembership> => {
+    const response = await api.post<WorkspaceMembership>(
+      `/workspace-invitations/${invitationId}/accept`
+    );
+    return response.data;
+  },
+
+  getEntitlements: async (workspaceId = PERSONAL_WORKSPACE_ID): Promise<WorkspaceEntitlements> => {
+    const response = await api.get<WorkspaceEntitlements>(
+      `/v1/workspaces/${workspaceId}/entitlements`
+    );
+    return response.data;
+  },
+
+  listSharedPlaybooks: async (
+    workspaceId = PERSONAL_WORKSPACE_ID,
+    page = 1,
+    pageSize = 20
+  ): Promise<PaginatedResponse<WorkspaceSharedPlaybook>> => {
+    const response = await api.get<PaginatedResponse<WorkspaceSharedPlaybook>>(
+      `/v1/workspaces/${workspaceId}/playbooks/shared?page=${page}&page_size=${pageSize}`
+    );
+    return response.data;
+  },
+
+  reuseSharedPlaybook: async (
+    workspaceId: string,
+    playbookId: string
+  ): Promise<Playbook> => {
+    const response = await api.post<Playbook>(
+      `/v1/workspaces/${workspaceId}/playbooks/shared/${playbookId}/reuse`
+    );
+    return response.data;
+  },
+
+  upgradePersonalToTeam: async (
+    payload: UpgradePersonalWorkspaceToTeamRequest = {}
+  ): Promise<WorkspaceSummary> => {
+    const response = await api.post<WorkspaceSummary>('/workspaces/me/upgrade-to-team', payload);
     return response.data;
   },
 };

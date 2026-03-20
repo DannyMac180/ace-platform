@@ -187,10 +187,9 @@ class TestFlyReplayMiddleware:
         await app(scope, receive or default_receive, send)
         return parts
 
-    def test_noop_without_fly_machine_id(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_noop_without_fly_machine_id(self, dummy_app):
         """Middleware passes through when FLY_MACHINE_ID is not set."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {}, clear=False):
@@ -198,26 +197,24 @@ class TestFlyReplayMiddleware:
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "http", "path": "/mcp/messages/", "query_string": b"session_id=abc"}
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_noop_for_non_http(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_noop_for_non_http(self, dummy_app):
         """Middleware passes through for non-HTTP scopes."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "lifespan"}
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_messages_passthrough_same_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_passthrough_same_instance(self, dummy_app):
         """POST to /messages/ with matching fly_instance passes through."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -228,13 +225,12 @@ class TestFlyReplayMiddleware:
             "path": "/mcp/messages/",
             "query_string": b"session_id=abc&fly_instance=machine-a",
         }
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_messages_replay_different_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_replay_different_instance(self, dummy_app):
         """POST to /messages/ with different fly_instance returns fly-replay header."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -247,7 +243,7 @@ class TestFlyReplayMiddleware:
             "query_string": b"session_id=abc&fly_instance=machine-b",
             "headers": [],
         }
-        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        parts = await self._collect_response(mw, scope)
         assert not dummy_app.called
         # Check for fly-replay header
         start = parts[0]
@@ -255,10 +251,9 @@ class TestFlyReplayMiddleware:
         headers = dict(start.get("headers", []))
         assert headers.get(b"fly-replay") == b"instance=machine-b"
 
-    def test_messages_passthrough_no_fly_instance(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_messages_passthrough_no_fly_instance(self, dummy_app):
         """POST to /messages/ without fly_instance param passes through normally."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         with patch.dict(os.environ, {"FLY_MACHINE_ID": "machine-a"}):
@@ -269,13 +264,12 @@ class TestFlyReplayMiddleware:
             "path": "/mcp/messages/",
             "query_string": b"session_id=abc",
         }
-        asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        await self._collect_response(mw, scope)
         assert dummy_app.called
 
-    def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
+    @pytest.mark.asyncio
+    async def test_sse_injects_fly_instance_on_endpoint_data_line(self, dummy_app):
         """SSE endpoint response has fly_instance appended to endpoint data URL."""
-        import asyncio
-
         from ace_platform.mcp.server import FlyReplayMiddleware
 
         # Make the dummy app return an SSE-like body
@@ -285,7 +279,7 @@ class TestFlyReplayMiddleware:
             mw = FlyReplayMiddleware(dummy_app)
 
         scope = {"type": "http", "path": "/mcp/sse", "query_string": b""}
-        parts = asyncio.get_event_loop().run_until_complete(self._collect_response(mw, scope))
+        parts = await self._collect_response(mw, scope)
         body_part = next(p for p in parts if p.get("type") == "http.response.body")
         body_text = body_part["body"].decode("utf-8")
         assert "event: endpoint\r\n" in body_text
@@ -1355,6 +1349,36 @@ class TestRequirePaidAccess:
         assert "Start your free trial" in error
 
 
+class TestPremiumToolProtection:
+    """Tests that MCP premium tools enforce the shared paid-access gate."""
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_rejects_free_user(self, monkeypatch):
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="free@example.com",
+            hashed_password="hashed",
+            subscription_status=SubscriptionStatus.NONE,
+            subscription_tier=None,
+        )
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = _MockDB([])
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert result == "Error: Start your free trial or subscribe to continue."
+
+
 class TestExtractSection:
     """Tests for _extract_section helper function."""
 
@@ -1694,6 +1718,193 @@ class TestPlaybookSemanticMatchingTools:
         )
 
         assert "Task description exceeds maximum size" in result
+
+    @pytest.mark.asyncio
+    async def test_list_playbooks_includes_shared_workspace_metadata(self, monkeypatch):
+        """list_playbooks should include approved team playbooks visible through shared workspaces."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="shared-list@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        shared_playbook = Playbook(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Incident Commander",
+            description="Team incident response runbook",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        shared_playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=shared_playbook.id,
+            version_number=1,
+            content="Coordinate incident response and communications",
+            bullet_count=0,
+        )
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = _MockDB([])
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fake_list_accessible(_db, *, user_id):
+            assert user_id == user.id
+            return [
+                SimpleNamespace(
+                    playbook=shared_playbook,
+                    owner_email="owner@example.com",
+                    shared_workspace_names=("Team Alpha",),
+                    is_owned_by_current_user=False,
+                )
+            ]
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "list_accessible_playbooks", fake_list_accessible)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.list_playbooks(
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Incident Commander" in result
+        assert "owner@example.com" in result
+        assert "Team Alpha" in result
+
+    @pytest.mark.asyncio
+    async def test_find_playbook_can_rank_shared_workspace_playbooks(self, monkeypatch):
+        """find_playbook should match shared team playbooks, not just owned ones."""
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="shared-find@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        shared_playbook = Playbook(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Production Incident Playbook",
+            description="Handle incidents with the team",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+            semantic_embedding=[1.0, 0.0],
+            semantic_embedding_model="local-hash-v1",
+        )
+        shared_playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=shared_playbook.id,
+            version_number=1,
+            content="Triage alerts, assign owners, and update status communications",
+            bullet_count=0,
+        )
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = _MockDB([])
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fake_list_accessible(_db, *, user_id):
+            assert user_id == user.id
+            return [
+                SimpleNamespace(
+                    playbook=shared_playbook,
+                    owner_email="owner@example.com",
+                    shared_workspace_names=("SRE Team",),
+                    is_owned_by_current_user=False,
+                )
+            ]
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "list_accessible_playbooks", fake_list_accessible)
+        monkeypatch.setattr(mcp_server, "generate_embedding", fake_generate_embedding)
+        monkeypatch.setattr(mcp_server, "generate_local_embedding", lambda _text: [1.0, 0.0])
+        monkeypatch.setattr(mcp_server.settings, "openai_api_key", "")
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.find_playbook(
+            task_description="Lead a production incident response",
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Production Incident Playbook" in result
+        assert "owner@example.com" in result
+        assert "SRE Team" in result
+
+
+class TestSharedPlaybookAccess:
+    """Tests for reading shared registry playbooks through MCP."""
+
+    @pytest.mark.asyncio
+    async def test_get_playbook_allows_shared_workspace_access(self, monkeypatch):
+        import ace_platform.core.api_keys as api_keys
+        from ace_platform.mcp import server as mcp_server
+
+        user = User(
+            id=uuid4(),
+            email="shared-get@example.com",
+            hashed_password="hashed",
+            subscription_tier="starter",
+            subscription_status=SubscriptionStatus.ACTIVE,
+        )
+        shared_playbook = Playbook(
+            id=uuid4(),
+            user_id=uuid4(),
+            name="Release Coordinator",
+            description="Coordinate shared release steps",
+            status=PlaybookStatus.ACTIVE,
+            source=PlaybookSource.USER_CREATED,
+        )
+        shared_playbook.current_version = PlaybookVersion(
+            id=uuid4(),
+            playbook_id=shared_playbook.id,
+            version_number=2,
+            content="Coordinate cutover, verification, and rollback checks",
+            bullet_count=0,
+        )
+        shared_playbook.current_version_id = shared_playbook.current_version.id
+
+        mock_ctx = MagicMock()
+        mock_ctx.request_context.lifespan_context.db = _MockDB([])
+
+        async def fake_auth(_db, _key):
+            return SimpleNamespace(scopes=["playbooks:read"]), user
+
+        async def fake_get_accessible(_db, *, user_id, playbook_id):
+            assert user_id == user.id
+            assert playbook_id == shared_playbook.id
+            return SimpleNamespace(
+                playbook=shared_playbook,
+                owner_email="owner@example.com",
+                shared_workspace_names=("Release Guild",),
+                is_owned_by_current_user=False,
+            )
+
+        monkeypatch.setattr(mcp_server, "authenticate_api_key_async", fake_auth)
+        monkeypatch.setattr(mcp_server, "get_accessible_playbook", fake_get_accessible)
+        monkeypatch.setattr(api_keys, "check_scope", lambda *_args: True)
+
+        result = await mcp_server.get_playbook(
+            playbook_id=str(shared_playbook.id),
+            api_key="ace_test_key",
+            ctx=mock_ctx,
+        )
+
+        assert "Release Coordinator" in result
+        assert "owner@example.com" in result
+        assert "Release Guild" in result
 
     @pytest.mark.asyncio
     async def test_find_playbook_does_not_backfill_embeddings(self, monkeypatch):

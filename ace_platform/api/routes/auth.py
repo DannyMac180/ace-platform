@@ -35,6 +35,7 @@ from ace_platform.core.audit import (
     audit_email_verified,
     audit_login_failure,
     audit_login_success,
+    audit_logout,
     audit_password_change,
     audit_password_reset_complete,
     audit_password_reset_request,
@@ -65,6 +66,7 @@ from ace_platform.core.rate_limit import (
     rate_limit_password_reset,
     rate_limit_verification_email,
 )
+from ace_platform.core.rollouts import get_available_plans, get_user_capabilities
 from ace_platform.core.security import (
     InvalidTokenError,
     TokenExpiredError,
@@ -74,6 +76,7 @@ from ace_platform.core.security import (
     hash_password,
     verify_password,
 )
+from ace_platform.core.workspaces import bootstrap_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
@@ -82,6 +85,7 @@ from ace_platform.db.models import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+hosted_router = APIRouter(prefix="/v1", tags=["Authentication"])
 
 
 # =============================================================================
@@ -144,6 +148,8 @@ class UserResponse(BaseModel):
     has_used_trial: bool = False
     trial_ends_at: datetime | None = None
     has_payment_method: bool = False
+    available_plans: dict[str, bool] = Field(default_factory=dict)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -332,6 +338,7 @@ async def register(
     try:
         # Flush to get user ID and check for integrity errors
         await db.flush()
+        await bootstrap_workspace_for_user(db, user)
     except IntegrityError:
         # Race condition: another request registered this email between our check and flush
         await db.rollback()
@@ -376,6 +383,15 @@ async def register(
 
 @router.post(
     "/login",
+    response_model=TokenResponse,
+    summary="Login with email and password",
+    responses={
+        401: {"description": "Invalid credentials"},
+        429: {"description": "Rate limit exceeded or too many failed attempts"},
+    },
+)
+@hosted_router.post(
+    "/auth/login",
     response_model=TokenResponse,
     summary="Login with email and password",
     responses={
@@ -441,6 +457,8 @@ async def login(
             has_logins = await has_previous_logins(db, user.id)
             should_send_alert = has_logins
 
+    await bootstrap_workspace_for_user(db, user)
+
     # Audit log the successful login
     await audit_login_success(db, user.id, http_request, method="password")
     await db.commit()
@@ -458,7 +476,42 @@ async def login(
 
 
 @router.post(
+    "/logout",
+    response_model=MessageResponse,
+    summary="Logout current user",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+@hosted_router.post(
+    "/auth/logout",
+    response_model=MessageResponse,
+    summary="Logout current user",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
+async def logout(
+    request: Request,
+    user: RequiredUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> MessageResponse:
+    """Record logout for the authenticated user."""
+    await audit_logout(db, user.id, request)
+    await db.commit()
+    return MessageResponse(message="Logged out")
+
+
+@router.post(
     "/refresh",
+    response_model=TokenResponse,
+    summary="Refresh access token",
+    responses={
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
+@hosted_router.post(
+    "/auth/refresh",
     response_model=TokenResponse,
     summary="Refresh access token",
     responses={
@@ -511,9 +564,23 @@ async def refresh_token(
         401: {"description": "Not authenticated"},
     },
 )
+@hosted_router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Get current user info",
+    responses={
+        401: {"description": "Not authenticated"},
+    },
+)
 async def get_current_user(user: RequiredUser) -> UserResponse:
     """Get the current authenticated user's information."""
-    return UserResponse.model_validate(user)
+    response = UserResponse.model_validate(user)
+    return response.model_copy(
+        update={
+            "available_plans": get_available_plans(user),
+            "capabilities": get_user_capabilities(user),
+        }
+    )
 
 
 # =============================================================================

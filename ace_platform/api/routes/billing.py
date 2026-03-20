@@ -24,8 +24,14 @@ from ace_platform.core.limits import (
     get_tier_limits,
     get_user_usage_status,
 )
+from ace_platform.core.rollouts import (
+    get_available_plans,
+    get_user_capabilities,
+    is_plan_available_for_user,
+)
 from ace_platform.core.stripe_config import BillingInterval
-from ace_platform.db.models import User
+from ace_platform.core.subscription_service import get_plan_catalog
+from ace_platform.db.models import User, WorkspacePlan
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -36,6 +42,9 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 class TierLimitsResponse(BaseModel):
     """Response schema for tier limits."""
 
+    storage_limit_bytes: int | None = None
+    monthly_hosted_eval_runs: int | None = None
+    monthly_managed_inference_cost_limit_usd: Decimal | None = None
     monthly_requests: int | None
     monthly_tokens: int | None
     monthly_cost_usd: Decimal | None
@@ -56,6 +65,37 @@ class SubscriptionResponse(BaseModel):
     limits: TierLimitsResponse
     stripe_customer_id: str | None = None
     stripe_subscription_id: str | None = None
+    available_plans: dict[str, bool] = Field(default_factory=dict)
+    capabilities: dict[str, bool] = Field(default_factory=dict)
+
+
+class BillingPlanPriceResponse(BaseModel):
+    """One price inside the published billing plan catalog."""
+
+    interval: BillingInterval
+    price_id: str | None = None
+    unit_amount: int | None = None
+    currency: str = "usd"
+
+
+class BillingPlanCatalogEntryResponse(BaseModel):
+    """One plan inside the billing catalog."""
+
+    code: str
+    workspace_plan: WorkspacePlan
+    tier: SubscriptionTier
+    display_name: str
+    description: str
+    available: bool
+    contact_sales: bool
+    features: list[str]
+    prices: list[BillingPlanPriceResponse]
+
+
+class BillingPlanCatalogResponse(BaseModel):
+    """Published billing plan catalog for the current user."""
+
+    plans: list[BillingPlanCatalogEntryResponse]
 
 
 class UsageResponse(BaseModel):
@@ -63,6 +103,17 @@ class UsageResponse(BaseModel):
 
     period_start: datetime
     period_end: datetime
+    storage_used_bytes: int = 0
+    storage_limit_bytes: int | None = None
+    storage_remaining_bytes: int | None = None
+    hosted_eval_runs_used: int = 0
+    hosted_eval_runs_limit: int | None = None
+    hosted_eval_runs_remaining: int | None = None
+    managed_inference_requests_used: int = 0
+    managed_inference_tokens_used: int = 0
+    managed_inference_cost_usd: Decimal = Decimal("0")
+    managed_inference_cost_limit_usd: Decimal | None = None
+    managed_inference_cost_remaining_usd: Decimal | None = None
     requests_used: int
     requests_limit: int | None
     requests_remaining: int | None
@@ -153,6 +204,41 @@ def _get_user_period_end(user: User) -> datetime:
     return user.subscription_current_period_end or _get_current_period_end()
 
 
+def _build_subscription_response(
+    current_user: User,
+    tier: SubscriptionTier,
+    *,
+    status_value: str | None = None,
+) -> SubscriptionResponse:
+    """Build a subscription response with rollout-aware availability metadata."""
+    limits = get_tier_limits(tier)
+    return SubscriptionResponse(
+        tier=tier,
+        status=status_value or current_user.subscription_status.value,
+        current_period_start=get_billing_period_start(),
+        current_period_end=_get_user_period_end(current_user),
+        limits=TierLimitsResponse(
+            storage_limit_bytes=limits.storage_limit_bytes,
+            monthly_hosted_eval_runs=limits.monthly_hosted_eval_runs,
+            monthly_managed_inference_cost_limit_usd=(
+                limits.monthly_managed_inference_cost_limit_usd
+            ),
+            monthly_requests=limits.monthly_evolution_runs,
+            monthly_tokens=None,  # Not tracked separately
+            monthly_cost_usd=limits.monthly_cost_limit_usd,
+            max_playbooks=limits.max_playbooks,
+            max_evolutions_per_day=None,  # Evolution is tracked monthly
+            can_use_premium_models=limits.can_use_premium_models,
+            can_export_data=limits.can_export_data,
+            priority_support=limits.priority_support,
+        ),
+        stripe_customer_id=current_user.stripe_customer_id,
+        stripe_subscription_id=current_user.stripe_subscription_id,
+        available_plans=get_available_plans(current_user),
+        capabilities=get_user_capabilities(current_user),
+    )
+
+
 # Route handlers
 
 
@@ -165,26 +251,39 @@ async def get_subscription(
     Returns the user's subscription tier, status, and limits.
     """
     tier = _get_user_tier(current_user)
-    limits = get_tier_limits(tier)
+    return _build_subscription_response(current_user, tier)
 
-    return SubscriptionResponse(
-        tier=tier,
-        status=current_user.subscription_status.value,
-        current_period_start=get_billing_period_start(),
-        current_period_end=_get_user_period_end(current_user),
-        limits=TierLimitsResponse(
-            monthly_requests=limits.monthly_evolution_runs,
-            monthly_tokens=None,  # Not tracked separately
-            monthly_cost_usd=limits.monthly_cost_limit_usd,
-            max_playbooks=limits.max_playbooks,
-            max_evolutions_per_day=None,  # Evolution is tracked monthly
-            can_use_premium_models=limits.can_use_premium_models,
-            can_export_data=limits.can_export_data,
-            priority_support=limits.priority_support,
-        ),
-        stripe_customer_id=current_user.stripe_customer_id,
-        stripe_subscription_id=current_user.stripe_subscription_id,
-    )
+
+@router.get("/plans", response_model=BillingPlanCatalogResponse)
+async def get_billing_plans(
+    current_user: CurrentUser,
+) -> BillingPlanCatalogResponse:
+    """Return the published billing plan catalog for the caller."""
+
+    availability = get_available_plans(current_user)
+    plans = [
+        BillingPlanCatalogEntryResponse(
+            code=entry.code,
+            workspace_plan=entry.workspace_plan,
+            tier=entry.subscription_tier,
+            display_name=entry.display_name,
+            description=entry.description,
+            available=availability.get(entry.subscription_tier.value, False),
+            contact_sales=entry.contact_sales,
+            features=list(entry.features),
+            prices=[
+                BillingPlanPriceResponse(
+                    interval=price.interval,
+                    price_id=price.price_id,
+                    unit_amount=price.unit_amount,
+                    currency=price.currency,
+                )
+                for price in entry.prices
+            ],
+        )
+        for entry in get_plan_catalog()
+    ]
+    return BillingPlanCatalogResponse(plans=plans)
 
 
 @router.get("/usage", response_model=UsageResponse)
@@ -202,6 +301,17 @@ async def get_billing_usage(
     return UsageResponse(
         period_start=get_billing_period_start(),
         period_end=_get_user_period_end(current_user),
+        storage_used_bytes=status.current_storage_bytes,
+        storage_limit_bytes=status.limits.storage_limit_bytes,
+        storage_remaining_bytes=status.remaining_storage_bytes,
+        hosted_eval_runs_used=status.current_hosted_eval_runs,
+        hosted_eval_runs_limit=status.limits.monthly_hosted_eval_runs,
+        hosted_eval_runs_remaining=status.remaining_hosted_eval_runs,
+        managed_inference_requests_used=status.current_managed_inference_requests,
+        managed_inference_tokens_used=status.current_managed_inference_tokens,
+        managed_inference_cost_usd=status.current_managed_inference_cost_usd,
+        managed_inference_cost_limit_usd=status.limits.monthly_managed_inference_cost_limit_usd,
+        managed_inference_cost_remaining_usd=status.remaining_managed_inference_cost_usd,
         requests_used=status.current_evolution_runs,
         requests_limit=status.limits.monthly_evolution_runs,
         requests_remaining=status.remaining_evolution_runs,
@@ -229,28 +339,21 @@ async def subscribe(
     """
     from ace_platform.core.billing import create_checkout_session
 
+    if not is_plan_available_for_user(current_user, request.tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"The {request.tier.value} plan is not available for this account yet.",
+        )
+
     # Handle free tier subscription
     if request.tier == SubscriptionTier.FREE:
-        limits = get_tier_limits(SubscriptionTier.FREE)
         return SubscribeResponse(
             success=True,
             message="You are now on the Free plan",
-            subscription=SubscriptionResponse(
-                tier=SubscriptionTier.FREE,
-                status="active",
-                current_period_start=get_billing_period_start(),
-                current_period_end=_get_current_period_end(),
-                limits=TierLimitsResponse(
-                    monthly_requests=limits.monthly_evolution_runs,
-                    monthly_tokens=None,
-                    monthly_cost_usd=limits.monthly_cost_limit_usd,
-                    max_playbooks=limits.max_playbooks,
-                    max_evolutions_per_day=None,
-                    can_use_premium_models=limits.can_use_premium_models,
-                    can_export_data=limits.can_export_data,
-                    priority_support=limits.priority_support,
-                ),
-                stripe_customer_id=current_user.stripe_customer_id,
+            subscription=_build_subscription_response(
+                current_user,
+                SubscriptionTier.FREE,
+                status_value="active",
             ),
         )
 

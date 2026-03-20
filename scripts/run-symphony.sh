@@ -16,6 +16,8 @@ else
 fi
 port="${SYMPHONY_PORT:-4000}"
 term_value="${TERM:-xterm-256color}"
+linear_workspace_url_key="${SYMPHONY_LINEAR_WORKSPACE_URL_KEY:-danmac}"
+linear_team_key="${SYMPHONY_LINEAR_TEAM_KEY:-DAN}"
 
 if [[ ! -x "$venv_symphony" ]]; then
   echo "Missing Symphony launcher at $venv_symphony" >&2
@@ -75,7 +77,7 @@ if ! grep -Eq '^ace([[:space:]]|$)' <<<"$codex_mcp_list_output"; then
   echo "  export ACE_API_KEY=your_ace_api_key" >&2
   echo "  codex mcp add ace --url https://aceagent.io/mcp --bearer-token-env-var ACE_API_KEY" >&2
   echo "Local ACE example from this repo:" >&2
-  echo "  codex mcp add ace --env DATABASE_URL=postgresql://... --env REDIS_URL=redis://... -- python -m ace_platform.mcp.server stdio" >&2
+  echo "  codex mcp add ace --env ACE_API_KEY=\$ACE_API_KEY --env DATABASE_URL=postgresql://... --env REDIS_URL=redis://... -- python -m ace_platform.mcp.server stdio" >&2
   exit 1
 fi
 
@@ -84,7 +86,13 @@ fi
   --local "$workflow_override_path" \
   --output "$workflow_rendered_path"
 
+"$venv_python" -m ace_platform.symphony.linear_guard \
+  --workflow "$workflow_rendered_path" \
+  --expected-workspace-url-key "$linear_workspace_url_key" \
+  --expected-team-key "$linear_team_key"
+
 cd "$repo_root"
+export PATH="$repo_root/scripts:$PATH"
 TERM="$term_value" exec "$venv_symphony" \
   --port "$port" \
   --i-understand-that-this-will-be-running-without-the-usual-guardrails \

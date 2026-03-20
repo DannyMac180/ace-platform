@@ -94,9 +94,19 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(minute="*/5"),  # Run every 5 minutes
         "options": {"queue": "default"},
     },
+    "snapshot-hosted-personal-workspaces": {
+        "task": "ace_platform.workers.workspace_backups_task.backup_hosted_personal_workspaces",
+        "schedule": crontab(hour=2, minute=0),  # Run daily at 2:00 AM UTC
+        "options": {"queue": "default"},
+    },
     "send-daily-spend-summary": {
         "task": "ace_platform.workers.admin_alerts_task.send_daily_spend_summary",
         "schedule": crontab(hour=9, minute=0),  # Run daily at 9:00 AM UTC
+        "options": {"queue": "default"},
+    },
+    "backup-hosted-personal-workspaces": {
+        "task": "ace_platform.workers.workspace_backups_task.backup_hosted_personal_workspaces",
+        "schedule": crontab(hour=2, minute=0),  # Run daily at 2:00 AM UTC
         "options": {"queue": "default"},
     },
 }

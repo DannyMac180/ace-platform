@@ -15,6 +15,7 @@ This document provides a comprehensive reference for all environment variables u
 | [Evolution](#evolution-settings) | No | Playbook evolution tuning |
 | [API Server](#api-server) | No | HTTP server configuration |
 | [Environment](#environment-settings) | No | Runtime environment |
+| [Pre-GA Rollouts](#pre-ga-rollouts) | No | Environment-aware plan and capability rollout rules |
 | [Logging](#logging) | No | Log configuration |
 | [Error Tracking](#error-tracking-sentry) | No | Sentry integration |
 
@@ -375,6 +376,45 @@ Enable debug mode for verbose logging and developer features.
 - When `false`, `/docs` and `/redoc` are not mounted
 - Detailed error messages in API responses
 - SQL query logging
+
+---
+
+## Pre-GA Rollouts
+
+### PRE_GA_ROLLOUTS
+
+JSON object that controls gradual rollout for plans and capabilities before GA.
+
+| Property | Value |
+|----------|-------|
+| Required | No |
+| Default | `{}` |
+| Format | JSON object keyed by rollout token |
+
+**Supported rollout tokens:**
+- `plan:<tier>` such as `plan:enterprise`
+- `capability:<feature>` such as `capability:shared_workspace`
+
+**Supported rule fields:**
+- `enabled`: enable for all users in all environments
+- `environments`: list of environment names that should see the rollout
+- `emails`: list of allowlisted user emails
+- `user_ids`: list of allowlisted user IDs
+
+**Example:**
+```bash
+PRE_GA_ROLLOUTS='{
+  "plan:enterprise": {
+    "environments": ["staging"],
+    "emails": ["design-partner@example.com"]
+  },
+  "capability:shared_workspace": {
+    "emails": ["design-partner@example.com"]
+  }
+}'
+```
+
+This lets staging expose a pre-GA plan broadly while production keeps it limited to selected users.
 
 ---
 

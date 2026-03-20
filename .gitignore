@@ -50,9 +50,11 @@ results/
 logs/
 *.log
 .symphony-workspaces/
-.symphony-workflow.generated.md
 /WORKFLOW.md
 WORKFLOW.local.md
+.symphony-workflow.generated.md
+.codex-tmp/
+.artifacts/
 
 # Jupyter
 .ipynb_checkpoints/

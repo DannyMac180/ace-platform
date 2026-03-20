@@ -471,8 +471,13 @@ class TestOAuthService:
         mock_db.add.assert_called()
 
     @pytest.mark.asyncio
+    @patch("ace_platform.core.oauth_service.bootstrap_workspace_for_user", new_callable=AsyncMock)
     async def test_get_or_create_does_not_link_to_unverified_email(
-        self, oauth_service, mock_db, mock_unverified_user
+        self,
+        mock_bootstrap_workspace,
+        oauth_service,
+        mock_db,
+        mock_unverified_user,
     ):
         """Test that OAuth does NOT link to user with unverified email (security)."""
         # Mock: no existing OAuth account
@@ -497,9 +502,16 @@ class TestOAuthService:
         assert user.email == "unverified@example.com"
         # The user should NOT be the unverified user
         assert user.id != mock_unverified_user.id
+        assert mock_bootstrap_workspace.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_get_or_create_creates_new_user(self, oauth_service, mock_db):
+    @patch("ace_platform.core.oauth_service.bootstrap_workspace_for_user", new_callable=AsyncMock)
+    async def test_get_or_create_creates_new_user(
+        self,
+        mock_bootstrap_workspace,
+        oauth_service,
+        mock_db,
+    ):
         """Test that new user is created when no match found."""
         # Mock: no existing OAuth account
         mock_oauth_result = MagicMock()
@@ -523,6 +535,33 @@ class TestOAuthService:
         assert user.email_verified is True  # OAuth emails are verified
         assert user.hashed_password is None  # OAuth users have no password
         mock_db.add.assert_called()
+        assert mock_bootstrap_workspace.await_count == 1
+
+    @pytest.mark.asyncio
+    @patch("ace_platform.core.oauth_service.bootstrap_workspace_for_user", new_callable=AsyncMock)
+    async def test_get_or_create_new_user_bootstraps_workspace(
+        self,
+        mock_bootstrap_workspace,
+        oauth_service,
+        mock_db,
+    ):
+        """Test that new OAuth users are bootstrapped into a workspace."""
+        mock_oauth_result = MagicMock()
+        mock_oauth_result.scalar_one_or_none.return_value = None
+
+        mock_user_result = MagicMock()
+        mock_user_result.scalar_one_or_none.return_value = None
+
+        mock_db.execute.side_effect = [mock_oauth_result, mock_user_result]
+
+        await oauth_service.get_or_create_user_from_oauth(
+            provider=OAuthProvider.GITHUB,
+            provider_user_id="github-123",
+            email="new-bootstrap@example.com",
+            user_info={"id": "github-123", "email": "new-bootstrap@example.com"},
+        )
+
+        assert mock_bootstrap_workspace.await_count == 1
 
     @pytest.mark.asyncio
     async def test_unlink_prevents_orphaning(self, oauth_service, mock_db, mock_user):

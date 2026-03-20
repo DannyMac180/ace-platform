@@ -14,20 +14,23 @@ This module provides REST API endpoints for playbook management:
 """
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ace_core.portability import PortablePlaybookBundle, bundle_to_json
 from ace_platform.api.auth import (
     AuthorizationError,
     SubscriptionError,
+    require_feature,
     require_paid_access,
 )
 from ace_platform.api.deps import get_db
@@ -38,6 +41,20 @@ from ace_platform.core.limits import (
     is_user_trialing,
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
+from ace_platform.core.playbook_reviews import (
+    apply_review_action,
+    build_review_event,
+    get_review_history,
+)
+from ace_platform.core.playbooks import (
+    PlaybookImportLimitError,
+)
+from ace_platform.core.playbooks import (
+    export_playbook_bundle as build_portable_playbook_bundle,
+)
+from ace_platform.core.playbooks import (
+    import_playbook_bundle as ingest_portable_playbook_bundle,
+)
 from ace_platform.core.rate_limit import rate_limit_outcome
 from ace_platform.core.validation import (
     MAX_NOTES_SIZE,
@@ -47,6 +64,8 @@ from ace_platform.core.validation import (
     MAX_REASONING_TRACE_SIZE,
     MAX_TASK_DESCRIPTION_SIZE,
 )
+from ace_platform.core.workspace_sync import record_playbook_tombstone
+from ace_platform.core.workspaces import get_personal_workspace_for_user
 from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
@@ -55,6 +74,8 @@ from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
     Playbook,
+    PlaybookReviewAction,
+    PlaybookReviewStatus,
     PlaybookSource,
     PlaybookStatus,
     PlaybookVersion,
@@ -138,6 +159,8 @@ class PlaybookResponse(BaseModel):
     name: str
     description: str | None
     status: PlaybookStatus
+    review_status: PlaybookReviewStatus = PlaybookReviewStatus.DRAFT
+    review_status_updated_at: datetime | None = None
     source: PlaybookSource
     created_at: datetime
     updated_at: datetime
@@ -153,6 +176,8 @@ class PlaybookListItem(BaseModel):
     name: str
     description: str | None
     status: PlaybookStatus
+    review_status: PlaybookReviewStatus = PlaybookReviewStatus.DRAFT
+    review_status_updated_at: datetime | None = None
     source: PlaybookSource
     created_at: datetime
     updated_at: datetime
@@ -170,6 +195,49 @@ class PaginatedPlaybookResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class PlaybookReviewActionRequest(BaseModel):
+    """Request body for a review workflow transition."""
+
+    action: PlaybookReviewAction
+
+
+class PlaybookReviewActivityItem(BaseModel):
+    """One review activity entry shown in the promoted-playbook timeline."""
+
+    id: str
+    action: PlaybookReviewAction
+    from_review_status: PlaybookReviewStatus | None = None
+    to_review_status: PlaybookReviewStatus
+    actor_user_id: str | None = None
+    actor_email: str | None = None
+    created_at: datetime
+
+
+class PaginatedPlaybookReviewActivityResponse(BaseModel):
+    """Paginated review activity response."""
+
+    items: list[PlaybookReviewActivityItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class PlaybookImportItemResponse(BaseModel):
+    """Response item for an imported playbook."""
+
+    playbook_id: UUID
+    version_count: int
+    trace_count: int
+
+
+class PlaybookImportResponse(BaseModel):
+    """Response schema for portable import results."""
+
+    imported_count: int
+    imported_playbooks: list[PlaybookImportItemResponse]
 
 
 class OutcomeResponse(BaseModel):
@@ -288,9 +356,51 @@ class EvolutionStatusResponse(BaseModel):
 # Dependency type aliases
 DbSession = Annotated[AsyncSession, Depends(get_db)]
 PaidUser = Annotated[User, Depends(require_paid_access)]
+require_export_access = require_feature("can_export_data")
+ExportUser = Annotated[User, Depends(require_export_access)]
 
 
 # Route handlers
+
+
+def _serialize_current_version(
+    playbook: Playbook,
+    fallback_version: PlaybookVersion | None = None,
+) -> PlaybookVersionResponse | None:
+    """Serialize the current version while avoiding lazy loads."""
+
+    version = fallback_version or playbook.current_version
+    if version is None:
+        return None
+
+    return PlaybookVersionResponse(
+        id=version.id,
+        version_number=version.version_number,
+        content=version.content,
+        bullet_count=version.bullet_count,
+        created_at=version.created_at,
+    )
+
+
+def _serialize_playbook(
+    playbook: Playbook,
+    *,
+    fallback_version: PlaybookVersion | None = None,
+) -> PlaybookResponse:
+    """Serialize a playbook response with review metadata."""
+
+    return PlaybookResponse(
+        id=playbook.id,
+        name=playbook.name,
+        description=playbook.description,
+        status=playbook.status,
+        review_status=playbook.review_status,
+        review_status_updated_at=playbook.review_status_updated_at,
+        source=playbook.source,
+        created_at=playbook.created_at,
+        updated_at=playbook.updated_at,
+        current_version=_serialize_current_version(playbook, fallback_version),
+    )
 
 
 @router.get("", response_model=PaginatedPlaybookResponse)
@@ -300,6 +410,9 @@ async def list_playbooks(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     status_filter: PlaybookStatus | None = Query(None, description="Filter by status"),
+    review_status_filter: PlaybookReviewStatus | None = Query(
+        None, description="Filter by review status"
+    ),
 ) -> PaginatedPlaybookResponse:
     """List playbooks for the authenticated user.
 
@@ -310,6 +423,8 @@ async def list_playbooks(
 
     if status_filter:
         base_query = base_query.where(Playbook.status == status_filter)
+    if review_status_filter:
+        base_query = base_query.where(Playbook.review_status == review_status_filter)
 
     # Get total count
     count_query = select(func.count()).select_from(base_query.subquery())
@@ -334,6 +449,8 @@ async def list_playbooks(
             name=pb.name,
             description=pb.description,
             status=pb.status,
+            review_status=pb.review_status,
+            review_status_updated_at=pb.review_status_updated_at,
             source=pb.source,
             created_at=pb.created_at,
             updated_at=pb.updated_at,
@@ -351,6 +468,62 @@ async def list_playbooks(
         page=page,
         page_size=page_size,
         total_pages=total_pages,
+    )
+
+
+@router.get("/export")
+async def export_playbooks_bundle(
+    request: Request,
+    db: DbSession,
+    current_user: ExportUser,
+) -> Response:
+    """Export the caller's playbooks and traces as a portable bundle."""
+
+    bundle = await build_portable_playbook_bundle(
+        db,
+        current_user.id,
+        api_url=str(request.base_url).rstrip("/"),
+    )
+    payload = bundle_to_json(bundle).encode("utf-8")
+    filename = f"ace-playbooks-export-{datetime.now(UTC).date().isoformat()}.json"
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/import", response_model=PlaybookImportResponse, status_code=status.HTTP_201_CREATED)
+async def import_playbooks_bundle(
+    bundle: PortablePlaybookBundle,
+    db: DbSession,
+    current_user: PaidUser,
+) -> PlaybookImportResponse:
+    """Import a portable playbook bundle for the authenticated user."""
+
+    try:
+        imported = await ingest_portable_playbook_bundle(db, current_user, bundle)
+    except PlaybookImportLimitError as exc:
+        raise SubscriptionError(
+            str(exc),
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
+
+    return PlaybookImportResponse(
+        imported_count=len(imported),
+        imported_playbooks=[
+            PlaybookImportItemResponse(
+                playbook_id=item.playbook_id,
+                version_count=item.version_count,
+                trace_count=item.trace_count,
+            )
+            for item in imported
+        ],
     )
 
 
@@ -397,10 +570,20 @@ async def create_playbook(
         name=data.name,
         description=data.description,
         status=PlaybookStatus.ACTIVE,
+        review_status=PlaybookReviewStatus.DRAFT,
         source=PlaybookSource.USER_CREATED,
     )
     db.add(playbook)
     await db.flush()
+    playbook.review_history = [
+        build_review_event(
+            actor=current_user,
+            action=PlaybookReviewAction.CREATED,
+            from_status=None,
+            to_status=playbook.review_status,
+            created_at=playbook.created_at,
+        )
+    ]
 
     # Create initial version if content provided
     version = None
@@ -446,26 +629,7 @@ async def create_playbook(
 
     # Build response using the version object we already have
     # (avoids async lazy-loading issue with relationships)
-    return PlaybookResponse(
-        id=playbook.id,
-        name=playbook.name,
-        description=playbook.description,
-        status=playbook.status,
-        source=playbook.source,
-        created_at=playbook.created_at,
-        updated_at=playbook.updated_at,
-        current_version=(
-            PlaybookVersionResponse(
-                id=version.id,
-                version_number=version.version_number,
-                content=version.content,
-                bullet_count=version.bullet_count,
-                created_at=version.created_at,
-            )
-            if version
-            else None
-        ),
-    )
+    return _serialize_playbook(playbook, fallback_version=version)
 
 
 @router.get("/{playbook_id}", response_model=PlaybookResponse)
@@ -493,26 +657,7 @@ async def get_playbook(
             detail="Playbook not found",
         )
 
-    return PlaybookResponse(
-        id=playbook.id,
-        name=playbook.name,
-        description=playbook.description,
-        status=playbook.status,
-        source=playbook.source,
-        created_at=playbook.created_at,
-        updated_at=playbook.updated_at,
-        current_version=(
-            PlaybookVersionResponse(
-                id=playbook.current_version.id,
-                version_number=playbook.current_version.version_number,
-                content=playbook.current_version.content,
-                bullet_count=playbook.current_version.bullet_count,
-                created_at=playbook.current_version.created_at,
-            )
-            if playbook.current_version
-            else None
-        ),
-    )
+    return _serialize_playbook(playbook)
 
 
 @router.put("/{playbook_id}", response_model=PlaybookResponse)
@@ -551,7 +696,23 @@ async def update_playbook(
         playbook.description = data.description
         should_refresh_embedding = True
     if data.status is not None:
-        playbook.status = data.status
+        if (
+            data.status is PlaybookStatus.ARCHIVED
+            and playbook.review_status is not PlaybookReviewStatus.ARCHIVED
+        ):
+            apply_review_action(playbook, action=PlaybookReviewAction.ARCHIVED, actor=current_user)
+        elif (
+            data.status is not PlaybookStatus.ARCHIVED
+            and playbook.review_status is PlaybookReviewStatus.ARCHIVED
+        ):
+            apply_review_action(
+                playbook,
+                action=PlaybookReviewAction.RETURNED_TO_DRAFT,
+                actor=current_user,
+            )
+            playbook.status = data.status
+        else:
+            playbook.status = data.status
 
     if should_refresh_embedding:
         await refresh_playbook_embedding(
@@ -565,25 +726,81 @@ async def update_playbook(
     if playbook.current_version_id:
         await db.refresh(playbook, ["current_version"])
 
-    return PlaybookResponse(
-        id=playbook.id,
-        name=playbook.name,
-        description=playbook.description,
-        status=playbook.status,
-        source=playbook.source,
-        created_at=playbook.created_at,
-        updated_at=playbook.updated_at,
-        current_version=(
-            PlaybookVersionResponse(
-                id=playbook.current_version.id,
-                version_number=playbook.current_version.version_number,
-                content=playbook.current_version.content,
-                bullet_count=playbook.current_version.bullet_count,
-                created_at=playbook.current_version.created_at,
-            )
-            if playbook.current_version
-            else None
-        ),
+    return _serialize_playbook(playbook)
+
+
+@router.post("/{playbook_id}/review-actions", response_model=PlaybookResponse)
+async def run_playbook_review_action(
+    db: DbSession,
+    current_user: PaidUser,
+    playbook_id: UUID,
+    data: PlaybookReviewActionRequest,
+) -> PlaybookResponse:
+    """Apply a promoted-playbook review action and persist the activity entry."""
+
+    query = (
+        select(Playbook)
+        .where(Playbook.id == playbook_id, Playbook.user_id == current_user.id)
+        .options(selectinload(Playbook.current_version))
+    )
+
+    result = await db.execute(query)
+    playbook = result.scalar_one_or_none()
+
+    if not playbook:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    apply_review_action(playbook, action=data.action, actor=current_user)
+    await db.commit()
+    await db.refresh(playbook)
+    if playbook.current_version_id:
+        await db.refresh(playbook, ["current_version"])
+
+    return _serialize_playbook(playbook)
+
+
+@router.get(
+    "/{playbook_id}/activity",
+    response_model=PaginatedPlaybookReviewActivityResponse,
+)
+async def list_playbook_review_activity(
+    db: DbSession,
+    current_user: PaidUser,
+    playbook_id: UUID,
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+) -> PaginatedPlaybookReviewActivityResponse:
+    """List promoted-playbook review activity history."""
+
+    playbook = await db.get(Playbook, playbook_id)
+    if not playbook or playbook.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Playbook not found",
+        )
+
+    history = sorted(
+        get_review_history(playbook, fallback_actor=current_user),
+        key=lambda item: (item["created_at"], item["id"]),
+        reverse=True,
+    )
+    total = len(history)
+    offset = (page - 1) * page_size
+    items = [
+        PlaybookReviewActivityItem.model_validate(item)
+        for item in history[offset : offset + page_size]
+    ]
+    total_pages = (total + page_size - 1) // page_size
+
+    return PaginatedPlaybookReviewActivityResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
     )
 
 
@@ -609,6 +826,10 @@ async def delete_playbook(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Playbook not found",
         )
+
+    personal_workspace = await get_personal_workspace_for_user(db, current_user.id)
+    if personal_workspace is not None:
+        await record_playbook_tombstone(db, personal_workspace.id, playbook.id)
 
     await db.delete(playbook)
     await db.commit()

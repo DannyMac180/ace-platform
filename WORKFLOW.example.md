@@ -1,4 +1,8 @@
 ---
+# Copy this tracked example to `WORKFLOW.local.md` for your machine-specific
+# Symphony config. `WORKFLOW.local.md` is gitignored and preferred by
+# `./scripts/run-symphony.sh`. Keep local overrides in frontmatter so shared
+# workflow logic from this tracked file still flows through after pulls.
 tracker:
   kind: linear
   # Replace with your Linear project slug.
@@ -124,6 +128,12 @@ After the ticket is completed or blocked:
 
 ## Default posture
 
+- Before planning or implementation, read the ACE v2 architecture context documents and use them as primary decision input for every ticket in this workflow:
+  - `docs/ACE_Product_Spec_Next_Iteration.md`
+  - `docs/next_iteration_working_stream.md`
+  - `docs/adr/0001-oss-core-vs-cloud-boundary.md`
+- If a ticket requires decisions that materially affect architecture, packaging, deployment mode, workspace model, or OSS-vs-cloud boundaries, explicitly reference those documents in the workpad plan and notes.
+- If the issue direction conflicts with those documents, do not silently choose one. Record the conflict in the workpad, follow the issue requirements needed to complete the task safely, and note the divergence clearly in the final handoff.
 - Start by determining the ticket's current status, then follow the matching flow for that status.
 - Start every task by opening the tracking workpad comment and bringing it up to date before doing new implementation work.
 - Spend extra effort up front on planning and verification design before implementation.
@@ -148,6 +158,7 @@ After the ticket is completed or blocked:
 - `commit`: produce clean, logical commits during implementation.
 - `push`: keep remote branch current and publish updates.
 - `pull`: keep branch updated with latest `origin/main` before handoff.
+- `self-review`: request structured Codex review on the current PR, remediate findings, rerun review, and stop only when no actionable review feedback remains.
 - `land`: when ticket reaches `Merging`, explicitly open and follow `.codex/skills/land/SKILL.md`, which includes the `land` loop.
 
 ## Status map
@@ -230,6 +241,37 @@ When a ticket has an attached PR, run this protocol before moving to `Human Revi
 5. Re-run validation after feedback-driven changes and push updates.
 6. Repeat this sweep until there are no outstanding actionable comments.
 
+## Automated self-review loop (required before Human Review)
+
+After implementation is pushed and the PR is attached, run a structured Codex
+self-review loop while the issue remains `In Progress`.
+
+1. Post a top-level PR issue comment containing `@codex review` for the current
+   PR head.
+2. Record the review request in the Linear workpad `Notes` with timestamp, PR
+   number, and head SHA.
+3. Run `python3 .codex/skills/land/land_watch.py` from the PR branch as the
+   review/check watcher.
+4. Interpret watcher outcomes:
+   - Exit `0`: checks are green and no actionable review feedback remains for
+     the latest review request.
+   - Exit `2`: review feedback exists. Acknowledge it, update the workpad,
+     remediate the issue, commit, push, post a `[codex] Changes since last
+     review:` summary, request `@codex review` again, and rerun the watcher.
+   - Exit `3`: checks failed. Investigate, fix, commit, push, request
+     `@codex review` again if code changed, and rerun the watcher.
+   - Exit `4`: the PR head changed unexpectedly. Refresh the local branch to
+     the latest PR head and rerun the watcher.
+   - Exit `5`: merge conflicts exist. Resolve via the `pull` skill, push, and
+     restart the loop.
+5. Treat any `## Codex Review` comments, human issue comments, inline review
+   comments, or blocking review states as actionable findings until they are
+   acknowledged and resolved or explicitly pushed back on.
+6. Keep the issue in `In Progress` for the entire review/remediation loop. Do
+   not move to `Human Review` while actionable findings remain.
+7. When the watcher exits cleanly, update the workpad with the clean-review
+   result and only then move the issue to `Human Review`.
+
 ## Blocked-access escape hatch (required behavior)
 
 Use this only when completion is blocked by missing required tools or missing auth/permissions that cannot be resolved in-session.
@@ -267,23 +309,26 @@ Use this only when completion is blocked by missing required tools or missing au
 8.  Attach PR URL to the issue (prefer attachment; use the workpad comment only if attachment is unavailable).
     - Ensure the GitHub PR has label `symphony` (add it if missing).
 9.  Merge latest `origin/main` into branch, resolve conflicts, and rerun checks.
-10. Update the workpad comment with final checklist status and validation notes.
+10. Run the automated self-review loop and keep the workpad current through every request, finding, remediation, and clean-review exit.
+11. Update the workpad comment with final checklist status and validation notes.
     - Mark completed plan/acceptance/validation checklist items as checked.
     - Add final handoff notes (commit + validation summary) in the same workpad comment.
     - Do not include PR URL in the workpad comment; keep PR linkage on the issue via attachment/link fields.
     - Add a short `### Confusions` section at the bottom when any part of task execution was unclear/confusing, with concise bullets.
     - Do not post any additional completion summary comment.
-11. Before moving to `Human Review`, poll PR feedback and checks:
+12. Before moving to `Human Review`, poll PR feedback and checks:
     - Read the PR `Manual QA Plan` comment (when present) and use it to sharpen UI/runtime test coverage for the current change.
     - Run the full PR feedback sweep protocol.
+    - Confirm the automated self-review loop exited cleanly for the latest PR head.
     - Confirm PR checks are passing (green) after the latest changes.
     - Confirm every required ticket-provided validation/test-plan item is explicitly marked complete in the workpad.
     - Repeat this check-address-verify loop until no outstanding comments remain and checks are fully passing.
     - Re-open and refresh the workpad before state transition so `Plan`, `Acceptance Criteria`, and `Validation` exactly match completed work.
-12. Only then move issue to `Human Review`.
+13. Only then move issue to `Human Review`.
     - Exception: if blocked by missing required non-GitHub tools/auth per the blocked-access escape hatch, move to `Human Review` with the blocker brief and explicit unblock actions.
-13. For `Todo` tickets that already had a PR attached at kickoff:
+14. For `Todo` tickets that already had a PR attached at kickoff:
     - Ensure all existing PR feedback was reviewed and resolved, including inline review comments (code changes or explicit, justified pushback response).
+    - Ensure the automated self-review loop exited cleanly after the latest push.
     - Ensure branch was pushed with any required updates.
     - Then move to `Human Review`.
 
@@ -313,6 +358,7 @@ Use this only when completion is blocked by missing required tools or missing au
 - Step 1/2 checklist is fully complete and accurately reflected in the single workpad comment.
 - Acceptance criteria and required ticket-provided validation items are complete.
 - Validation/tests are green for the latest commit.
+- The automated self-review loop completed for the latest PR head with no actionable findings remaining.
 - PR feedback sweep is complete and no actionable comments remain.
 - PR checks are green, branch is pushed, and PR is linked on the issue.
 - Required PR metadata is present (`symphony` label).
@@ -333,6 +379,7 @@ Use this only when completion is blocked by missing required tools or missing au
   link to the current issue, and `blockedBy` when the follow-up depends on the
   current issue.
 - Do not move to `Human Review` unless the `Completion bar before Human Review` is satisfied.
+- Do not move to `Human Review` while an automated Codex self-review request is still outstanding or while actionable review findings remain.
 - In `Human Review`, do not make changes; wait and poll.
 - If state is terminal (`Done`), do nothing and shut down.
 - Keep issue text concise, specific, and reviewer-oriented.

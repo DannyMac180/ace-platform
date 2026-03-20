@@ -6,10 +6,14 @@ playbook.py
 This file contains functions for parsing and manipulating the playbook.
 
 """
+
 import json
 import re
 
-from utils import get_section_slug
+try:
+    from .utils import get_section_slug
+except ImportError:
+    from utils import get_section_slug
 
 
 def parse_playbook_line(line):
