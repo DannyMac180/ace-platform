@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+    import tomli as tomllib
 
 import httpx
 
@@ -21,6 +28,8 @@ DEFAULT_HOSTED_API_URL = "https://aceagent.io"
 DEFAULT_HOSTED_MCP_URL = f"{DEFAULT_HOSTED_API_URL}/mcp"
 DEFAULT_LOCAL_API_URL = "http://localhost:8000"
 DEFAULT_DOCS_URL = "https://docs.aceagent.io"
+MINIMUM_PYTHON = (3, 10)
+SUPPORTED_MCP_TRANSPORTS = {"stdio", "http"}
 
 
 @dataclass(frozen=True)
@@ -33,12 +42,22 @@ class InitLayout:
     git_enabled: bool
 
 
+@dataclass(frozen=True)
+class DoctorFinding:
+    level: str
+    title: str
+    detail: str
+    hint: str | None = None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
     if args.command == "init":
         return _run_init(args)
+    if args.command == "doctor":
+        return _run_doctor(args)
     if args.command == "export":
         return _run_export(args, parser)
     if args.command == "import":
@@ -97,6 +116,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force",
         action="store_true",
         help="Overwrite an existing ace.toml file in the target directory.",
+    )
+
+    doctor_parser = subparsers.add_parser(
+        "doctor",
+        help="Validate the local ACE environment and surface remediation hints.",
+    )
+    doctor_parser.add_argument(
+        "--path",
+        default=".",
+        help="Project directory to inspect. Defaults to the current directory.",
     )
 
     common = argparse.ArgumentParser(add_help=False)
@@ -203,6 +232,425 @@ def _run_init(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _run_doctor(args: argparse.Namespace) -> int:
+    project_root = Path(args.path).expanduser().resolve()
+    findings = _doctor_findings(project_root)
+
+    failing = [finding for finding in findings if finding.level == "fail"]
+    warnings = [finding for finding in findings if finding.level == "warn"]
+
+    print(f"ACE doctor report for {project_root}")
+    for finding in findings:
+        print(_format_doctor_finding(finding))
+
+    if failing:
+        print(
+            f"ACE doctor failed with {len(failing)} blocking issue(s) and {len(warnings)} warning(s).",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"ACE doctor found no blocking issues and {len(warnings)} warning(s).")
+    return 0
+
+
+def _doctor_findings(project_root: Path) -> list[DoctorFinding]:
+    findings = [_python_version_finding()]
+
+    config_path = project_root / DEFAULT_CONFIG_FILENAME
+    if not config_path.exists():
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Config file",
+                f"{config_path} was not found.",
+                f"Run `ace init --path {project_root}` to generate a starter config.",
+            )
+        )
+        return findings
+
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Config file",
+                f"{config_path.name} could not be parsed: {exc}.",
+                "Fix the TOML syntax or regenerate the file with `ace init --force`.",
+            )
+        )
+        return findings
+
+    findings.extend(_validate_config(project_root, config_path, config))
+    return findings
+
+
+def _validate_config(
+    project_root: Path,
+    config_path: Path,
+    config: object,
+) -> list[DoctorFinding]:
+    findings: list[DoctorFinding] = []
+    if not isinstance(config, dict):
+        return [
+            DoctorFinding(
+                "fail",
+                "Config schema",
+                f"{config_path.name} must decode to a top-level table.",
+                "Regenerate the config with `ace init --force`.",
+            )
+        ]
+
+    schema_version = config.get("schema_version")
+    if schema_version == 1:
+        findings.append(
+            DoctorFinding(
+                "ok",
+                "Config schema",
+                "schema_version = 1 is supported.",
+            )
+        )
+    else:
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Config schema",
+                f"schema_version must be 1, found {schema_version!r}.",
+                "Regenerate the config with `ace init --force` or update the version number.",
+            )
+        )
+
+    project = config.get("project")
+    if not isinstance(project, dict):
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Project config",
+                "The [project] table is missing or invalid.",
+                "Ensure ace.toml contains the [project] settings written by `ace init`.",
+            )
+        )
+        return findings
+
+    project_root_value = project.get("root")
+    if not isinstance(project_root_value, str) or not project_root_value.strip():
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Project root",
+                "project.root must be a non-empty string.",
+                'Set `root = "."` or another valid project path in [project].',
+            )
+        )
+        resolved_project_root = project_root
+    else:
+        resolved_project_root = (project_root / project_root_value).resolve()
+        if resolved_project_root.is_dir():
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    "Project root",
+                    f"{resolved_project_root} exists.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    "Project root",
+                    f"{resolved_project_root} does not exist.",
+                    "Point project.root at a valid directory.",
+                )
+            )
+
+    git_enabled = project.get("git_enabled")
+    if git_enabled is True:
+        if _command_available("git"):
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    "Git dependency",
+                    "git is available for the configured project.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    "Git dependency",
+                    "project.git_enabled is true but `git` is not available on PATH.",
+                    "Install git or set `git_enabled = false` if this project does not use git.",
+                )
+            )
+    elif git_enabled is False:
+        findings.append(
+            DoctorFinding(
+                "ok",
+                "Git dependency",
+                "Git checks are disabled for this project.",
+            )
+        )
+    else:
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Git dependency",
+                f"project.git_enabled must be a boolean, found {git_enabled!r}.",
+                "Set `git_enabled = true` or `git_enabled = false` in [project].",
+            )
+        )
+
+    bootstrap = config.get("bootstrap")
+    default_profile = None
+    if not isinstance(bootstrap, dict):
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Bootstrap config",
+                "The [bootstrap] table is missing or invalid.",
+                "Ensure ace.toml contains the [bootstrap] settings written by `ace init`.",
+            )
+        )
+    else:
+        default_profile = bootstrap.get("default_profile")
+        if default_profile in ("local", "hosted"):
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    "Default profile",
+                    f"`{default_profile}` is supported.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    "Default profile",
+                    f"default_profile must be `local` or `hosted`, found {default_profile!r}.",
+                    "Update [bootstrap].default_profile to a supported value.",
+                )
+            )
+
+    env_config = config.get("env")
+    env_names = {
+        "api_url_env": ACE_API_URL_ENV,
+        "token_env": ACE_TOKEN_ENV,
+        "api_key_env": ACE_API_KEY_ENV,
+    }
+    if isinstance(env_config, dict):
+        for key, default_name in env_names.items():
+            value = env_config.get(key)
+            if isinstance(value, str) and value.strip():
+                env_names[key] = value.strip()
+
+    profiles = config.get("profiles")
+    if not isinstance(profiles, dict):
+        findings.append(
+            DoctorFinding(
+                "fail",
+                "Profiles config",
+                "The [profiles] table is missing or invalid.",
+                "Ensure ace.toml contains at least [profiles.local] and [profiles.hosted].",
+            )
+        )
+        return findings
+
+    for profile_name in ("local", "hosted"):
+        profile = profiles.get(profile_name)
+        if not isinstance(profile, dict):
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    f"{profile_name} profile",
+                    f"[profiles.{profile_name}] is missing or invalid.",
+                    f"Regenerate ace.toml with `ace init --force` to restore [profiles.{profile_name}].",
+                )
+            )
+            continue
+        findings.extend(_validate_profile(profile_name, profile))
+
+    if default_profile == "hosted" and not any(
+        os.environ.get(env_names[name]) for name in ("token_env", "api_key_env")
+    ):
+        findings.append(
+            DoctorFinding(
+                "warn",
+                "Hosted auth",
+                "The hosted profile is the default but no hosted auth variable is set in this shell.",
+                f"Export `{env_names['token_env']}` or `{env_names['api_key_env']}` before using hosted commands.",
+            )
+        )
+
+    if (
+        default_profile == "local"
+        and not resolved_project_root.joinpath(".git").exists()
+        and git_enabled
+    ):
+        findings.append(
+            DoctorFinding(
+                "warn",
+                "Git workspace",
+                f"{resolved_project_root} is not a git checkout even though git checks are enabled.",
+                "Initialize git in the project root or set `git_enabled = false` if that is intentional.",
+            )
+        )
+
+    return findings
+
+
+def _validate_profile(profile_name: str, profile: dict[str, object]) -> list[DoctorFinding]:
+    findings: list[DoctorFinding] = []
+
+    api_url = profile.get("api_url")
+    if isinstance(api_url, str) and _is_http_url(api_url):
+        findings.append(
+            DoctorFinding(
+                "ok",
+                f"{profile_name} API URL",
+                f"{api_url} is a valid HTTP(S) URL.",
+            )
+        )
+    else:
+        findings.append(
+            DoctorFinding(
+                "fail",
+                f"{profile_name} API URL",
+                f"[profiles.{profile_name}].api_url must be a valid HTTP(S) URL, found {api_url!r}.",
+                "Set api_url to an absolute http:// or https:// endpoint.",
+            )
+        )
+
+    transport = profile.get("mcp_transport")
+    if transport not in SUPPORTED_MCP_TRANSPORTS:
+        findings.append(
+            DoctorFinding(
+                "fail",
+                f"{profile_name} MCP transport",
+                f"`{transport}` is not supported.",
+                f"Use one of: {', '.join(sorted(SUPPORTED_MCP_TRANSPORTS))}.",
+            )
+        )
+        return findings
+
+    findings.append(
+        DoctorFinding(
+            "ok",
+            f"{profile_name} MCP transport",
+            f"`{transport}` is supported.",
+        )
+    )
+
+    if transport == "stdio":
+        mcp_command = profile.get("mcp_command")
+        if not isinstance(mcp_command, str) or not mcp_command.strip():
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    f"{profile_name} MCP command",
+                    f"[profiles.{profile_name}].mcp_command must be a non-empty string.",
+                    "Set mcp_command to a command available on PATH, such as `python`.",
+                )
+            )
+        elif _command_available(mcp_command):
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    f"{profile_name} MCP command",
+                    f"`{mcp_command}` is available on PATH.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    f"{profile_name} MCP command",
+                    f"`{mcp_command}` was not found on PATH.",
+                    "Install the command or update mcp_command to a valid executable.",
+                )
+            )
+
+        mcp_args = profile.get("mcp_args")
+        if (
+            isinstance(mcp_args, list)
+            and mcp_args
+            and all(isinstance(argument, str) and argument for argument in mcp_args)
+        ):
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    f"{profile_name} MCP args",
+                    f"{len(mcp_args)} stdio argument(s) configured.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    f"{profile_name} MCP args",
+                    f"[profiles.{profile_name}].mcp_args must be a non-empty string list.",
+                    "Set mcp_args to the command arguments required to launch the MCP server.",
+                )
+            )
+    else:
+        mcp_url = profile.get("mcp_url")
+        if isinstance(mcp_url, str) and _is_http_url(mcp_url):
+            findings.append(
+                DoctorFinding(
+                    "ok",
+                    f"{profile_name} MCP URL",
+                    f"{mcp_url} is a valid HTTP(S) URL.",
+                )
+            )
+        else:
+            findings.append(
+                DoctorFinding(
+                    "fail",
+                    f"{profile_name} MCP URL",
+                    f"[profiles.{profile_name}].mcp_url must be a valid HTTP(S) URL, found {mcp_url!r}.",
+                    "Set mcp_url to the streamable HTTP or SSE endpoint for the hosted MCP server.",
+                )
+            )
+
+    return findings
+
+
+def _python_version_finding() -> DoctorFinding:
+    if sys.version_info >= MINIMUM_PYTHON:
+        return DoctorFinding(
+            "ok",
+            "Python runtime",
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} satisfies ACE's >=3.10 requirement.",
+        )
+    return DoctorFinding(
+        "fail",
+        "Python runtime",
+        (
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro} is not supported; "
+            "ACE requires Python 3.10 or newer."
+        ),
+        "Install Python 3.10+ and recreate the virtual environment.",
+    )
+
+
+def _command_available(command: str) -> bool:
+    if os.sep in command or (os.altsep and os.altsep in command):
+        return Path(command).expanduser().exists()
+    return shutil.which(command) is not None
+
+
+def _is_http_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _format_doctor_finding(finding: DoctorFinding) -> str:
+    lines = [f"[{finding.level}] {finding.title}: {finding.detail}"]
+    if finding.hint:
+        lines.append(f"  hint: {finding.hint}")
+    return "\n".join(lines)
 
 
 def _request(

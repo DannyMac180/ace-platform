@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import textwrap
 
 import httpx
 
@@ -172,3 +173,108 @@ def test_init_command_force_overwrites_with_custom_settings(tmp_path, capsys) ->
     assert 'docs_url = "https://docs.example"' in config_text
     assert 'api_url = "http://127.0.0.1:9000"' in config_text
     assert 'mcp_url = "https://staging.example/mcp"' in config_text
+
+
+def test_doctor_command_reports_missing_config(tmp_path, capsys) -> None:
+    exit_code = ace_cli.main(["doctor", "--path", str(tmp_path)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "ACE doctor report" in captured.out
+    assert "[fail] Config file" in captured.out
+    assert "ace init --path" in captured.out
+    assert "ACE doctor failed" in captured.err
+
+
+def test_doctor_command_accepts_generated_config(tmp_path, monkeypatch, capsys) -> None:
+    project_dir = tmp_path / "starter-project"
+    project_dir.mkdir()
+    (project_dir / ".git").mkdir()
+    ace_cli.main(["init", "--path", str(project_dir)])
+
+    monkeypatch.setattr(ace_cli, "_command_available", lambda command: True)
+
+    exit_code = ace_cli.main(["doctor", "--path", str(project_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "[ok] Python runtime" in captured.out
+    assert "[ok] Config schema" in captured.out
+    assert "[ok] local MCP command" in captured.out
+    assert "ACE doctor found no blocking issues" in captured.out
+
+
+def test_doctor_command_flags_unsupported_transport(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "unsupported-project"
+    project_dir.mkdir()
+    (project_dir / "ace.toml").write_text(
+        textwrap.dedent(
+            """
+            schema_version = 1
+
+            [project]
+            root = "."
+            git_enabled = false
+
+            [bootstrap]
+            default_profile = "local"
+
+            [profiles.local]
+            api_url = "http://localhost:8000"
+            mcp_transport = "websocket"
+
+            [profiles.hosted]
+            api_url = "https://aceagent.io"
+            mcp_transport = "http"
+            mcp_url = "https://aceagent.io/mcp"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = ace_cli.main(["doctor", "--path", str(project_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "[fail] local MCP transport: `websocket` is not supported." in captured.out
+    assert "Use one of: http, stdio." in captured.out
+
+
+def test_doctor_command_flags_missing_local_command(tmp_path, monkeypatch, capsys) -> None:
+    project_dir = tmp_path / "missing-command-project"
+    project_dir.mkdir()
+    (project_dir / "ace.toml").write_text(
+        textwrap.dedent(
+            """
+            schema_version = 1
+
+            [project]
+            root = "."
+            git_enabled = false
+
+            [bootstrap]
+            default_profile = "local"
+
+            [profiles.local]
+            api_url = "http://localhost:8000"
+            mcp_transport = "stdio"
+            mcp_command = "missing-python"
+            mcp_args = ["-m", "ace_platform.mcp.server", "stdio"]
+
+            [profiles.hosted]
+            api_url = "https://aceagent.io"
+            mcp_transport = "http"
+            mcp_url = "https://aceagent.io/mcp"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ace_cli, "_command_available", lambda command: command != "missing-python")
+
+    exit_code = ace_cli.main(["doctor", "--path", str(project_dir)])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "[fail] local MCP command: `missing-python` was not found on PATH." in captured.out
