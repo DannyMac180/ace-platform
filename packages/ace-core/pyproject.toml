@@ -3,7 +3,11 @@ name = "ace-core"
 version = "0.1.0"
 description = "Shared OSS ACE domain package"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
 dependencies = [
     "anthropic>=0.18.0",
     "numpy>=1.24.0",

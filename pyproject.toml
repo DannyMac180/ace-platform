@@ -2,7 +2,11 @@
 name = "ace-platform"
 version = "0.1.0"
 description = "Hosted ACE platform for self-improving AI agents"
+license = {text = "MIT"}
 requires-python = ">=3.10"
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+]
 
 dependencies = [
     # From upstream ACE
