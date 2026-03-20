@@ -17,6 +17,8 @@ from ..logger import log_bullet_usage
 from ..playbook_utils import (
     extract_playbook_bullets,
     get_playbook_stats,
+    prune_playbook,
+    render_active_playbook,
     update_bullet_counts,
 )
 from ..utils import count_tokens, evaluate_test_set, extract_answer, initialize_clients
@@ -476,9 +478,10 @@ class ACE:
 
         # STEP 1: Initial generation (pre-train)
         print("Generating initial answer...")
-        gen_response, bullet_ids, call_info = self.generator.generate(
+        active_playbook = render_active_playbook(self.playbook)
+        gen_response, considered_bullet_ids, used_bullet_ids, call_info = self.generator.generate(
             question=question,
-            playbook=self.playbook,
+            playbook=active_playbook,
             context=context,
             reflection="(empty)",
             use_json_mode=use_json_mode,
@@ -499,7 +502,8 @@ class ACE:
             epoch,
             step,
             task_dict,
-            bullet_ids,
+            considered_bullet_ids,
+            used_bullet_ids=used_bullet_ids,
             playbook=self.playbook,
             is_correct=is_correct,
         )
@@ -522,8 +526,7 @@ class ACE:
             for round_num in range(max_num_rounds):
                 print(f"Reflection round {round_num + 1}/{max_num_rounds}")
 
-                # Get bullets for reflector
-                playbook_bullets = extract_playbook_bullets(self.playbook, bullet_ids)
+                playbook_bullets = extract_playbook_bullets(self.playbook, considered_bullet_ids)
 
                 # Reflect on error
                 reflection_content, bullet_tags, _ = self.reflector.reflect(
@@ -532,7 +535,7 @@ class ACE:
                     predicted_answer=final_answer,
                     ground_truth=target if not no_ground_truth else None,
                     environment_feedback="Predicted answer does not match ground truth",
-                    bullets_used=playbook_bullets,
+                    bullets_considered=playbook_bullets,
                     use_ground_truth=not no_ground_truth,
                     use_json_mode=use_json_mode,
                     call_id=f"{step_id}_round_{round_num}",
@@ -540,13 +543,19 @@ class ACE:
                 )
 
                 # Update bullet counts
-                if bullet_tags:
-                    self.playbook = update_bullet_counts(self.playbook, bullet_tags)
+                self.playbook = update_bullet_counts(
+                    self.playbook,
+                    bullet_tags,
+                    considered_bullet_ids=considered_bullet_ids,
+                    used_bullet_ids=used_bullet_ids,
+                    current_step=step,
+                )
 
                 # Regenerate with reflection
-                gen_response, bullet_ids, _ = self.generator.generate(
+                active_playbook = render_active_playbook(self.playbook)
+                gen_response, considered_bullet_ids, used_bullet_ids, _ = self.generator.generate(
                     question=question,
-                    playbook=self.playbook,
+                    playbook=active_playbook,
                     context=context,
                     reflection=reflection_content,
                     use_json_mode=use_json_mode,
@@ -562,8 +571,7 @@ class ACE:
                     break
 
         else:
-            # For correct answers - still run reflector to tag helpful bullets
-            playbook_bullets = extract_playbook_bullets(self.playbook, bullet_ids)
+            playbook_bullets = extract_playbook_bullets(self.playbook, considered_bullet_ids)
 
             reflection_content, bullet_tags, _ = self.reflector.reflect(
                 question=question,
@@ -571,16 +579,20 @@ class ACE:
                 predicted_answer=final_answer,
                 ground_truth=target if not no_ground_truth else None,
                 environment_feedback="Predicted answer matches ground truth",
-                bullets_used=playbook_bullets,
+                bullets_considered=playbook_bullets,
                 use_ground_truth=not no_ground_truth,
                 use_json_mode=use_json_mode,
                 call_id=f"{step_id}_reflect_on_correct",
                 log_dir=log_dir,
             )
 
-            # Update bullet counts
-            if bullet_tags:
-                self.playbook = update_bullet_counts(self.playbook, bullet_tags)
+            self.playbook = update_bullet_counts(
+                self.playbook,
+                bullet_tags,
+                considered_bullet_ids=considered_bullet_ids,
+                used_bullet_ids=used_bullet_ids,
+                current_step=step,
+            )
 
             # Log with reflection
             log_bullet_usage(
@@ -588,7 +600,8 @@ class ACE:
                 epoch,
                 step,
                 task_dict,
-                bullet_ids,
+                considered_bullet_ids,
+                used_bullet_ids=used_bullet_ids,
                 playbook=self.playbook,
                 reflection_content=reflection_content,
                 is_correct=is_correct,
@@ -615,6 +628,10 @@ class ACE:
                 next_global_id=self.next_global_id,
             )
 
+            self.playbook, archived_ids = prune_playbook(self.playbook, current_step=step)
+            if archived_ids:
+                print(f"  Archived {len(archived_ids)} bullets via deterministic pruning")
+
             # Run bulletpoint analyzer if enabled
             if self.use_bulletpoint_analyzer and self.bulletpoint_analyzer:
                 print(
@@ -627,9 +644,10 @@ class ACE:
                 )
 
         # STEP 4: Post-curator generation
-        gen_response, _, _ = self.generator.generate(
+        active_playbook = render_active_playbook(self.playbook)
+        gen_response, _, _, _ = self.generator.generate(
             question=question,
-            playbook=self.playbook,
+            playbook=active_playbook,
             context=context,
             reflection="(empty)",
             use_json_mode=use_json_mode,

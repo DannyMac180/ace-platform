@@ -230,9 +230,9 @@ class ACE:
             )
 
         # Print initial banner
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"ACE SYSTEM - {mode.upper().replace('_', ' ')} MODE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Task: {task_name}")
         if mode == "offline":
             print(f"Train samples: {len(train_samples)}")
@@ -243,7 +243,7 @@ class ACE:
             print(f"Test samples (used for training and testing): {len(test_samples)}")
         else:  # eval_only
             print(f"Test samples: {len(test_samples)}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         # Execute based on mode
         results = {}
@@ -252,9 +252,9 @@ class ACE:
             # OFFLINE MODE WORKFLOW
             # 1. Run initial test if test_samples provided
             if test_samples:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print("INITIAL TEST (before training)")
-                print(f"{'='*60}\n")
+                print(f"{'=' * 60}\n")
                 initial_test_results = self._run_test(
                     test_samples=test_samples,
                     data_processor=data_processor,
@@ -268,9 +268,9 @@ class ACE:
                 print(f"Initial Test Accuracy: {initial_test_results['accuracy']:.3f}\n")
 
             # 2. Run offline training
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("STARTING OFFLINE TRAINING")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
             training_results = self._offline_train(
                 train_samples=train_samples,
                 val_samples=val_samples,
@@ -285,9 +285,9 @@ class ACE:
 
             # 3. Run final test if test_samples provided
             if test_samples:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print("FINAL TEST (with best playbook)")
-                print(f"{'='*60}\n")
+                print(f"{'=' * 60}\n")
                 final_test_results = self._run_test(
                     test_samples=test_samples,
                     data_processor=data_processor,
@@ -303,9 +303,9 @@ class ACE:
         elif mode == "online":
             # ONLINE MODE WORKFLOW
             # 1. Run initial test
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("INITIAL TEST (before training)")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
             initial_test_results = self._run_test(
                 test_samples=test_samples,
                 data_processor=data_processor,
@@ -319,9 +319,9 @@ class ACE:
             print(f"Initial Test Accuracy: {initial_test_results['accuracy']:.3f}\n")
 
             # 2. Run online training and testing
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("STARTING ONLINE TRAIN AND TEST")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
             online_results = self._online_train_and_test(
                 test_samples=test_samples,
                 data_processor=data_processor,
@@ -335,9 +335,9 @@ class ACE:
 
         else:  # eval_only
             # EVAL ONLY MODE WORKFLOW
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print("RUNNING TEST")
-            print(f"{'='*60}\n")
+            print(f"{'=' * 60}\n")
             test_results = self._run_test(
                 test_samples=test_samples,
                 data_processor=data_processor,
@@ -355,9 +355,9 @@ class ACE:
             json.dump(results, f, indent=2)
 
         # Print final summary
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("RUN COMPLETE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Mode: {mode.upper().replace('_', ' ')}")
         if mode == "offline":
             print(
@@ -372,7 +372,7 @@ class ACE:
         else:  # eval_only
             print(f"Test Accuracy: {results['test_results']['accuracy']:.3f}")
         print(f"Results saved to: {save_path}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         return results
 
@@ -473,9 +473,10 @@ class ACE:
 
         # STEP 1: Initial generation (pre-train)
         print("Generating initial answer...")
-        gen_response, bullet_ids, call_info = self.generator.generate(
+        active_playbook = render_active_playbook(self.playbook)
+        gen_response, considered_bullet_ids, used_bullet_ids, call_info = self.generator.generate(
             question=question,
-            playbook=self.playbook,
+            playbook=active_playbook,
             context=context,
             reflection="(empty)",
             use_json_mode=use_json_mode,
@@ -496,7 +497,8 @@ class ACE:
             epoch,
             step,
             task_dict,
-            bullet_ids,
+            considered_bullet_ids,
+            used_bullet_ids=used_bullet_ids,
             playbook=self.playbook,
             is_correct=is_correct,
         )
@@ -519,8 +521,7 @@ class ACE:
             for round_num in range(max_num_rounds):
                 print(f"Reflection round {round_num + 1}/{max_num_rounds}")
 
-                # Get bullets for reflector
-                playbook_bullets = extract_playbook_bullets(self.playbook, bullet_ids)
+                playbook_bullets = extract_playbook_bullets(self.playbook, considered_bullet_ids)
 
                 # Reflect on error
                 reflection_content, bullet_tags, _ = self.reflector.reflect(
@@ -529,21 +530,26 @@ class ACE:
                     predicted_answer=final_answer,
                     ground_truth=target if not no_ground_truth else None,
                     environment_feedback="Predicted answer does not match ground truth",
-                    bullets_used=playbook_bullets,
+                    bullets_considered=playbook_bullets,
                     use_ground_truth=not no_ground_truth,
                     use_json_mode=use_json_mode,
                     call_id=f"{step_id}_round_{round_num}",
                     log_dir=log_dir,
                 )
 
-                # Update bullet counts
-                if bullet_tags:
-                    self.playbook = update_bullet_counts(self.playbook, bullet_tags)
+                self.playbook = update_bullet_counts(
+                    self.playbook,
+                    bullet_tags,
+                    considered_bullet_ids=considered_bullet_ids,
+                    used_bullet_ids=used_bullet_ids,
+                    current_step=step,
+                )
 
                 # Regenerate with reflection
-                gen_response, bullet_ids, _ = self.generator.generate(
+                active_playbook = render_active_playbook(self.playbook)
+                gen_response, considered_bullet_ids, used_bullet_ids, _ = self.generator.generate(
                     question=question,
-                    playbook=self.playbook,
+                    playbook=active_playbook,
                     context=context,
                     reflection=reflection_content,
                     use_json_mode=use_json_mode,
@@ -559,8 +565,7 @@ class ACE:
                     break
 
         else:
-            # For correct answers - still run reflector to tag helpful bullets
-            playbook_bullets = extract_playbook_bullets(self.playbook, bullet_ids)
+            playbook_bullets = extract_playbook_bullets(self.playbook, considered_bullet_ids)
 
             reflection_content, bullet_tags, _ = self.reflector.reflect(
                 question=question,
@@ -568,16 +573,20 @@ class ACE:
                 predicted_answer=final_answer,
                 ground_truth=target if not no_ground_truth else None,
                 environment_feedback="Predicted answer matches ground truth",
-                bullets_used=playbook_bullets,
+                bullets_considered=playbook_bullets,
                 use_ground_truth=not no_ground_truth,
                 use_json_mode=use_json_mode,
                 call_id=f"{step_id}_reflect_on_correct",
                 log_dir=log_dir,
             )
 
-            # Update bullet counts
-            if bullet_tags:
-                self.playbook = update_bullet_counts(self.playbook, bullet_tags)
+            self.playbook = update_bullet_counts(
+                self.playbook,
+                bullet_tags,
+                considered_bullet_ids=considered_bullet_ids,
+                used_bullet_ids=used_bullet_ids,
+                current_step=step,
+            )
 
             # Log with reflection
             log_bullet_usage(
@@ -585,7 +594,8 @@ class ACE:
                 epoch,
                 step,
                 task_dict,
-                bullet_ids,
+                considered_bullet_ids,
+                used_bullet_ids=used_bullet_ids,
                 playbook=self.playbook,
                 reflection_content=reflection_content,
                 is_correct=is_correct,
@@ -612,6 +622,10 @@ class ACE:
                 next_global_id=self.next_global_id,
             )
 
+            self.playbook, archived_ids = prune_playbook(self.playbook, current_step=step)
+            if archived_ids:
+                print(f"  Archived {len(archived_ids)} bullets via deterministic pruning")
+
             # Run bulletpoint analyzer if enabled
             if self.use_bulletpoint_analyzer and self.bulletpoint_analyzer:
                 print(
@@ -624,9 +638,10 @@ class ACE:
                 )
 
         # STEP 4: Post-curator generation
-        gen_response, _, _ = self.generator.generate(
+        active_playbook = render_active_playbook(self.playbook)
+        gen_response, _, _, _ = self.generator.generate(
             question=question,
-            playbook=self.playbook,
+            playbook=active_playbook,
             context=context,
             reflection="(empty)",
             use_json_mode=use_json_mode,
@@ -699,9 +714,9 @@ class ACE:
 
         # Training loop
         for epoch in range(1, num_epochs + 1):
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"EPOCH {epoch}/{num_epochs}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             epoch_answers_pre_train = []
             epoch_targets_pre_train = []
@@ -752,9 +767,9 @@ class ACE:
 
                 # Periodic evaluation
                 if step % eval_steps == 0:
-                    print(f"\n{'='*40}")
+                    print(f"\n{'=' * 40}")
                     print(f"EVALUATION AT EPOCH {epoch}, STEP {step}")
-                    print(f"{'='*40}")
+                    print(f"{'=' * 40}")
 
                     # Compute training accuracies
                     pre_train_accuracy = data_processor.evaluate_accuracy(
@@ -857,11 +872,11 @@ class ACE:
         with open(best_playbook_path, "w") as f:
             f.write(self.best_playbook)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("OFFLINE TRAINING COMPLETE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Best Validation Accuracy: {best_accuracy:.3f}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         return {"best_validation_accuracy": best_accuracy}
 
@@ -971,10 +986,10 @@ class ACE:
             end_idx = min((window_idx + 1) * online_eval_frequency, len(test_samples))
             window_samples = test_samples[start_idx:end_idx]
 
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"WINDOW {window_idx + 1}/{num_windows}")
             print(f"Samples {start_idx} to {end_idx - 1}")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
 
             # =================================================================
             # STEP 1: TEST on window with current playbook (before training)
@@ -1123,9 +1138,9 @@ class ACE:
                 f.write(self.playbook)
 
         # All windows complete
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("ONLINE TRAIN AND TEST COMPLETE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Calculate final cumulative test accuracy
         assert total_count == len(test_samples)
@@ -1170,11 +1185,11 @@ class ACE:
         with open(final_playbook_path, "w") as f:
             f.write(self.playbook)
 
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print("ONLINE TRAINING AND TESTING COMPLETE")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
         print(f"Final Test Accuracy: {final_test_accuracy:.3f}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         return {
             "accuracy": final_test_accuracy,

@@ -38,6 +38,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from ace_core.playbook_utils import count_playbook_bullets
 from ace_platform.config import get_settings
 from ace_platform.core.api_keys import authenticate_api_key_async
 from ace_platform.core.authorization import check_paid_access
@@ -78,8 +79,6 @@ from ace_platform.db.session import AsyncSessionLocal, close_async_db
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
-# Regex pattern for counting ACE-format bullets: [id] helpful=X harmful=Y :: content
-ACE_BULLET_PATTERN = r"\[[^\]]+\]\s*helpful=\d+\s*harmful=\d+\s*::"
 MCP_SESSION_ID_HEADER = b"mcp-session-id"
 SESSION_ROUTING_SEPARATOR = "@"
 
@@ -1293,7 +1292,7 @@ async def create_playbook(
             conversion_note = f" ({conversion_result.error_message})"
 
         # Count ACE-format bullets
-        bullet_count = len(re.findall(ACE_BULLET_PATTERN, content_to_save))
+        bullet_count = count_playbook_bullets(content_to_save)
 
         version = PlaybookVersion(
             playbook_id=playbook.id,
@@ -1440,7 +1439,7 @@ async def create_version(
         conversion_note = f" ({conversion_result.error_message})"
 
     # Calculate bullet count (done once, outside retry loop)
-    bullet_count = len(re.findall(ACE_BULLET_PATTERN, content))
+    bullet_count = count_playbook_bullets(content)
 
     # Retry loop to handle race conditions on version_number
     max_retries = 3

@@ -41,7 +41,7 @@ class Generator:
         use_json_mode: bool = False,
         call_id: str = "gen",
         log_dir: str | None = None,
-    ) -> tuple[str, list[str], dict[str, Any]]:
+    ) -> tuple[str, list[str], list[str], dict[str, Any]]:
         """
         Generate an answer to a question using the playbook.
 
@@ -55,7 +55,7 @@ class Generator:
             log_dir: Directory for logging
 
         Returns:
-            Tuple of (full_response, bullet_ids_used, call_info)
+            Tuple of (full_response, considered_bullet_ids, used_bullet_ids, call_info)
         """
         # Format the prompt
         prompt = GENERATOR_PROMPT.format(playbook, reflection, question, context)
@@ -72,36 +72,56 @@ class Generator:
             use_json_mode=use_json_mode,
         )
 
-        # Extract bullet IDs if using retrieval and reason mode
-        bullet_ids = []
-        bullet_ids = self._extract_bullet_ids(response, use_json_mode)
+        considered_bullet_ids, used_bullet_ids = self._extract_bullet_tracking(
+            response, use_json_mode
+        )
 
-        return response, bullet_ids, call_info
+        return response, considered_bullet_ids, used_bullet_ids, call_info
 
-    def _extract_bullet_ids(self, response: str, use_json_mode: bool) -> list[str]:
+    def _extract_bullet_tracking(
+        self, response: str, use_json_mode: bool
+    ) -> tuple[list[str], list[str]]:
         """
-        Extract bullet IDs from generator response.
+        Extract considered and used bullet IDs from generator response.
 
         Args:
             response: The generator's response
             use_json_mode: Whether JSON mode was used
 
         Returns:
-            List of bullet IDs
+            Tuple of (considered_bullet_ids, used_bullet_ids)
         """
-        bullet_ids = []
+        considered_bullet_ids: list[str] = []
+        used_bullet_ids: list[str] = []
 
         if use_json_mode:
             try:
                 response_json = json.loads(response)
-                bullet_ids = response_json.get("bullet_ids", [])
+                considered_bullet_ids = self._normalize_bullet_ids(
+                    response_json.get("considered_bullet_ids")
+                )
+                used_bullet_ids = self._normalize_bullet_ids(response_json.get("used_bullet_ids"))
+                if not considered_bullet_ids and "bullet_ids" in response_json:
+                    legacy_bullet_ids = self._normalize_bullet_ids(response_json.get("bullet_ids"))
+                    considered_bullet_ids = legacy_bullet_ids
+                    if "used_bullet_ids" not in response_json:
+                        used_bullet_ids = legacy_bullet_ids
+                if considered_bullet_ids and "used_bullet_ids" not in response_json:
+                    used_bullet_ids = considered_bullet_ids
             except (json.JSONDecodeError, KeyError):
-                # If parsing fails, try regex extraction
-                bullet_ids = self._extract_bullet_ids_regex(response)
+                considered_bullet_ids = self._extract_bullet_ids_regex(response)
+                used_bullet_ids = considered_bullet_ids
         else:
-            bullet_ids = self._extract_bullet_ids_regex(response)
+            considered_bullet_ids = self._extract_bullet_ids_regex(response)
+            used_bullet_ids = considered_bullet_ids
 
-        return bullet_ids
+        return considered_bullet_ids, used_bullet_ids
+
+    def _normalize_bullet_ids(self, raw_bullet_ids: Any) -> list[str]:
+        """Normalize model output into a list of bullet ID strings."""
+        if not isinstance(raw_bullet_ids, list):
+            return []
+        return [bullet_id for bullet_id in raw_bullet_ids if isinstance(bullet_id, str)]
 
     def _extract_bullet_ids_regex(self, text: str) -> list[str]:
         """
