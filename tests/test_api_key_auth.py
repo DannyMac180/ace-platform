@@ -16,6 +16,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
 from ace_platform.core.api_keys import (
     API_KEY_PREFIX,
@@ -45,19 +46,47 @@ TEST_DATABASE_URL_SYNC = os.environ.get(
 )
 
 
+def _schema_name(prefix: str) -> str:
+    return f"test_{prefix}_{uuid4().hex}"
+
+
 @pytest.fixture(scope="function")
 async def async_engine():
     """Create async test database engine with fresh tables."""
-    engine = create_async_engine(TEST_DATABASE_URL_ASYNC, echo=False)
+    schema = _schema_name("api_keys_async")
+    admin_engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(f"CREATE SCHEMA {schema}"))
+
+    await admin_engine.dispose()
+
+    engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+        connect_args={"server_settings": {"search_path": schema}},
+    )
 
     async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
 
     await engine.dispose()
+
+    cleanup_engine = create_async_engine(
+        TEST_DATABASE_URL_ASYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+    async with cleanup_engine.begin() as conn:
+        await conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+    await cleanup_engine.dispose()
 
 
 @pytest.fixture
@@ -75,16 +104,40 @@ async def async_session(async_engine):
 @pytest.fixture(scope="function")
 def sync_engine():
     """Create sync test database engine with fresh tables."""
-    engine = create_engine(TEST_DATABASE_URL_SYNC, echo=False)
+    schema = _schema_name("api_keys_sync")
+    admin_engine = create_engine(
+        TEST_DATABASE_URL_SYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+
+    with admin_engine.begin() as conn:
+        conn.execute(text(f"CREATE SCHEMA {schema}"))
+
+    admin_engine.dispose()
+
+    engine = create_engine(
+        TEST_DATABASE_URL_SYNC,
+        echo=False,
+        poolclass=NullPool,
+        connect_args={"options": f"-csearch_path={schema}"},
+    )
 
     with engine.begin() as conn:
-        conn.execute(text("DROP SCHEMA public CASCADE"))
-        conn.execute(text("CREATE SCHEMA public"))
-    Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=conn)
 
     yield engine
 
     engine.dispose()
+
+    cleanup_engine = create_engine(
+        TEST_DATABASE_URL_SYNC,
+        echo=False,
+        poolclass=NullPool,
+    )
+    with cleanup_engine.begin() as conn:
+        conn.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+    cleanup_engine.dispose()
 
 
 @pytest.fixture

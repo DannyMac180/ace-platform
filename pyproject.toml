@@ -53,6 +53,7 @@ dependencies = [
 
     # HTTP client
     "httpx>=0.26.0",
+    'tomli>=2.0.0; python_version < "3.11"',
 
     # Utilities
     "pydantic-settings>=2.0.0",
