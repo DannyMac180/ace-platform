@@ -2,6 +2,8 @@
 
 Get up and running with ACE Platform in 5 minutes.
 
+This guide is for the ACE-hosted path (`ACE Cloud Personal`, `ACE Cloud Team`, or `ACE Enterprise` onboarding). If you want the local/self-managed `ACE OSS` path instead, start with [Self-Hosted Deployment Guide](./SELF_HOSTED_DEPLOYMENT.md) and [ACE Product Split](./PRODUCT_SPLIT.md).
+
 ## What is ACE Platform?
 
 ACE Platform is a "Playbooks as a Service" platform that helps LLM agents learn and improve over time. Your agents can:
