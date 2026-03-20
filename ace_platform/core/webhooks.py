@@ -37,6 +37,7 @@ from ace_platform.db.models import (
 )
 
 logger = logging.getLogger(__name__)
+_SUBSCRIPTION_TIER_RANK = {tier: rank for rank, tier in enumerate(SubscriptionTier)}
 
 
 class WebhookEventType(str, Enum):
@@ -289,6 +290,33 @@ def _get_subscription_tier_enum(
             return None
 
     return get_subscription_tier_for_plan_code(raw_metadata.get("plan_code"))
+
+
+def _normalize_subscription_tier(raw_tier: str | None) -> SubscriptionTier:
+    """Return a safe tier value for upgrade comparisons."""
+
+    if not raw_tier:
+        return SubscriptionTier.FREE
+
+    try:
+        return SubscriptionTier(raw_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+def _is_upgrade_tier_change(
+    previous_tier: str | None,
+    new_tier: SubscriptionTier | None,
+) -> bool:
+    """Return whether the new tier is a real upgrade over the prior tier."""
+
+    if new_tier is None:
+        return False
+
+    return (
+        _SUBSCRIPTION_TIER_RANK[new_tier]
+        > _SUBSCRIPTION_TIER_RANK[_normalize_subscription_tier(previous_tier)]
+    )
 
 
 def _get_subscription_plan_code(
@@ -604,7 +632,6 @@ async def _handle_subscription_updated(
     customer_id = _stripe_get(subscription, "customer")
 
     user = await _get_user_by_customer_id(db, customer_id)
-    prior_tier = user.subscription_tier if user else None
 
     # Metadata fallback (same race condition guard as subscription.created)
     if not user:
@@ -623,6 +650,7 @@ async def _handle_subscription_updated(
             event_type=event.type,
         )
 
+    prior_tier = user.subscription_tier
     sub_id = _stripe_get(subscription, "id")
     metadata = _stripe_get(subscription, "metadata") or {}
     tier = _get_subscription_tier_enum(subscription, metadata)
@@ -662,7 +690,7 @@ async def _handle_subscription_updated(
         trial_ends_at=update_values["trial_ends_at"],
     )
 
-    if tier is not None and prior_tier != tier.value:
+    if _is_upgrade_tier_change(prior_tier, tier):
         db.add(
             AcquisitionEvent(
                 user_id=user.id,

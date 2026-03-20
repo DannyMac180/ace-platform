@@ -20,6 +20,7 @@ from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
     Base,
+    SubscriptionStatus,
     User,
     Workspace,
     WorkspacePlan,
@@ -110,6 +111,16 @@ async def _load_workspace(async_session: AsyncSession, workspace_id) -> Workspac
     ).scalar_one()
 
 
+async def _count_upgrade_events(async_session: AsyncSession, user_id) -> int:
+    count = await async_session.scalar(
+        select(func.count(AcquisitionEvent.id)).where(
+            AcquisitionEvent.user_id == user_id,
+            AcquisitionEvent.event_type == AcquisitionEventType.UPGRADE_COMPLETED,
+        )
+    )
+    return int(count or 0)
+
+
 @pytest.mark.asyncio
 async def test_subscription_updated_without_metadata_persists_workspace_subscription(
     async_session: AsyncSession,
@@ -179,12 +190,7 @@ async def test_enterprise_subscription_lifecycle_updates_workspace_plan(
     assert upgraded_workspace.subscription.status == WorkspaceSubscriptionStatus.ACTIVE
     assert upgraded_workspace.entitlements is not None
     assert upgraded_workspace.entitlements.sso is True
-    upgrade_event_count = await async_session.scalar(
-        select(func.count(AcquisitionEvent.id)).where(
-            AcquisitionEvent.user_id == user.id,
-            AcquisitionEvent.event_type == AcquisitionEventType.UPGRADE_COMPLETED,
-        )
-    )
+    upgrade_event_count = await _count_upgrade_events(async_session, user.id)
     assert upgrade_event_count == 1
 
     cancel_event = MagicMock()
@@ -208,3 +214,111 @@ async def test_enterprise_subscription_lifecycle_updates_workspace_plan(
     assert canceled_workspace.subscription.provider_subscription_id is None
     assert canceled_workspace.entitlements is not None
     assert canceled_workspace.entitlements.sso is False
+
+
+@pytest.mark.asyncio
+async def test_subscription_updated_metadata_fallback_does_not_duplicate_upgrade_event(
+    async_session: AsyncSession,
+):
+    user = await _create_user(
+        async_session,
+        email="workspace-fallback@example.com",
+        stripe_customer_id="cus_workspace_fallback",
+    )
+    workspace, _ = await bootstrap_workspace_for_user(async_session, user)
+    await async_session.commit()
+
+    upgrade_event = MagicMock()
+    upgrade_event.id = "evt_workspace_fallback_upgrade"
+    upgrade_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+    upgrade_event.data.object = MagicMock(
+        id="sub_workspace_fallback",
+        customer="cus_workspace_fallback",
+        status="active",
+        current_period_end=int((datetime.now(UTC) + timedelta(days=30)).timestamp()),
+        metadata={"tier": "enterprise", "plan_code": "enterprise"},
+        items=MagicMock(data=[]),
+    )
+
+    first_result = await handle_webhook_event(async_session, upgrade_event)
+
+    assert first_result.success is True
+    assert await _count_upgrade_events(async_session, user.id) == 1
+
+    fallback_event = MagicMock()
+    fallback_event.id = "evt_workspace_fallback_same_tier"
+    fallback_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+    fallback_event.data.object = MagicMock(
+        id="sub_workspace_fallback",
+        customer="cus_workspace_fallback_miss",
+        status="active",
+        current_period_end=int((datetime.now(UTC) + timedelta(days=30)).timestamp()),
+        metadata={
+            "user_id": str(user.id),
+            "tier": "enterprise",
+            "plan_code": "enterprise",
+        },
+        items=MagicMock(data=[]),
+    )
+
+    fallback_result = await handle_webhook_event(async_session, fallback_event)
+    refreshed_workspace = await _load_workspace(async_session, workspace.id)
+
+    assert fallback_result.success is True
+    assert refreshed_workspace.plan == WorkspacePlan.ENTERPRISE
+    assert await _count_upgrade_events(async_session, user.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_subscription_updated_downgrade_does_not_emit_upgrade_event(
+    async_session: AsyncSession,
+):
+    user = await _create_user(
+        async_session,
+        email="workspace-downgrade@example.com",
+        stripe_customer_id="cus_workspace_downgrade",
+    )
+    workspace, _ = await bootstrap_workspace_for_user(async_session, user)
+    await async_session.commit()
+
+    upgrade_event = MagicMock()
+    upgrade_event.id = "evt_workspace_downgrade_upgrade"
+    upgrade_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+    upgrade_event.data.object = MagicMock(
+        id="sub_workspace_downgrade",
+        customer="cus_workspace_downgrade",
+        status="active",
+        current_period_end=int((datetime.now(UTC) + timedelta(days=30)).timestamp()),
+        metadata={"tier": "enterprise", "plan_code": "enterprise"},
+        items=MagicMock(data=[]),
+    )
+
+    first_result = await handle_webhook_event(async_session, upgrade_event)
+
+    assert first_result.success is True
+    assert await _count_upgrade_events(async_session, user.id) == 1
+
+    user.subscription_tier = "enterprise"
+    user.subscription_status = SubscriptionStatus.ACTIVE
+    await async_session.commit()
+
+    downgrade_event = MagicMock()
+    downgrade_event.id = "evt_workspace_downgrade_starter"
+    downgrade_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+    downgrade_event.data.object = MagicMock(
+        id="sub_workspace_downgrade",
+        customer="cus_workspace_downgrade",
+        status="active",
+        current_period_end=int((datetime.now(UTC) + timedelta(days=30)).timestamp()),
+        metadata={"tier": "starter", "plan_code": "starter"},
+        items=MagicMock(data=[]),
+    )
+
+    downgrade_result = await handle_webhook_event(async_session, downgrade_event)
+    downgraded_workspace = await _load_workspace(async_session, workspace.id)
+
+    assert downgrade_result.success is True
+    assert downgraded_workspace.plan == WorkspacePlan.PERSONAL
+    assert downgraded_workspace.subscription is not None
+    assert downgraded_workspace.subscription.plan_code == "starter"
+    assert await _count_upgrade_events(async_session, user.id) == 1
