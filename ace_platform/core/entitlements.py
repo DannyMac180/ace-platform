@@ -478,6 +478,16 @@ async def check_workspace_managed_inference_allowed(
 ) -> tuple[bool, str | None]:
     """Return whether managed inference can proceed for the workspace."""
 
+    snapshot = await resolve_workspace_entitlements(db, user, workspace=workspace)
+    if not snapshot.access.has_feature_access:
+        return False, "Managed inference is not enabled for this workspace plan."
+
+    workspace_entitlements = (
+        getattr(workspace, "entitlements", None) if workspace is not None else None
+    )
+    if workspace_entitlements is not None and not workspace_entitlements.managed_inference:
+        return False, "Managed inference is disabled for this workspace."
+
     period_start = get_billing_period_start()
     period_end = datetime.now(UTC)
     managed_inference = await get_usage_counter_summary(

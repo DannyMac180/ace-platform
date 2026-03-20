@@ -166,3 +166,34 @@ def test_managed_inference_rejects_non_cloud_workspaces():
         response.json()["error"]["message"]
         == "Managed inference is only available for cloud workspaces."
     )
+
+
+def test_managed_inference_rejects_workspace_without_entitlement_access():
+    user = _make_user()
+    client = _make_client(user)
+
+    with (
+        patch(
+            "ace_platform.api.routes.workspaces._resolve_entitlements_workspace",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "ace_platform.api.routes.workspaces.check_workspace_managed_inference_allowed",
+            new=AsyncMock(
+                return_value=(False, "Managed inference is not enabled for this workspace plan.")
+            ),
+        ),
+    ):
+        response = client.post(
+            "/v1/workspaces/me/inference",
+            json={
+                "model": "gpt-5.2",
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+        )
+
+    assert response.status_code == 402
+    assert (
+        response.json()["error"]["message"]
+        == "Managed inference is not enabled for this workspace plan."
+    )

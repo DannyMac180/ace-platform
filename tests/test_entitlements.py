@@ -245,14 +245,29 @@ async def test_invalid_workspace_usage_limit_strings_are_ignored(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
-    user = _make_user()
-    workspace = SimpleNamespace(id=uuid4(), usage_limits={})
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.ACTIVE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        entitlements=None,
+        subscription=None,
+        usage_limits={},
+    )
     get_usage_counter_summary = AsyncMock(
         return_value=SimpleNamespace(
             request_count=0,
             total_tokens=0,
             total_cost_usd=Decimal("0"),
         )
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
     )
     monkeypatch.setattr(
         "ace_platform.core.entitlements.get_usage_counter_summary",
@@ -268,3 +283,77 @@ async def test_managed_inference_check_scopes_usage_to_workspace(monkeypatch):
     assert allowed is True
     assert error_message is None
     assert get_usage_counter_summary.await_args.kwargs["workspace_id"] == workspace.id
+
+
+@pytest.mark.asyncio
+async def test_managed_inference_check_blocks_when_workspace_subscription_lacks_access(
+    monkeypatch,
+):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.ACTIVE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        entitlements=None,
+        subscription=SimpleNamespace(status=SimpleNamespace(value="unpaid"), plan_code="starter"),
+        usage_limits={},
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+    )
+    get_usage_counter_summary = AsyncMock()
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_usage_counter_summary",
+        get_usage_counter_summary,
+    )
+
+    allowed, error_message = await check_workspace_managed_inference_allowed(
+        object(),
+        user,
+        workspace=workspace,
+    )
+
+    assert allowed is False
+    assert error_message == "Managed inference is not enabled for this workspace plan."
+    get_usage_counter_summary.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_managed_inference_check_blocks_when_workspace_disables_feature(monkeypatch):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.ACTIVE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="personal"),
+        seat_limit=1,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        entitlements=SimpleNamespace(managed_inference=False),
+        subscription=SimpleNamespace(status=SimpleNamespace(value="active"), plan_code="starter"),
+        usage_limits={},
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+    )
+    get_usage_counter_summary = AsyncMock()
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_usage_counter_summary",
+        get_usage_counter_summary,
+    )
+
+    allowed, error_message = await check_workspace_managed_inference_allowed(
+        object(),
+        user,
+        workspace=workspace,
+    )
+
+    assert allowed is False
+    assert error_message == "Managed inference is disabled for this workspace."
+    get_usage_counter_summary.assert_not_awaited()
