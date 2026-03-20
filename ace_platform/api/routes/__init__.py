@@ -4,7 +4,7 @@ This package contains FastAPI routers for different resource types:
 - auth: User authentication (login, register, token refresh)
 - analytics: First-party analytics ingestion
 - billing: Billing and subscription management
-- oauth: OAuth authentication (Google, GitHub)
+- oauth: Hosted OAuth authentication routes built on a provider registry
 - playbooks: Playbook CRUD operations
 - usage: Usage reporting for billing dashboard
 - evolutions: Evolution statistics and activity
