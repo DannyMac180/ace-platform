@@ -117,4 +117,15 @@ describe('AuthPage mobile register flow', () => {
 
     expect(screen.queryByText(/7-day trial is card-required/i)).not.toBeInTheDocument();
   });
+
+  it('surfaces the provider-neutral local auth path on the auth screen', () => {
+    renderRegisterPage();
+
+    expect(screen.getByText(/provider-neutral path/i)).toBeInTheDocument();
+    expect(screen.getByText(/start with local auth/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/generate an api key for claude code, codex, or any mcp client/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/create an api key in the dashboard/i)).toBeInTheDocument();
+  });
 });
