@@ -637,7 +637,8 @@ def _python_version_finding() -> DoctorFinding:
 
 def _command_available(command: str) -> bool:
     if os.sep in command or (os.altsep and os.altsep in command):
-        return Path(command).expanduser().exists()
+        command_path = Path(command).expanduser()
+        return command_path.is_file() and os.access(command_path, os.X_OK)
     return shutil.which(command) is not None
 
 

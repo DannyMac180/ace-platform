@@ -278,3 +278,16 @@ def test_doctor_command_flags_missing_local_command(tmp_path, monkeypatch, capsy
     captured = capsys.readouterr()
     assert exit_code == 1
     assert "[fail] local MCP command: `missing-python` was not found on PATH." in captured.out
+
+
+def test_command_available_requires_executable_file_for_path(tmp_path) -> None:
+    command_dir = tmp_path / "bin"
+    command_dir.mkdir()
+    assert ace_cli._command_available(str(command_dir)) is False
+
+    command_file = tmp_path / "ace-mcp"
+    command_file.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    assert ace_cli._command_available(str(command_file)) is False
+
+    command_file.chmod(0o755)
+    assert ace_cli._command_available(str(command_file)) is True
