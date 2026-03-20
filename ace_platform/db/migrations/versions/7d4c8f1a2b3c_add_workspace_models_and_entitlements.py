@@ -4,13 +4,14 @@ Revision ID: 7d4c8f1a2b3c
 Revises: 6b9a3f2d1c7e
 Create Date: 2026-03-17
 
+This revision originally introduced the workspace tenancy tables. After the PR
+was synced with ``main``, those tables were already provided by the
+``7c4a8d9e1f20``/``c4d5e6f7a8b9`` migration chain. Keeping this revision as a
+no-op preserves the branch history without attempting to recreate the same
+schema during ``alembic upgrade head``.
 """
 
 from collections.abc import Sequence
-
-import sqlalchemy as sa
-from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "7d4c8f1a2b3c"
@@ -19,186 +20,9 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
-workspaceplan_enum = postgresql.ENUM("PERSONAL", "TEAM", "ENTERPRISE", name="workspaceplan")
-workspaceplan_column_enum = postgresql.ENUM(
-    "PERSONAL",
-    "TEAM",
-    "ENTERPRISE",
-    name="workspaceplan",
-    create_type=False,
-)
-deploymentmode_enum = postgresql.ENUM("LOCAL", "CLOUD", "SELF_HOSTED", name="deploymentmode")
-deploymentmode_column_enum = postgresql.ENUM(
-    "LOCAL",
-    "CLOUD",
-    "SELF_HOSTED",
-    name="deploymentmode",
-    create_type=False,
-)
-membershiprole_enum = postgresql.ENUM("OWNER", "MEMBER", "REVIEWER", "ADMIN", name="membershiprole")
-membershiprole_column_enum = postgresql.ENUM(
-    "OWNER",
-    "MEMBER",
-    "REVIEWER",
-    "ADMIN",
-    name="membershiprole",
-    create_type=False,
-)
-billingprovider_enum = postgresql.ENUM("STRIPE", "MANUAL", name="billingprovider")
-billingprovider_column_enum = postgresql.ENUM(
-    "STRIPE",
-    "MANUAL",
-    name="billingprovider",
-    create_type=False,
-)
-workspacesubscriptionstatus_enum = postgresql.ENUM(
-    "TRIALING",
-    "ACTIVE",
-    "PAST_DUE",
-    "CANCELED",
-    "UNPAID",
-    name="workspacesubscriptionstatus",
-)
-workspacesubscriptionstatus_column_enum = postgresql.ENUM(
-    "TRIALING",
-    "ACTIVE",
-    "PAST_DUE",
-    "CANCELED",
-    "UNPAID",
-    name="workspacesubscriptionstatus",
-    create_type=False,
-)
-
-
 def upgrade() -> None:
-    """Upgrade schema."""
-    bind = op.get_bind()
-    workspaceplan_enum.create(bind, checkfirst=True)
-    deploymentmode_enum.create(bind, checkfirst=True)
-    membershiprole_enum.create(bind, checkfirst=True)
-    billingprovider_enum.create(bind, checkfirst=True)
-    workspacesubscriptionstatus_enum.create(bind, checkfirst=True)
-
-    op.create_table(
-        "workspaces",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
-        sa.Column("plan", workspaceplan_column_enum, nullable=False),
-        sa.Column("deployment_mode", deploymentmode_column_enum, nullable=False),
-        sa.Column("seat_limit", sa.Integer(), nullable=False),
-        sa.Column("entitlement_overrides", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("usage_limit_overrides", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("id"),
-    )
-    op.create_index(op.f("ix_workspaces_plan"), "workspaces", ["plan"], unique=False)
-    op.create_index(
-        op.f("ix_workspaces_deployment_mode"),
-        "workspaces",
-        ["deployment_mode"],
-        unique=False,
-    )
-
-    op.create_table(
-        "workspace_memberships",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("workspace_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("user_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("role", membershiprole_column_enum, nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
-        sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "workspace_id",
-            "user_id",
-            name="uq_workspace_memberships_workspace_user",
-        ),
-    )
-    op.create_index(
-        op.f("ix_workspace_memberships_user_id"),
-        "workspace_memberships",
-        ["user_id"],
-        unique=False,
-    )
-    op.create_index(
-        op.f("ix_workspace_memberships_workspace_id"),
-        "workspace_memberships",
-        ["workspace_id"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_workspace_memberships_workspace_role",
-        "workspace_memberships",
-        ["workspace_id", "role"],
-        unique=False,
-    )
-
-    op.create_table(
-        "workspace_subscriptions",
-        sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("workspace_id", postgresql.UUID(as_uuid=True), nullable=False),
-        sa.Column("billing_provider", billingprovider_column_enum, nullable=False),
-        sa.Column("status", workspacesubscriptionstatus_column_enum, nullable=False),
-        sa.Column("plan_code", sa.String(length=100), nullable=False),
-        sa.Column("external_customer_id", sa.String(length=255), nullable=True),
-        sa.Column("external_subscription_id", sa.String(length=255), nullable=True),
-        sa.Column("current_period_end", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.Column(
-            "updated_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.ForeignKeyConstraint(["workspace_id"], ["workspaces.id"], ondelete="CASCADE"),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("workspace_id"),
-    )
+    """Preserve the historical branch point without changing schema."""
 
 
 def downgrade() -> None:
-    """Downgrade schema."""
-    bind = op.get_bind()
-
-    op.drop_table("workspace_subscriptions")
-    op.drop_index("ix_workspace_memberships_workspace_role", table_name="workspace_memberships")
-    op.drop_index(op.f("ix_workspace_memberships_workspace_id"), table_name="workspace_memberships")
-    op.drop_index(op.f("ix_workspace_memberships_user_id"), table_name="workspace_memberships")
-    op.drop_table("workspace_memberships")
-    op.drop_index(op.f("ix_workspaces_deployment_mode"), table_name="workspaces")
-    op.drop_index(op.f("ix_workspaces_plan"), table_name="workspaces")
-    op.drop_table("workspaces")
-
-    workspacesubscriptionstatus_enum.drop(bind, checkfirst=True)
-    billingprovider_enum.drop(bind, checkfirst=True)
-    membershiprole_enum.drop(bind, checkfirst=True)
-    deploymentmode_enum.drop(bind, checkfirst=True)
-    workspaceplan_enum.drop(bind, checkfirst=True)
+    """This compatibility revision intentionally has no downgrade work."""
