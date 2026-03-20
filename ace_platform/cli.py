@@ -226,7 +226,11 @@ def _run_seed(args: argparse.Namespace) -> int:
     from ace_platform.project_seed import format_seed_summary, seed_project_playbooks
 
     project_root = Path(args.path).expanduser().resolve()
-    result = seed_project_playbooks(project_root, force=args.force)
+    try:
+        result = seed_project_playbooks(project_root, force=args.force)
+    except ValueError as exc:
+        print(f"ACE seed aborted: {exc}", file=sys.stderr)
+        return 1
     print(format_seed_summary(result))
     return 0
 

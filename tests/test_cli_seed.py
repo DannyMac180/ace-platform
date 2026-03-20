@@ -72,11 +72,11 @@ def test_seed_command_respects_project_paths_from_ace_toml(tmp_path) -> None:
         "\n".join(
             [
                 "[project]",
-                'name = "Custom Layout"',
-                'docs_dir = "knowledge"',
-                'examples_dir = "samples"',
-                'playbooks_dir = "guides"',
-                'readme_path = "guides/README-custom.md"',
+                "name = 'Custom Layout'",
+                "docs_dir = 'knowledge'",
+                "examples_dir = 'samples'",
+                "playbooks_dir = 'guides'",
+                "readme_path = 'guides/README-custom.md'",
             ]
         )
         + "\n",
@@ -129,3 +129,21 @@ def test_seed_command_force_overwrites_existing_generated_playbooks(tmp_path) ->
     assert second_exit == 0
     assert "Always validate release notes before shipping." not in original
     assert "Always validate release notes before shipping." in updated
+
+
+def test_seed_command_rejects_paths_outside_project_root(tmp_path, capsys) -> None:
+    project_dir = tmp_path / "escape-project"
+    project_dir.mkdir()
+    (project_dir / "README.md").write_text("# Escape Project\n", encoding="utf-8")
+    (project_dir / "ace.toml").write_text(
+        "[project]\nplaybooks_dir = '../outside'\n",
+        encoding="utf-8",
+    )
+
+    exit_code = ace_cli.main(["seed", "--path", str(project_dir)])
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "ACE seed aborted:" in captured.err
+    assert "playbooks_dir must stay within" in captured.err
+    assert not (tmp_path / "outside").exists()

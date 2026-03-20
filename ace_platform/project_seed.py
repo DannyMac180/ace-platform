@@ -9,6 +9,11 @@ from pathlib import Path
 
 from ace_platform.core.content_converter import IMPERATIVE_VERBS, extract_candidates
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback
+    import tomli as tomllib
+
 CONFIG_FILENAME = "ace.toml"
 TEXT_FILE_SUFFIXES = {".md", ".rst", ".txt", ".adoc"}
 LOCKFILE_TO_MANAGER = {
@@ -138,6 +143,11 @@ def load_seed_layout(project_root: Path) -> SeedLayout:
         or _first_existing_name(project_root, "README.md", "README.rst", "README.txt")
         or "README.md"
     )
+
+    docs_dir = _normalize_project_path(project_root, docs_dir, label="docs_dir")
+    examples_dir = _normalize_project_path(project_root, examples_dir, label="examples_dir")
+    playbooks_dir = _normalize_project_path(project_root, playbooks_dir, label="playbooks_dir")
+    readme_path = _normalize_project_path(project_root, readme_path, label="readme_path")
 
     return SeedLayout(
         project_name=project_name,
@@ -450,22 +460,33 @@ def _parse_project_config(config_path: Path) -> dict[str, str]:
     if not config_path.exists():
         return {}
 
-    values: dict[str, str] = {}
-    current_section: str | None = None
-    for raw_line in config_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if line.startswith("[") and line.endswith("]"):
-            current_section = line.strip("[]")
-            continue
-        if current_section != "project":
-            continue
+    try:
+        payload = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(f"Invalid {config_path.name}: {exc}") from exc
 
-        match = re.match(r'([A-Za-z0-9_]+)\s*=\s*"(.*)"$', line)
-        if match:
-            values[match.group(1)] = match.group(2)
+    project = payload.get("project")
+    if not isinstance(project, dict):
+        return {}
+
+    values: dict[str, str] = {}
+    for key in ("name", "docs_dir", "examples_dir", "playbooks_dir", "readme_path"):
+        value = project.get(key)
+        if isinstance(value, str) and value.strip():
+            values[key] = value.strip()
     return values
+
+
+def _normalize_project_path(project_root: Path, configured_path: str, *, label: str) -> str:
+    candidate = Path(configured_path).expanduser()
+    resolved = (
+        candidate.resolve() if candidate.is_absolute() else (project_root / candidate).resolve()
+    )
+    try:
+        relative_path = resolved.relative_to(project_root)
+    except ValueError as exc:
+        raise ValueError(f"{CONFIG_FILENAME} {label} must stay within {project_root}") from exc
+    return relative_path.as_posix() or "."
 
 
 def _read_text_file(project_root: Path, relative_path: str, source_kind: str) -> ScannedFile | None:
