@@ -375,7 +375,9 @@ async def _handle_checkout_completed(
     # Handle subscription checkout
     # Update user with customer and subscription ID
     tier = metadata.get("tier")
+    prior_tier = user.subscription_tier
     is_trial = metadata.get("is_trial") == "true"
+    target_tier = SubscriptionTier(tier) if tier in SubscriptionTier._value2member_map_ else None
 
     # Build update values
     update_values: dict = {
@@ -413,9 +415,7 @@ async def _handle_checkout_completed(
         status=(
             WorkspaceSubscriptionStatus.TRIALING if is_trial else WorkspaceSubscriptionStatus.ACTIVE
         ),
-        subscription_tier=(
-            SubscriptionTier(tier) if tier in SubscriptionTier._value2member_map_ else None
-        ),
+        subscription_tier=target_tier,
         plan_code=metadata.get("plan_code"),
         provider_customer_id=customer_id,
         provider_subscription_id=subscription_id,
@@ -440,7 +440,7 @@ async def _handle_checkout_completed(
                 },
             )
         )
-    else:
+    elif _is_upgrade_tier_change(prior_tier, target_tier):
         db.add(
             AcquisitionEvent(
                 user_id=user.id,

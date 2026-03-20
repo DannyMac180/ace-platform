@@ -270,6 +270,59 @@ async def test_subscription_updated_metadata_fallback_does_not_duplicate_upgrade
 
 
 @pytest.mark.asyncio
+async def test_checkout_completed_after_subscription_upgrade_does_not_duplicate_upgrade_event(
+    async_session: AsyncSession,
+):
+    user = await _create_user(
+        async_session,
+        email="workspace-checkout-dedupe@example.com",
+        stripe_customer_id="cus_workspace_checkout_dedupe",
+    )
+    workspace, _ = await bootstrap_workspace_for_user(async_session, user)
+    await async_session.commit()
+
+    upgrade_event = MagicMock()
+    upgrade_event.id = "evt_workspace_checkout_upgrade"
+    upgrade_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
+    upgrade_event.data.object = MagicMock(
+        id="sub_workspace_checkout_dedupe",
+        customer="cus_workspace_checkout_dedupe",
+        status="active",
+        current_period_end=int((datetime.now(UTC) + timedelta(days=30)).timestamp()),
+        metadata={"tier": "enterprise", "plan_code": "enterprise"},
+        items=MagicMock(data=[]),
+    )
+
+    first_result = await handle_webhook_event(async_session, upgrade_event)
+
+    assert first_result.success is True
+    assert await _count_upgrade_events(async_session, user.id) == 1
+
+    checkout_event = MagicMock()
+    checkout_event.id = "evt_workspace_checkout_completed"
+    checkout_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
+    checkout_event.data.object = MagicMock(
+        id="cs_workspace_checkout_completed",
+        customer="cus_workspace_checkout_dedupe",
+        subscription="sub_workspace_checkout_dedupe",
+        mode="subscription",
+        metadata={
+            "user_id": str(user.id),
+            "tier": "enterprise",
+            "plan_code": "enterprise",
+            "is_trial": "false",
+        },
+    )
+
+    checkout_result = await handle_webhook_event(async_session, checkout_event)
+    refreshed_workspace = await _load_workspace(async_session, workspace.id)
+
+    assert checkout_result.success is True
+    assert refreshed_workspace.plan == WorkspacePlan.ENTERPRISE
+    assert await _count_upgrade_events(async_session, user.id) == 1
+
+
+@pytest.mark.asyncio
 async def test_subscription_updated_downgrade_does_not_emit_upgrade_event(
     async_session: AsyncSession,
 ):
