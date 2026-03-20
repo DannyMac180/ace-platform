@@ -174,6 +174,11 @@ class WorkspaceSubscriptionStatus(str, enum.Enum):
     UNPAID = "unpaid"
 
 
+# Backward-compatible aliases for older tenancy helpers/tests.
+DeploymentMode = WorkspaceDeploymentMode
+BillingProvider = WorkspaceBillingProvider
+
+
 WORKSPACE_PLAN_ENTITLEMENTS: dict[WorkspacePlan, dict[str, bool]] = {
     WorkspacePlan.PERSONAL: {
         "cloud_sync": True,

@@ -4,15 +4,21 @@ Provides CRUD helpers, membership management, and bootstrap flows that enforce
 the hosted-workspace invariants for cloud users.
 """
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timezone
+from decimal import Decimal
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ace_core.contracts import Feature
 from ace_platform.db.models import (
+    BillingProvider,
+    DeploymentMode,
+    SubscriptionStatus,
     User,
     Workspace,
     WorkspaceDeploymentMode,
@@ -23,6 +29,8 @@ from ace_platform.db.models import (
     WorkspaceMembership,
     WorkspacePlan,
     WorkspaceRole,
+    WorkspaceSubscription,
+    WorkspaceSubscriptionStatus,
     get_default_workspace_entitlements,
     get_default_workspace_inference_config,
     workspace_supports_managed_inference,
@@ -31,6 +39,241 @@ from ace_platform.db.models import (
 MANAGER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN}
 DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT = 5
 APPROVER_ROLES = {WorkspaceRole.OWNER, WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER}
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceEntitlementSet:
+    """Compatibility feature snapshot for older workspace helper callers."""
+
+    cloud_sync: bool
+    hosted_backups: bool
+    managed_inference: bool
+    hosted_evals: bool
+    invite_members: bool
+    shared_workspace: bool
+    approvals: bool
+    rbac: bool
+    sso: bool
+    audit_logs: bool
+
+    async def can(self, feature: Feature) -> bool:
+        """Return whether the workspace can use the requested feature."""
+
+        return bool(getattr(self, feature))
+
+    def to_dict(self) -> dict[str, bool]:
+        """Serialize the feature flags to a plain dictionary."""
+
+        return asdict(self)
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspaceUsageEnvelope:
+    """Compatibility usage envelope for older workspace helper callers."""
+
+    max_members: int | None
+    monthly_evolution_runs: int | None = None
+    monthly_cost_limit_usd: Decimal | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the usage envelope to plain values."""
+
+        return {
+            "max_members": self.max_members,
+            "monthly_evolution_runs": self.monthly_evolution_runs,
+            "monthly_cost_limit_usd": (
+                None if self.monthly_cost_limit_usd is None else str(self.monthly_cost_limit_usd)
+            ),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class WorkspacePlanDefaults:
+    """Compatibility default plan semantics for older tenancy helpers."""
+
+    default_deployment_mode: DeploymentMode
+    default_seat_limit: int
+    minimum_seat_limit: int
+    entitlements: WorkspaceEntitlementSet
+    usage: WorkspaceUsageEnvelope
+
+
+WORKSPACE_PLAN_DEFAULTS: dict[WorkspacePlan, WorkspacePlanDefaults] = {
+    WorkspacePlan.PERSONAL: WorkspacePlanDefaults(
+        default_deployment_mode=DeploymentMode.CLOUD,
+        default_seat_limit=1,
+        minimum_seat_limit=1,
+        entitlements=WorkspaceEntitlementSet(
+            cloud_sync=True,
+            hosted_backups=True,
+            managed_inference=True,
+            hosted_evals=True,
+            invite_members=False,
+            shared_workspace=False,
+            approvals=False,
+            rbac=False,
+            sso=False,
+            audit_logs=False,
+        ),
+        usage=WorkspaceUsageEnvelope(max_members=1),
+    ),
+    WorkspacePlan.TEAM: WorkspacePlanDefaults(
+        default_deployment_mode=DeploymentMode.CLOUD,
+        default_seat_limit=DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT,
+        minimum_seat_limit=2,
+        entitlements=WorkspaceEntitlementSet(
+            cloud_sync=True,
+            hosted_backups=True,
+            managed_inference=True,
+            hosted_evals=True,
+            invite_members=True,
+            shared_workspace=True,
+            approvals=True,
+            rbac=True,
+            sso=False,
+            audit_logs=True,
+        ),
+        usage=WorkspaceUsageEnvelope(max_members=None),
+    ),
+    WorkspacePlan.ENTERPRISE: WorkspacePlanDefaults(
+        default_deployment_mode=DeploymentMode.SELF_HOSTED,
+        default_seat_limit=25,
+        minimum_seat_limit=2,
+        entitlements=WorkspaceEntitlementSet(
+            cloud_sync=True,
+            hosted_backups=True,
+            managed_inference=True,
+            hosted_evals=True,
+            invite_members=True,
+            shared_workspace=True,
+            approvals=True,
+            rbac=True,
+            sso=True,
+            audit_logs=True,
+        ),
+        usage=WorkspaceUsageEnvelope(max_members=None),
+    ),
+}
+
+
+def get_workspace_plan_defaults(plan: WorkspacePlan) -> WorkspacePlanDefaults:
+    """Return compatibility defaults for the requested workspace plan."""
+
+    return WORKSPACE_PLAN_DEFAULTS[plan]
+
+
+def validate_workspace_shape(
+    plan: WorkspacePlan,
+    seat_limit: int,
+    deployment_mode: DeploymentMode,
+) -> None:
+    """Validate compatibility workspace-shape invariants."""
+
+    defaults = get_workspace_plan_defaults(plan)
+
+    if seat_limit < defaults.minimum_seat_limit:
+        raise ValueError(
+            f"{plan.value} workspaces require at least {defaults.minimum_seat_limit} seat(s)."
+        )
+
+    if plan == WorkspacePlan.PERSONAL and seat_limit != 1:
+        raise ValueError("personal workspaces must have exactly one seat.")
+
+    if (
+        plan in {WorkspacePlan.PERSONAL, WorkspacePlan.TEAM}
+        and deployment_mode != DeploymentMode.CLOUD
+    ):
+        raise ValueError(f"{plan.value} workspaces must use cloud deployment.")
+
+
+def _merge_entitlements(
+    base: WorkspaceEntitlementSet,
+    overrides: dict[str, Any] | None,
+) -> WorkspaceEntitlementSet:
+    if not overrides:
+        return base
+
+    merged = base.to_dict()
+    for feature, value in overrides.items():
+        if feature in merged:
+            merged[feature] = bool(value)
+    return WorkspaceEntitlementSet(**merged)
+
+
+def _parse_decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value))
+
+
+def _merge_usage(
+    base: WorkspaceUsageEnvelope,
+    overrides: dict[str, Any] | None,
+    seat_limit: int,
+) -> WorkspaceUsageEnvelope:
+    if not overrides:
+        if base.max_members is None:
+            return WorkspaceUsageEnvelope(
+                max_members=seat_limit,
+                monthly_evolution_runs=base.monthly_evolution_runs,
+                monthly_cost_limit_usd=base.monthly_cost_limit_usd,
+            )
+        return base
+
+    max_members = overrides.get("max_members", base.max_members)
+    if max_members is None:
+        max_members = seat_limit
+
+    return WorkspaceUsageEnvelope(
+        max_members=int(max_members),
+        monthly_evolution_runs=overrides.get(
+            "monthly_evolution_runs",
+            base.monthly_evolution_runs,
+        ),
+        monthly_cost_limit_usd=_parse_decimal(
+            overrides.get("monthly_cost_limit_usd", base.monthly_cost_limit_usd)
+        ),
+    )
+
+
+def resolve_workspace_entitlements(workspace: Workspace) -> WorkspaceEntitlementSet:
+    """Resolve compatibility entitlements for a workspace."""
+
+    defaults = get_workspace_plan_defaults(workspace.plan)
+    relation = getattr(workspace, "entitlements", None)
+    if relation is not None:
+        overrides = {
+            "cloud_sync": relation.cloud_sync,
+            "hosted_backups": relation.hosted_backups,
+            "managed_inference": relation.managed_inference,
+            "hosted_evals": relation.hosted_evals,
+            "invite_members": relation.invite_members,
+            "shared_workspace": relation.shared_workspace,
+            "approvals": relation.approvals,
+            "rbac": relation.rbac,
+            "sso": relation.sso,
+            "audit_logs": relation.audit_logs,
+        }
+    else:
+        overrides = getattr(workspace, "entitlement_overrides", None)
+    return _merge_entitlements(defaults.entitlements, overrides)
+
+
+def resolve_workspace_usage(workspace: Workspace) -> WorkspaceUsageEnvelope:
+    """Resolve compatibility usage defaults for a workspace."""
+
+    defaults = get_workspace_plan_defaults(workspace.plan)
+    overrides = getattr(workspace, "usage_limits", None)
+    if overrides is None:
+        overrides = getattr(workspace, "usage_limit_overrides", None)
+    return _merge_usage(defaults.usage, overrides, workspace.seat_limit)
+
+
+async def workspace_can_use_feature(workspace: Workspace, feature: Feature) -> bool:
+    """Compatibility wrapper for checking a feature flag on a workspace."""
+
+    entitlements = resolve_workspace_entitlements(workspace)
+    return await entitlements.can(feature)
 
 
 @dataclass(frozen=True)
@@ -95,6 +338,67 @@ def default_personal_workspace_name(email: str | None) -> str:
     if pretty_name:
         return f"{pretty_name}'s Workspace"[:255]
     return "Personal Workspace"
+
+
+def has_legacy_workspace_billing(user: User) -> bool:
+    """Return whether the user still carries legacy billing fields."""
+
+    return bool(
+        user.subscription_tier
+        or user.stripe_customer_id
+        or user.stripe_subscription_id
+        or user.subscription_current_period_end
+        or user.trial_ends_at
+        or user.subscription_status != SubscriptionStatus.NONE
+    )
+
+
+def _map_legacy_subscription_status(
+    user: User,
+    *,
+    now: datetime | None = None,
+) -> WorkspaceSubscriptionStatus:
+    """Project user-level billing status into workspace subscription status."""
+
+    current_time = now or datetime.now(UTC)
+    if user.trial_ends_at and user.trial_ends_at > current_time:
+        return WorkspaceSubscriptionStatus.TRIALING
+    if user.subscription_status == SubscriptionStatus.ACTIVE:
+        return WorkspaceSubscriptionStatus.ACTIVE
+    if user.subscription_status == SubscriptionStatus.PAST_DUE:
+        return WorkspaceSubscriptionStatus.PAST_DUE
+    if user.subscription_status == SubscriptionStatus.CANCELED:
+        return WorkspaceSubscriptionStatus.CANCELED
+    return WorkspaceSubscriptionStatus.UNPAID
+
+
+def build_workspace_subscription_from_user(
+    user: User,
+    *,
+    workspace: Workspace,
+    now: datetime | None = None,
+) -> WorkspaceSubscription | None:
+    """Project legacy user billing fields into a workspace subscription row."""
+
+    if not has_legacy_workspace_billing(user):
+        return None
+
+    billing_provider = (
+        BillingProvider.STRIPE
+        if user.stripe_customer_id or user.stripe_subscription_id
+        else BillingProvider.MANUAL
+    )
+
+    return WorkspaceSubscription(
+        workspace=workspace,
+        billing_provider=billing_provider,
+        status=_map_legacy_subscription_status(user, now=now),
+        plan_code=user.subscription_tier or WorkspacePlan.PERSONAL.value,
+        provider_customer_id=user.stripe_customer_id,
+        provider_subscription_id=user.stripe_subscription_id,
+        current_period_end=user.subscription_current_period_end,
+        trial_ends_at=user.trial_ends_at,
+    )
 
 
 def normalize_workspace_invitation_email(email: str) -> str:
@@ -274,6 +578,61 @@ async def get_personal_workspace_for_user(
         .order_by(Workspace.created_at.asc(), Workspace.id.asc())
     )
     return result.scalars().unique().first()
+
+
+async def ensure_personal_workspace_for_user(
+    db: AsyncSession,
+    user: User,
+) -> Workspace:
+    """Ensure the user has a personal workspace and legacy billing projection."""
+
+    existing_result = await db.execute(
+        select(Workspace)
+        .join(WorkspaceMembership)
+        .options(selectinload(Workspace.subscription))
+        .where(WorkspaceMembership.user_id == user.id)
+        .order_by(Workspace.created_at.asc())
+    )
+    workspace = existing_result.scalars().first()
+    if workspace is not None:
+        if workspace.subscription is None:
+            subscription = build_workspace_subscription_from_user(user, workspace=workspace)
+            if subscription is not None:
+                db.add(subscription)
+                await db.flush()
+        return workspace
+
+    workspace = Workspace(
+        name=default_personal_workspace_name(user.email),
+        plan=WorkspacePlan.PERSONAL,
+        deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        seat_limit=1,
+        inference_config=get_default_workspace_inference_config(
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+        ),
+    )
+    db.add(workspace)
+
+    membership = WorkspaceMembership(
+        workspace=workspace,
+        user=user,
+        role=WorkspaceRole.OWNER,
+    )
+    db.add(membership)
+
+    entitlements = WorkspaceEntitlement(
+        workspace=workspace,
+        **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.PERSONAL),
+    )
+    db.add(entitlements)
+
+    subscription = build_workspace_subscription_from_user(user, workspace=workspace)
+    if subscription is not None:
+        db.add(subscription)
+
+    await db.flush()
+    return workspace
 
 
 async def get_workspace_membership(

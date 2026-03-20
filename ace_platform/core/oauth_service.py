@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ace_platform.core.workspaces import bootstrap_workspace_for_user
+from ace_platform.core.workspaces import ensure_personal_workspace_for_user
 from ace_platform.db.models import OAuthProvider, User, UserOAuthAccount
 
 
@@ -92,7 +92,7 @@ class OAuthService:
         )
         self.db.add(new_user)
         await self.db.flush()  # Get user ID
-        await bootstrap_workspace_for_user(self.db, new_user)
+        await ensure_personal_workspace_for_user(self.db, new_user)
 
         oauth_account = UserOAuthAccount(
             user_id=new_user.id,
