@@ -17,6 +17,8 @@ On ACE Cloud, you can onboard in two ways:
 Hosted OAuth is a convenience layer, not a requirement. Both paths land in the
 same hosted workspace.
 
+If you are choosing between `ACE OSS`, `ACE Cloud Personal`, and `ACE Cloud Team`, read [Choosing the right ACE product](/docs/getting-started/product-split) first.
+
 ## Sign Up
 
 ### Option 1: Email & Password
@@ -105,7 +107,7 @@ That means:
 - you can keep using ACE as a solo hosted user without enabling team features
 - invites and shared workspace features stay off until you upgrade that workspace to `team`
 
-If you were already a hosted solo user before the workspace rollout, ACE maps that account into the same `personal` workspace model without requiring a separate signup.
+If you were already a hosted solo user before the workspace rollout, ACE maps that account into the same `personal` workspace model without requiring a separate signup. If you want the March 2026 migration summary for existing hosted users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Next Steps
 
@@ -113,5 +115,6 @@ With your account ready:
 
 1. [Create an API Key](/docs/user-guides/managing-api-keys)
 2. [Understand personal vs team workspaces](/docs/user-guides/workspaces-and-teams)
-3. [Set up your first playbook](/docs/getting-started/quick-start)
-4. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
+3. [Read the hosted plans update](/docs/user-guides/hosted-plans-migration)
+4. [Set up your first playbook](/docs/getting-started/quick-start)
+5. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
