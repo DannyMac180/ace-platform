@@ -98,8 +98,8 @@ These are the current hosted envelopes enforced by the app today.
 | **Ultra** | `ultra` or `personal-ultra` | 100 | 2,000 | $79.00 | 10 GiB |
 | **Enterprise** | `enterprise` | Custom / unlimited | Custom / unlimited | Custom / unlimited | Custom / unlimited |
 
-Workspace admins can also configure **workspace-specific soft or hard
-thresholds** for:
+Some hosted workspaces can also have **workspace-specific soft or hard
+thresholds** applied for:
 
 - hosted storage,
 - hosted eval runs,
@@ -107,7 +107,9 @@ thresholds** for:
 - managed inference tokens.
 
 That is why your dashboard can show `warning` or `blocked` on a workspace even
-before the broader billing-period envelope is fully exhausted.
+before the broader billing-period envelope is fully exhausted, even though the
+current hosted product does not expose self-service controls for editing those
+thresholds directly.
 
 ## What Counts Against Limits
 
