@@ -22,6 +22,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'user-guides/creating-playbooks',
         'user-guides/workspaces-and-teams',
+        'user-guides/team-playbook-review',
         'user-guides/understanding-evolution',
         'user-guides/managing-api-keys',
         'user-guides/billing-subscriptions',
