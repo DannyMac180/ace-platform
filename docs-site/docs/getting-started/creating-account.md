@@ -56,3 +56,4 @@ With your account ready:
 1. [Create an API Key](/docs/user-guides/managing-api-keys)
 2. [Set up your first playbook](/docs/getting-started/quick-start)
 3. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
+4. [Review hosted plans, billing states, and usage limits](/docs/user-guides/billing-subscriptions)

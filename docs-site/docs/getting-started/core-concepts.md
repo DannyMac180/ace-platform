@@ -209,7 +209,8 @@ Legacy SSE compatibility is still available at `https://aceagent.io/mcp/sse` thr
 
 ## Subscriptions & Usage
 
-See [Billing & Subscriptions](/docs/user-guides/billing-subscriptions) for plan details and pricing.
+See [Hosted Plans, Billing, and Limits](/docs/user-guides/billing-subscriptions)
+for hosted workspace plans, trial envelopes, entitlements, and usage limits.
 
 ## Next Steps
 

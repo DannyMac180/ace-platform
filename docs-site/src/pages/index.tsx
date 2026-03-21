@@ -35,7 +35,7 @@ function HomepageHeader() {
 type FeatureItem = {
   title: string;
   icon: string;
-  description: JSX.Element;
+  description: React.ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
@@ -126,7 +126,7 @@ function HomepageQuickLinks() {
   );
 }
 
-export default function Home(): JSX.Element {
+export default function Home(): React.JSX.Element {
   const {siteConfig} = useDocusaurusContext();
   return (
     <Layout
