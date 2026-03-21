@@ -8,7 +8,7 @@ const API_URL = process.env.API_URL || 'https://aceagent.io';
 
 const config: Config = {
   title: 'ACE',
-  tagline: 'Playbooks as a Service - Self-improving AI instructions',
+  tagline: 'Local-first playbooks with hosted sync, collaboration, and governance options',
   favicon: 'img/ace-favicon.svg',
 
   // Production URL
@@ -91,22 +91,26 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {
-              label: 'Getting Started',
+              label: 'Choose Your Path',
+              to: '/docs/',
+            },
+            {
+              label: 'ACE OSS & Local Start',
+              to: '/docs/getting-started/oss-local-start',
+            },
+            {
+              label: 'ACE Cloud Quick Start',
               to: '/docs/getting-started/quick-start',
-            },
-            {
-              label: 'User Guides',
-              to: '/docs/user-guides/creating-playbooks',
-            },
-            {
-              label: 'MCP Integration',
-              to: '/docs/developer-guides/mcp-integration/overview',
             },
           ],
         },
         {
           title: 'Product',
           items: [
+            {
+              label: 'Cloud Plans',
+              to: '/docs/user-guides/billing-subscriptions',
+            },
             {
               label: 'Dashboard',
               href: APP_URL,
