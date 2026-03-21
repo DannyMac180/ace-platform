@@ -4,7 +4,8 @@ sidebar_position: 1
 
 # Creating Playbooks
 
-Learn how to create effective playbooks that improve over time.
+Learn how to create effective playbooks that improve over time, whether you are
+working solo or inside a shared team workspace.
 
 ## Creating a New Playbook
 
@@ -17,6 +18,10 @@ Learn how to create effective playbooks that improve over time.
    - **Description** - Brief summary of the playbook's purpose
    - **Content** (optional) - The playbook instructions in Markdown
 4. Click **Create Playbook**
+
+In a personal workspace, the new playbook is immediately available in your own
+library. In a team workspace, the playbook still starts as your draft, and you
+can later move it through the team review lifecycle when it is ready to share.
 
 ### Via MCP
 
@@ -117,6 +122,30 @@ Reviews pull requests for code quality and security issues.
 
 Each edit creates a new version you can review later.
 
+## Team Review Lifecycle
+
+If your workspace has team playbook workflows enabled, each playbook also has a
+separate **review state** that controls whether it is still a private draft or
+ready to be shared more broadly.
+
+| Review state | What it means | Typical next step |
+|--------------|---------------|-------------------|
+| `draft` | Working copy owned by an individual member | Submit it for review |
+| `proposed` | Waiting for reviewer approval | Approve it, return it to draft, or archive it |
+| `approved` | Accepted as a reusable team playbook | Discover it in the shared registry |
+| `archived` | Removed from active team circulation | Return it to draft if it should be edited again |
+
+Use the review action buttons on the playbook detail page to move between these
+states. The exact available actions depend on the current state:
+
+- From `draft`, you can **Submit for Review** or **Archive**.
+- From `proposed`, you can **Approve**, **Return to Draft**, or **Archive**.
+- From `approved`, you can **Return to Draft** or **Archive**.
+- From `archived`, you can **Return to Draft**.
+
+See [Team Playbook Review & Registry](/docs/user-guides/team-playbook-review)
+for the full lifecycle, review history, and reuse flow.
+
 ## Organizing Playbooks
 
 ### Naming Conventions
@@ -126,6 +155,9 @@ Use clear, descriptive names:
 - `code-review-typescript` - Language-specific
 - `incident-response-p0` - Priority-based
 - `onboarding-backend` - Team/area based
+
+For team workspaces, keep names stable enough that other members can recognize
+approved playbooks in the shared registry without opening each one first.
 
 ## Troubleshooting
 
@@ -149,6 +181,7 @@ Use clear, descriptive names:
 
 ## Next Steps
 
+- [Review team playbooks and reuse approved ones](/docs/user-guides/team-playbook-review)
 - [Understand evolution](/docs/user-guides/understanding-evolution)
 - [Record outcomes](/docs/developer-guides/recording-outcomes)
 - [MCP integration](/docs/developer-guides/mcp-integration/overview)

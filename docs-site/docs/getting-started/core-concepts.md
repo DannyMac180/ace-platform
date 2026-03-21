@@ -8,7 +8,13 @@ Understanding the fundamental concepts behind ACE.
 
 ## Playbooks
 
-A **playbook** is a structured set of instructions that guides an AI agent on how to perform a specific task. Think of it as a detailed standard operating procedure for your AI.
+A **playbook** is a structured set of instructions that guides an AI agent on
+how to perform a specific task. Think of it as a detailed standard operating
+procedure for your AI.
+
+In personal workspaces, playbooks live in your private library. In team
+workspaces, the same playbooks can also move through a review lifecycle so
+approved versions become reusable by the rest of the workspace.
 
 ### Anatomy of a Playbook
 
@@ -54,10 +60,27 @@ See [Creating Playbooks](/docs/user-guides/creating-playbooks#ace-bullet-format)
 | `name` | Human-readable name |
 | `description` | Brief summary of purpose |
 | `status` | Playbook status: `active`, `paused`, or `archived` |
+| `review_status` | Team review state: `draft`, `proposed`, `approved`, or `archived` |
 | `source` | Origin: `starter`, `user_created`, or `imported` |
 | `current_version` | Reference to the active version |
 | `created_at` | Creation timestamp |
 | `updated_at` | Last modification timestamp |
+
+### Team Review States
+
+When team workflows are enabled, the review state controls whether a playbook
+is still being drafted, waiting for approval, approved for team reuse, or
+archived.
+
+| Review state | Description |
+|--------------|-------------|
+| `draft` | Editable working copy that has not been submitted for review |
+| `proposed` | Submitted and waiting for review decision |
+| `approved` | Accepted and shown in the team's shared registry |
+| `archived` | Retired from active circulation |
+
+See [Team Playbook Review & Registry](/docs/user-guides/team-playbook-review)
+for the full workflow.
 
 ## Versions
 
@@ -84,6 +107,10 @@ From the dashboard, click on a playbook and navigate to the **Versions** tab to:
 - See all historical versions
 - View evolution summaries
 - Compare versions to see what changed
+
+On team workspaces, the playbook detail page also includes an **Activity** tab
+for review history, separate from version history. That activity log records
+state changes like submission, approval, returns to draft, and archiving.
 
 ## Outcomes
 
