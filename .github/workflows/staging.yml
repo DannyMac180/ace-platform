@@ -66,8 +66,9 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: test-secret-key
           OPENAI_API_KEY: sk-test-fake-key
+          RUN_E2E_TESTS: "1"
         run: |
-          pytest tests/ -v --ignore=tests/test_e2e_billing_flow.py -q
+          pytest tests/ -v -q
 
   test-frontend:
     name: Test Frontend
