@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'getting-started/oss-local-start',
         'getting-started/quick-start',
+        'getting-started/ace-cli',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],

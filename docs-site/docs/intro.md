@@ -64,6 +64,13 @@ Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscrip
 
 Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-enterprise)
 
+## Getting Started
+
+1. **[Create an account](/docs/getting-started/creating-account)** - Sign up and verify your email
+2. **[Quick Start](/docs/getting-started/quick-start)** - Set up your first playbook in 5 minutes
+3. **[ACE CLI](/docs/getting-started/ace-cli)** - Bootstrap a local or agent-friendly setup with the shipped CLI commands
+4. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
+
 ## Why The Split Matters
 
 The ACE v2 architecture keeps the boundary clear:
@@ -84,6 +91,9 @@ Playbooks are structured instructions for AI agents. Unlike static prompts, ACE 
 
 ## Next Steps
 
+- Explore the [Getting Started](/docs/getting-started/quick-start) guide
+- Explore the [ACE CLI](/docs/getting-started/ace-cli) guide for local-first onboarding
 - Compare paths above, then start with either [ACE OSS & Local Start](/docs/getting-started/oss-local-start) or [ACE Cloud Quick Start](/docs/getting-started/quick-start)
 - Learn the shared model in [Core Concepts](/docs/getting-started/core-concepts)
-- Connect your tools through [MCP Integration](/docs/developer-guides/mcp-integration/overview)
+- Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
+- Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)
