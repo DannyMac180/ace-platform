@@ -6,6 +6,8 @@ sidebar_position: 4
 
 This page explains the hosted ACE plans and where each one fits. If you want local or self-managed `ACE OSS`, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead. `ACE OSS` does not require an ACE-hosted subscription.
 
+If you are looking for the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
 ## Subscription vs Workspace Plan
 
 Hosted ACE separates billing state from workspace shape.
@@ -72,6 +74,16 @@ What it adds on top of Team:
 - enterprise support and commercial terms
 - private deployment options where needed
 
+## Moving From Personal To Team
+
+The ACE v2 hosted model is designed so solo users can grow without switching to a different product family:
+
+1. Start in `ACE Cloud Personal` with a one-user hosted workspace.
+2. Keep using ACE as a solo customer while your work stays individual.
+3. Move to `ACE Cloud Team` when you need a shared workspace, invites, or team visibility.
+
+For the customer-facing migration summary for existing hosted solo users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
 ## Upgrading Or Managing Hosted Plans
 
 From the hosted dashboard:
@@ -96,3 +108,10 @@ Choose ACE Cloud if you want:
 - hosted sync and backups
 - managed jobs or inference convenience
 - team collaboration or enterprise governance
+
+## Related Docs
+
+- [Choosing the right ACE product](/docs/getting-started/product-split)
+- [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
+- [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
+- [ACE Cloud Quick Start](/docs/getting-started/quick-start)
