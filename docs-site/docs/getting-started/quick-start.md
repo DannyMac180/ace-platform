@@ -1,30 +1,32 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # ACE Cloud Quick Start
 
-Get up and running with hosted ACE in 5 minutes.
+Get up and running with ACE-hosted onboarding in 5 minutes.
 
-:::info Looking For The OSS Or Self-Managed Path?
-If you want ACE without the hosted cloud service, start with the
-[OSS Overview](/docs/getting-started/oss-overview) and then follow the
+This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`.
+If you want the local or self-managed `ACE OSS` path instead, start with
+[ACE OSS & Local Start](/docs/getting-started/oss-local-start), then continue
+to the [OSS Overview](/docs/getting-started/oss-overview) or
 [Local Quickstart](/docs/getting-started/local-quickstart).
-:::
-
-## Choose Your Path
-
-| Path | Best for | Start here |
-| --- | --- | --- |
-| Hosted ACE Cloud | Managed setup, dashboard, sync, and billing | This guide |
-| ACE OSS package | Embedding the ACE engine in your own Python workflow | [OSS Overview](/docs/getting-started/oss-overview) |
-| Self-managed local runtime | Running the ACE API, CLI, and MCP server yourself | [Local Quickstart](/docs/getting-started/local-quickstart) |
 
 ## Prerequisites
 
-- An ACE account ([create one here](https://app.aceagent.io))
+- An ACE Cloud account ([create one here](https://app.aceagent.io))
 - Verified email address
 - An API key with appropriate scopes
+
+## Which Hosted Plan Is This For?
+
+The setup below is the hosted entry point for all ACE Cloud customers:
+
+- `ACE Cloud Personal`: solo hosted convenience
+- `ACE Cloud Team`: shared workspace collaboration
+- `ACE Enterprise`: governance and deployment-control needs on top of the hosted model
+
+If you are still deciding, read [Choose Your ACE Path](/docs/) first.
 
 ## Step 1: Create an API Key
 

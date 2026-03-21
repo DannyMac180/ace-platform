@@ -2,100 +2,84 @@
 sidebar_position: 4
 ---
 
-# Billing & Subscriptions
+# ACE Cloud Plans & Subscriptions
 
-Manage your ACE subscription, usage, and billing.
+This page explains the hosted ACE plans and where each one fits. If you want local or self-managed `ACE OSS`, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead. `ACE OSS` does not require an ACE-hosted subscription.
 
-## Plans Overview
+## Hosted Plans Overview
 
-| Plan | Playbooks | Evolutions/month | Price |
-|------|-----------|------------------|-------|
-| **Free Trial** | 1 | 10 | Free |
-| **Starter** | 5 | 100 | $9/month |
-| **Pro** | 20 | 500 | $29/month |
-| **Ultra** | 100 | 2,000 | $79/month |
+| Plan | Best for | Core value |
+| --- | --- | --- |
+| `ACE Cloud Personal` | One user who wants hosted convenience | Hosted workspace, cloud sync, backups, managed background execution |
+| `ACE Cloud Team` | Teams that need shared workflows | Team workspace, invites, shared playbooks, approvals, and permissions |
+| `ACE Enterprise` | Organizations with control requirements | Governance, compliance, auditability, support, and private deployment options |
 
-:::note
-The Free Trial requires a payment method on file to trigger evolutions.
-:::
+Current packaging and checkout details live on the [ACE pricing page](https://app.aceagent.io/pricing).
 
-## Choosing a Plan
+## ACE Cloud Personal
 
-### Starter Plan
+Choose `ACE Cloud Personal` if:
 
-Best for:
-- Individual developers
-- Personal projects
-- Getting started with ACE
+- you are a solo user who wants hosted ACE without self-hosting overhead
+- you want your workspace to follow you across devices
+- you want backups, sync, hosted evals, or managed background jobs
 
-### Pro Plan
+What it is:
 
-Best for:
-- Professional developers
-- Small teams
-- Multiple active projects
+- a one-user hosted workspace
+- the fastest hosted on-ramp for an individual
+- the hosted plan that keeps solo users first-class without requiring team features
 
-### Ultra Plan
+## ACE Cloud Team
 
-Best for:
-- Power users
-- Larger teams
-- High-volume usage
+Choose `ACE Cloud Team` if:
 
-## Subscribing
+- multiple people need to work in the same ACE environment
+- you need shared playbooks, member invites, reviews, or ownership controls
+- collaboration and accountability matter as much as hosting convenience
 
-### From the Dashboard
+What it adds on top of Personal:
 
-1. Go to **Settings** > **Billing**
-2. Click **Upgrade Plan**
-3. Select your desired plan
-4. Enter payment details
-5. Click **Subscribe**
+- shared team workspaces
+- invitations and membership management
+- shared playbook workflows and approvals
+- team-level permissions and visibility
 
-### Payment Methods
+## ACE Enterprise
 
-We accept:
-- Credit cards (Visa, Mastercard, Amex)
-- Debit cards
-- Link (one-click checkout)
+Choose `ACE Enterprise` if:
 
-All payments processed securely via Stripe.
+- governance, compliance, or auditability are part of the decision
+- procurement or security policy requires private deployment terms
+- identity, admin controls, or support commitments matter as much as product capability
 
-## Managing Your Subscription
+What it adds on top of Team:
 
-### Viewing Current Plan
+- stronger governance and operational controls
+- enterprise support and commercial terms
+- private deployment options where needed
 
-1. Go to **Settings** > **Billing**
-2. View your current plan details:
-   - Plan name
-   - Billing cycle
-   - Next billing date
-   - Current usage
+## Upgrading Or Managing Hosted Plans
 
-### Changing Plans
+From the hosted dashboard:
 
-**Upgrading:**
 1. Go to the **Pricing** page
-2. Select a higher plan
-3. Complete checkout
+2. Compare the hosted plan that matches your current needs
+3. Upgrade when you need collaboration, governance, or a larger hosted envelope
 
-Upgrades take effect immediately. You'll be charged a prorated amount.
+## Where `ACE OSS` Fits
 
-**Downgrading:**
-1. Go to the **Pricing** page
-2. Select a lower plan
-3. Confirm the change
+`ACE OSS` is not the free tier of ACE Cloud. It is the self-managed product path for users who want to run ACE without ACE-operated services.
 
-Downgrades take effect at the end of your current billing period.
+Choose `ACE OSS` if you want:
 
-### Canceling
+- local control
+- your own infrastructure and model credentials
+- a genuinely useful single-user runtime without hosted dependencies
 
-1. Go to **Settings** > **Billing**
-2. Click **Cancel Subscription**
-3. Optionally provide feedback
-4. Confirm cancellation
+Choose ACE Cloud if you want:
 
-After cancellation:
-- Access continues until period ends
-- Data retained for 30 days
-- Can reactivate anytime
+- less setup work
+- hosted sync and backups
+- managed jobs or inference convenience
+- team collaboration or enterprise governance

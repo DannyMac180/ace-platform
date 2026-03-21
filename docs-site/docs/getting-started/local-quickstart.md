@@ -26,7 +26,11 @@ If you want the managed product instead, use the
 
 This is the smallest public surface in the repo today.
 
+Clone the repository and change into it first so the local package path exists:
+
 ```bash
+git clone https://github.com/DannyMac180/ace-platform.git
+cd ace-platform
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install ./packages/ace-core
