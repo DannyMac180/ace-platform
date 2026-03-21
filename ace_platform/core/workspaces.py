@@ -7,7 +7,7 @@ the hosted-workspace invariants for cloud users.
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import func, inspect, select
@@ -285,6 +285,127 @@ class WorkspacePermissions:
     can_approve_playbooks: bool
 
 
+HostedPersonalWorkspaceMigrationAction = Literal[
+    "created",
+    "repaired",
+    "unchanged",
+    "skipped",
+]
+HostedPersonalWorkspaceValidationStatus = Literal["valid", "invalid", "skipped"]
+
+
+@dataclass(frozen=True, slots=True)
+class HostedPersonalWorkspaceMigrationResult:
+    """One hosted-user migration outcome."""
+
+    user_id: UUID
+    email: str
+    action: HostedPersonalWorkspaceMigrationAction
+    workspace_id: UUID | None
+    eligible: bool
+    reasons: tuple[str, ...] = ()
+    workspace_created: bool = False
+    membership_created: bool = False
+    membership_role_updated_from: str | None = None
+    entitlements_created: bool = False
+    subscription_created: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the outcome for logs and scripts."""
+
+        return {
+            "user_id": str(self.user_id),
+            "email": self.email,
+            "action": self.action,
+            "workspace_id": None if self.workspace_id is None else str(self.workspace_id),
+            "eligible": self.eligible,
+            "reasons": list(self.reasons),
+            "workspace_created": self.workspace_created,
+            "membership_created": self.membership_created,
+            "membership_role_updated_from": self.membership_role_updated_from,
+            "entitlements_created": self.entitlements_created,
+            "subscription_created": self.subscription_created,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HostedPersonalWorkspaceMigrationSummary:
+    """Aggregate migration outcomes for one run."""
+
+    dry_run: bool
+    scanned_users: int
+    eligible_users: int
+    created_count: int
+    repaired_count: int
+    unchanged_count: int
+    skipped_count: int
+    results: tuple[HostedPersonalWorkspaceMigrationResult, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the summary for logs and scripts."""
+
+        return {
+            "dry_run": self.dry_run,
+            "scanned_users": self.scanned_users,
+            "eligible_users": self.eligible_users,
+            "created_count": self.created_count,
+            "repaired_count": self.repaired_count,
+            "unchanged_count": self.unchanged_count,
+            "skipped_count": self.skipped_count,
+            "results": [result.to_dict() for result in self.results],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HostedPersonalWorkspaceValidationResult:
+    """One hosted-user validation outcome."""
+
+    user_id: UUID
+    email: str
+    status: HostedPersonalWorkspaceValidationStatus
+    workspace_id: UUID | None
+    eligible: bool
+    errors: tuple[str, ...] = ()
+    reasons: tuple[str, ...] = ()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the outcome for logs and scripts."""
+
+        return {
+            "user_id": str(self.user_id),
+            "email": self.email,
+            "status": self.status,
+            "workspace_id": None if self.workspace_id is None else str(self.workspace_id),
+            "eligible": self.eligible,
+            "errors": list(self.errors),
+            "reasons": list(self.reasons),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class HostedPersonalWorkspaceValidationSummary:
+    """Aggregate validation outcomes for one run."""
+
+    scanned_users: int
+    eligible_users: int
+    valid_count: int
+    invalid_count: int
+    skipped_count: int
+    results: tuple[HostedPersonalWorkspaceValidationResult, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize the summary for logs and scripts."""
+
+        return {
+            "scanned_users": self.scanned_users,
+            "eligible_users": self.eligible_users,
+            "valid_count": self.valid_count,
+            "invalid_count": self.invalid_count,
+            "skipped_count": self.skipped_count,
+            "results": [result.to_dict() for result in self.results],
+        }
+
+
 def can_manage_workspace_settings(role: WorkspaceRole) -> bool:
     """Return whether the role can alter workspace settings."""
 
@@ -488,6 +609,82 @@ def normalize_workspace_inference_config(
         "mode": mode.value,
         "provider": provider.value,
     }
+
+
+def _normalize_user_email_filters(emails: list[str] | None) -> list[str]:
+    return [email.strip().lower() for email in emails or [] if email.strip()]
+
+
+async def list_hosted_personal_workspace_migration_users(
+    db: AsyncSession,
+    *,
+    emails: list[str] | None = None,
+) -> list[User]:
+    """Load active users together with the relationships needed for migration."""
+
+    stmt = (
+        select(User)
+        .where(User.is_active.is_(True))
+        .options(
+            selectinload(User.memberships)
+            .selectinload(WorkspaceMembership.workspace)
+            .selectinload(Workspace.subscription),
+            selectinload(User.memberships)
+            .selectinload(WorkspaceMembership.workspace)
+            .selectinload(Workspace.entitlements),
+        )
+        .order_by(User.created_at.asc(), User.id.asc())
+    )
+
+    normalized_emails = _normalize_user_email_filters(emails)
+    if normalized_emails:
+        stmt = stmt.where(func.lower(User.email).in_(normalized_emails))
+
+    result = await db.execute(stmt)
+    return list(result.scalars().unique().all())
+
+
+def _is_hosted_personal_workspace(workspace: Workspace) -> bool:
+    return (
+        workspace.plan == WorkspacePlan.PERSONAL
+        and workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD
+    )
+
+
+def _workspace_membership_for_user(
+    user: User,
+    workspace: Workspace,
+) -> WorkspaceMembership | None:
+    for membership in user.memberships:
+        if membership.workspace_id == workspace.id:
+            return membership
+    return None
+
+
+def classify_hosted_solo_user_workspace_state(
+    user: User,
+) -> tuple[bool, Workspace | None, tuple[str, ...]]:
+    """Classify whether the user belongs to the hosted-solo migration cohort."""
+
+    workspaces_by_id: dict[UUID, Workspace] = {}
+    for membership in user.memberships:
+        workspace = membership.workspace
+        if workspace is not None:
+            workspaces_by_id[workspace.id] = workspace
+
+    workspaces = list(workspaces_by_id.values())
+    if not workspaces:
+        return True, None, ("missing_workspace",)
+
+    if len(workspaces) == 1 and _is_hosted_personal_workspace(workspaces[0]):
+        return True, workspaces[0], ()
+
+    reasons: list[str] = []
+    if len(workspaces) > 1:
+        reasons.append("multiple_workspaces")
+    elif not _is_hosted_personal_workspace(workspaces[0]):
+        reasons.append("non_personal_or_non_cloud_workspace")
+    return False, None, tuple(reasons)
 
 
 async def list_user_workspaces(db: AsyncSession, user_id: UUID) -> list[Workspace]:
@@ -809,6 +1006,258 @@ async def bootstrap_workspace_for_user(
         inference_config=None,
     )
     return workspace, True
+
+
+async def migrate_hosted_solo_user_to_personal_workspace(
+    db: AsyncSession,
+    user: User,
+    *,
+    dry_run: bool = False,
+) -> HostedPersonalWorkspaceMigrationResult:
+    """Create or repair hosted personal workspace state for one eligible user."""
+
+    eligible, workspace, reasons = classify_hosted_solo_user_workspace_state(user)
+    if not eligible:
+        return HostedPersonalWorkspaceMigrationResult(
+            user_id=user.id,
+            email=user.email,
+            action="skipped",
+            workspace_id=None,
+            eligible=False,
+            reasons=reasons,
+        )
+
+    if workspace is None:
+        projected_subscription = build_workspace_subscription_from_user(
+            user,
+            workspace=Workspace(
+                name=default_personal_workspace_name(user.email),
+                plan=WorkspacePlan.PERSONAL,
+                deployment_mode=WorkspaceDeploymentMode.CLOUD,
+                seat_limit=1,
+                inference_config=get_default_workspace_inference_config(
+                    plan=WorkspacePlan.PERSONAL,
+                    deployment_mode=WorkspaceDeploymentMode.CLOUD,
+                ),
+            ),
+        )
+        subscription_needed = projected_subscription is not None
+
+        if dry_run:
+            return HostedPersonalWorkspaceMigrationResult(
+                user_id=user.id,
+                email=user.email,
+                action="created",
+                workspace_id=None,
+                eligible=True,
+                reasons=("missing_workspace",),
+                workspace_created=True,
+                membership_created=True,
+                entitlements_created=True,
+                subscription_created=subscription_needed,
+            )
+
+        created_workspace = await create_workspace(
+            db,
+            owner_user=user,
+            name=default_personal_workspace_name(user.email),
+            plan=WorkspacePlan.PERSONAL,
+            deployment_mode=WorkspaceDeploymentMode.CLOUD,
+            seat_limit=1,
+            inference_config=None,
+        )
+        subscription = build_workspace_subscription_from_user(user, workspace=created_workspace)
+        if subscription is not None:
+            db.add(subscription)
+        await db.flush()
+        return HostedPersonalWorkspaceMigrationResult(
+            user_id=user.id,
+            email=user.email,
+            action="created",
+            workspace_id=created_workspace.id,
+            eligible=True,
+            reasons=("missing_workspace",),
+            workspace_created=True,
+            membership_created=True,
+            entitlements_created=True,
+            subscription_created=subscription is not None,
+        )
+
+    membership = _workspace_membership_for_user(user, workspace)
+    reasons_list: list[str] = []
+    membership_role_updated_from: str | None = None
+    entitlements_created = False
+    subscription_created = False
+
+    if membership is not None and membership.role != WorkspaceRole.OWNER:
+        membership_role_updated_from = membership.role.value
+        reasons_list.append(f"membership_role:{membership.role.value}->owner")
+        if not dry_run:
+            membership.role = WorkspaceRole.OWNER
+
+    if workspace.entitlements is None:
+        reasons_list.append("missing_entitlements")
+        entitlements_created = True
+        if not dry_run:
+            entitlements = WorkspaceEntitlement(
+                workspace_id=workspace.id,
+                **WorkspaceEntitlement.defaults_for_plan(WorkspacePlan.PERSONAL),
+            )
+            db.add(entitlements)
+            workspace.entitlements = entitlements
+
+    if workspace.subscription is None:
+        subscription = build_workspace_subscription_from_user(user, workspace=workspace)
+        if subscription is not None:
+            reasons_list.append("missing_subscription_projection")
+            subscription_created = True
+            if not dry_run:
+                db.add(subscription)
+                workspace.subscription = subscription
+
+    if not reasons_list:
+        return HostedPersonalWorkspaceMigrationResult(
+            user_id=user.id,
+            email=user.email,
+            action="unchanged",
+            workspace_id=workspace.id,
+            eligible=True,
+            reasons=("already_valid",),
+        )
+
+    if not dry_run:
+        await db.flush()
+
+    return HostedPersonalWorkspaceMigrationResult(
+        user_id=user.id,
+        email=user.email,
+        action="repaired",
+        workspace_id=workspace.id,
+        eligible=True,
+        reasons=tuple(reasons_list),
+        membership_role_updated_from=membership_role_updated_from,
+        entitlements_created=entitlements_created,
+        subscription_created=subscription_created,
+    )
+
+
+async def migrate_existing_hosted_solo_users_to_personal_workspaces(
+    db: AsyncSession,
+    *,
+    emails: list[str] | None = None,
+    dry_run: bool = False,
+) -> HostedPersonalWorkspaceMigrationSummary:
+    """Backfill hosted-solo users into hosted personal workspaces."""
+
+    users = await list_hosted_personal_workspace_migration_users(db, emails=emails)
+    results = tuple(
+        [
+            await migrate_hosted_solo_user_to_personal_workspace(db, user, dry_run=dry_run)
+            for user in users
+        ]
+    )
+    return HostedPersonalWorkspaceMigrationSummary(
+        dry_run=dry_run,
+        scanned_users=len(users),
+        eligible_users=sum(1 for result in results if result.eligible),
+        created_count=sum(1 for result in results if result.action == "created"),
+        repaired_count=sum(1 for result in results if result.action == "repaired"),
+        unchanged_count=sum(1 for result in results if result.action == "unchanged"),
+        skipped_count=sum(1 for result in results if result.action == "skipped"),
+        results=results,
+    )
+
+
+def _legacy_workspace_billing_validation_errors(
+    user: User,
+    workspace: Workspace,
+) -> list[str]:
+    errors: list[str] = []
+    if not has_legacy_workspace_billing(user):
+        return errors
+
+    subscription = workspace.subscription
+    if subscription is None:
+        return ["missing_subscription_projection"]
+
+    expected_status = _map_legacy_subscription_status(user)
+    if subscription.status != expected_status:
+        errors.append(f"subscription_status:{subscription.status.value}!={expected_status.value}")
+    if user.stripe_customer_id and subscription.provider_customer_id != user.stripe_customer_id:
+        errors.append("provider_customer_id_mismatch")
+    if (
+        user.stripe_subscription_id
+        and subscription.provider_subscription_id != user.stripe_subscription_id
+    ):
+        errors.append("provider_subscription_id_mismatch")
+    if (
+        user.subscription_current_period_end is not None
+        and subscription.current_period_end != user.subscription_current_period_end
+    ):
+        errors.append("current_period_end_mismatch")
+    if user.trial_ends_at is not None and subscription.trial_ends_at != user.trial_ends_at:
+        errors.append("trial_ends_at_mismatch")
+    return errors
+
+
+async def validate_hosted_solo_users_personal_workspaces(
+    db: AsyncSession,
+    *,
+    emails: list[str] | None = None,
+) -> HostedPersonalWorkspaceValidationSummary:
+    """Validate that hosted-solo users are attached to usable personal workspaces."""
+
+    users = await list_hosted_personal_workspace_migration_users(db, emails=emails)
+    results: list[HostedPersonalWorkspaceValidationResult] = []
+
+    for user in users:
+        eligible, workspace, reasons = classify_hosted_solo_user_workspace_state(user)
+        if not eligible:
+            results.append(
+                HostedPersonalWorkspaceValidationResult(
+                    user_id=user.id,
+                    email=user.email,
+                    status="skipped",
+                    workspace_id=None,
+                    eligible=False,
+                    reasons=reasons,
+                )
+            )
+            continue
+
+        errors: list[str] = []
+        if workspace is None:
+            errors.append("missing_personal_workspace")
+        else:
+            membership = _workspace_membership_for_user(user, workspace)
+            if membership is None:
+                errors.append("missing_workspace_membership")
+            elif membership.role != WorkspaceRole.OWNER:
+                errors.append(f"membership_role:{membership.role.value}")
+            if workspace.entitlements is None:
+                errors.append("missing_entitlements")
+            errors.extend(_legacy_workspace_billing_validation_errors(user, workspace))
+
+        results.append(
+            HostedPersonalWorkspaceValidationResult(
+                user_id=user.id,
+                email=user.email,
+                status="invalid" if errors else "valid",
+                workspace_id=None if workspace is None else workspace.id,
+                eligible=True,
+                errors=tuple(errors),
+            )
+        )
+
+    frozen_results = tuple(results)
+    return HostedPersonalWorkspaceValidationSummary(
+        scanned_users=len(users),
+        eligible_users=sum(1 for result in frozen_results if result.eligible),
+        valid_count=sum(1 for result in frozen_results if result.status == "valid"),
+        invalid_count=sum(1 for result in frozen_results if result.status == "invalid"),
+        skipped_count=sum(1 for result in frozen_results if result.status == "skipped"),
+        results=frozen_results,
+    )
 
 
 async def update_workspace(
