@@ -18,6 +18,7 @@ Run with: RUN_E2E_TESTS=1 pytest tests/test_e2e_billing_flow.py -v
 import os
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -50,6 +51,45 @@ pytestmark = pytest.mark.skipif(
     not RUN_E2E_TESTS,
     reason="Set RUN_E2E_TESTS=1 to run end-to-end PostgreSQL integration tests.",
 )
+
+
+async def _create_registered_user(
+    async_session: AsyncSession,
+    *,
+    email: str,
+    **user_kwargs,
+) -> User:
+    """Create a hosted-style user with a personal workspace."""
+
+    from ace_platform.core.security import hash_password
+    from ace_platform.core.workspaces import ensure_personal_workspace_for_user
+
+    user = User(
+        email=email,
+        hashed_password=hash_password("testpassword123"),
+        **user_kwargs,
+    )
+    async_session.add(user)
+    await async_session.flush()
+    await ensure_personal_workspace_for_user(async_session, user)
+    await async_session.commit()
+    await async_session.refresh(user)
+    return user
+
+
+def _make_webhook_event(
+    event_type: WebhookEventType,
+    *,
+    event_id: str,
+    **object_data,
+) -> MagicMock:
+    """Build a Stripe-like webhook event test double."""
+
+    event = MagicMock()
+    event.id = event_id
+    event.type = event_type
+    event.data = SimpleNamespace(object=MagicMock(**object_data))
+    return event
 
 
 @pytest.fixture(scope="function")
@@ -110,16 +150,10 @@ class TestFreeTierFlow:
     @pytest.fixture
     async def free_user(self, async_session: AsyncSession):
         """Create a user on free tier (no Stripe customer)."""
-        from ace_platform.core.security import hash_password
-
-        user = User(
+        return await _create_registered_user(
+            async_session,
             email="free_tier_user@example.com",
-            hashed_password=hash_password("testpassword123"),
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
-        return user
 
     async def test_new_user_defaults_to_free_tier(
         self, async_session: AsyncSession, free_user: User
@@ -136,9 +170,9 @@ class TestFreeTierFlow:
 
         limits = get_tier_limits(SubscriptionTier.FREE)
 
-        assert limits.monthly_requests == 100
-        assert limits.monthly_tokens == 100_000
-        assert limits.max_playbooks == 3
+        assert limits.monthly_hosted_eval_runs == 5
+        assert limits.monthly_managed_inference_cost_limit_usd == Decimal("1.00")
+        assert limits.max_playbooks == 1
         assert limits.can_use_premium_models is False
         assert limits.can_export_data is False
 
@@ -155,7 +189,7 @@ class TestFreeTierFlow:
 
         # Verify limits are correct
         limits = get_tier_limits(SubscriptionTier.FREE)
-        assert limits.monthly_requests == 100
+        assert limits.monthly_hosted_eval_runs == 5
 
 
 class TestUsageTrackingFlow:
@@ -164,19 +198,29 @@ class TestUsageTrackingFlow:
     @pytest.fixture
     async def user_with_usage(self, async_session: AsyncSession):
         """Create a user with some usage recorded."""
-        from ace_platform.core.security import hash_password
-        from ace_platform.db.models import UsageRecord
+        from ace_platform.db.models import EvolutionJob, EvolutionJobStatus, Playbook, UsageRecord
 
-        user = User(
+        user = await _create_registered_user(
+            async_session,
             email="usage_test_user@example.com",
-            hashed_password=hash_password("testpassword123"),
         )
-        async_session.add(user)
+        playbook = Playbook(
+            user_id=user.id,
+            name="Usage Test Playbook",
+        )
+        async_session.add(playbook)
         await async_session.flush()
 
-        # Add some usage records
+        # Add hosted-eval runs plus metered usage records.
         now = datetime.now(UTC)
         for i in range(3):
+            job = EvolutionJob(
+                playbook_id=playbook.id,
+                status=EvolutionJobStatus.COMPLETED,
+                started_at=now - timedelta(hours=i),
+                completed_at=now - timedelta(hours=i) + timedelta(minutes=1),
+            )
+            async_session.add(job)
             record = UsageRecord(
                 user_id=user.id,
                 operation="evolution_generator",
@@ -201,10 +245,9 @@ class TestUsageTrackingFlow:
             async_session, user_with_usage.id, SubscriptionTier.FREE
         )
 
-        # Should have 3 requests
-        assert status.current_requests == 3
+        assert status.current_hosted_eval_runs == 3
         # Should have 3 * 1500 = 4500 tokens
-        assert status.current_tokens == 4500
+        assert status.current_total_tokens == 4500
         # Should have 3 * 0.0015 = 0.0045 cost
         assert status.current_cost_usd == Decimal("0.0045")
 
@@ -216,11 +259,11 @@ class TestUsageTrackingFlow:
             async_session, user_with_usage.id, SubscriptionTier.FREE
         )
 
-        # Free tier has 100 requests, 100k tokens - should be within limits
+        # Free tier allows 5 hosted evals and $1.00 of metered spend.
         assert status.is_within_limits is True
         assert status.limit_exceeded is None
-        assert status.remaining_requests == 97  # 100 - 3
-        assert status.remaining_tokens == 95500  # 100000 - 4500
+        assert status.remaining_hosted_eval_runs == 2
+        assert status.remaining_cost_usd == Decimal("0.9955")
 
 
 class TestPaidTierCheckoutFlow:
@@ -229,16 +272,10 @@ class TestPaidTierCheckoutFlow:
     @pytest.fixture
     async def user_for_upgrade(self, async_session: AsyncSession):
         """Create a user ready to upgrade."""
-        from ace_platform.core.security import hash_password
-
-        user = User(
+        return await _create_registered_user(
+            async_session,
             email="upgrade_user@example.com",
-            hashed_password=hash_password("testpassword123"),
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
-        return user
 
     @patch("ace_platform.core.billing.is_stripe_configured")
     @patch("ace_platform.core.billing._get_stripe_client")
@@ -315,17 +352,11 @@ class TestWebhookSubscriptionLifecycle:
     @pytest.fixture
     async def subscribed_user(self, async_session: AsyncSession):
         """Create a user with Stripe customer ID."""
-        from ace_platform.core.security import hash_password
-
-        user = User(
+        return await _create_registered_user(
+            async_session,
             email="subscribed_user@example.com",
-            hashed_password=hash_password("testpassword123"),
             stripe_customer_id="cus_webhook_test",
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
-        return user
 
     async def test_checkout_completed_updates_user(
         self, async_session: AsyncSession, subscribed_user: User
@@ -333,12 +364,17 @@ class TestWebhookSubscriptionLifecycle:
         """Test checkout.session.completed webhook updates user subscription."""
         from ace_platform.core.webhooks import handle_webhook_event
 
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.CHECKOUT_SESSION_COMPLETED,
+            event_id="evt_checkout_completed",
             customer="cus_webhook_test",
             subscription="sub_test123",
-            metadata={"user_id": str(subscribed_user.id), "tier": "starter"},
+            mode="subscription",
+            metadata={
+                "user_id": str(subscribed_user.id),
+                "tier": "starter",
+                "plan_code": "starter",
+            },
         )
 
         result = await handle_webhook_event(async_session, mock_event)
@@ -363,9 +399,9 @@ class TestWebhookSubscriptionLifecycle:
         subscribed_user.subscription_status = SubscriptionStatus.ACTIVE
         await async_session.commit()
 
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.SUBSCRIPTION_UPDATED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.SUBSCRIPTION_UPDATED,
+            event_id="evt_subscription_updated",
             id="sub_test123",
             customer="cus_webhook_test",
             status="past_due",
@@ -393,9 +429,9 @@ class TestWebhookSubscriptionLifecycle:
         subscribed_user.subscription_status = SubscriptionStatus.ACTIVE
         await async_session.commit()
 
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.SUBSCRIPTION_DELETED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.SUBSCRIPTION_DELETED,
+            event_id="evt_subscription_deleted",
             id="sub_test123",
             customer="cus_webhook_test",
         )
@@ -421,9 +457,9 @@ class TestWebhookSubscriptionLifecycle:
         subscribed_user.subscription_status = SubscriptionStatus.ACTIVE
         await async_session.commit()
 
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.INVOICE_PAYMENT_FAILED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.INVOICE_PAYMENT_FAILED,
+            event_id="evt_payment_failed",
             customer="cus_webhook_test",
             subscription="sub_test123",
         )
@@ -446,9 +482,9 @@ class TestWebhookSubscriptionLifecycle:
         subscribed_user.subscription_status = SubscriptionStatus.PAST_DUE
         await async_session.commit()
 
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.INVOICE_PAYMENT_SUCCEEDED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.INVOICE_PAYMENT_SUCCEEDED,
+            event_id="evt_payment_succeeded",
             customer="cus_webhook_test",
             subscription="sub_test123",
         )
@@ -467,19 +503,13 @@ class TestBillingPortalFlow:
     @pytest.fixture
     async def portal_user(self, async_session: AsyncSession):
         """Create a user with Stripe customer ID for portal access."""
-        from ace_platform.core.security import hash_password
-
-        user = User(
+        return await _create_registered_user(
+            async_session,
             email="portal_user@example.com",
-            hashed_password=hash_password("testpassword123"),
             stripe_customer_id="cus_portal_test",
             stripe_subscription_id="sub_portal_test",
             subscription_status=SubscriptionStatus.ACTIVE,
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
-        return user
 
     @patch("ace_platform.core.billing._get_stripe_client")
     async def test_create_billing_portal_session(
@@ -502,16 +532,12 @@ class TestBillingPortalFlow:
     async def test_billing_portal_requires_customer_id(self, async_session: AsyncSession):
         """Test billing portal requires Stripe customer ID."""
         from ace_platform.core.billing import create_billing_portal_session
-        from ace_platform.core.security import hash_password
 
         # Create user without Stripe customer
-        user_no_stripe = User(
+        user_no_stripe = await _create_registered_user(
+            async_session,
             email="no_stripe_user@example.com",
-            hashed_password=hash_password("testpassword123"),
         )
-        async_session.add(user_no_stripe)
-        await async_session.commit()
-        await async_session.refresh(user_no_stripe)
 
         result = await create_billing_portal_session(user=user_no_stripe)
 
@@ -525,20 +551,14 @@ class TestTierUpgradeDowngradeFlow:
     @pytest.fixture
     async def starter_user(self, async_session: AsyncSession):
         """Create a user on starter tier."""
-        from ace_platform.core.security import hash_password
-
-        user = User(
+        return await _create_registered_user(
+            async_session,
             email="starter_user@example.com",
-            hashed_password=hash_password("testpassword123"),
             stripe_customer_id="cus_starter_test",
             stripe_subscription_id="sub_starter_test",
             subscription_tier="starter",
             subscription_status=SubscriptionStatus.ACTIVE,
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
-        return user
 
     async def test_starter_tier_has_higher_limits(
         self, async_session: AsyncSession, starter_user: User
@@ -549,8 +569,11 @@ class TestTierUpgradeDowngradeFlow:
         free_limits = get_tier_limits(SubscriptionTier.FREE)
         starter_limits = get_tier_limits(SubscriptionTier.STARTER)
 
-        assert starter_limits.monthly_requests > free_limits.monthly_requests
-        assert starter_limits.monthly_tokens > free_limits.monthly_tokens
+        assert starter_limits.monthly_hosted_eval_runs > free_limits.monthly_hosted_eval_runs
+        assert (
+            starter_limits.monthly_managed_inference_cost_limit_usd
+            > free_limits.monthly_managed_inference_cost_limit_usd
+        )
         assert starter_limits.max_playbooks > free_limits.max_playbooks
 
     async def test_professional_tier_has_premium_features(self, async_session: AsyncSession):
@@ -569,18 +592,14 @@ class TestCompleteBillingE2EWorkflow:
     async def test_full_billing_workflow(self, async_session: AsyncSession):
         """Test complete billing flow: register -> free tier -> upgrade -> manage."""
         from ace_platform.core.limits import get_tier_limits, get_user_usage_status
-        from ace_platform.core.security import hash_password
         from ace_platform.core.webhooks import handle_webhook_event
-        from ace_platform.db.models import UsageRecord
+        from ace_platform.db.models import EvolutionJob, EvolutionJobStatus, Playbook, UsageRecord
 
         # Step 1: Create user (simulates registration)
-        user = User(
+        user = await _create_registered_user(
+            async_session,
             email="full_billing_flow@example.com",
-            hashed_password=hash_password("testpassword123"),
         )
-        async_session.add(user)
-        await async_session.commit()
-        await async_session.refresh(user)
 
         # Step 2: Verify user starts on free tier
         from ace_platform.api.routes.billing import _get_user_tier
@@ -590,10 +609,21 @@ class TestCompleteBillingE2EWorkflow:
 
         # Step 3: Check free tier limits
         free_limits = get_tier_limits(SubscriptionTier.FREE)
-        assert free_limits.monthly_requests == 100
-        assert free_limits.max_playbooks == 3
+        assert free_limits.monthly_hosted_eval_runs == 5
+        assert free_limits.max_playbooks == 1
 
-        # Step 4: Record some usage
+        # Step 4: Record one hosted eval plus some metered usage.
+        playbook = Playbook(user_id=user.id, name="Full Billing Flow")
+        async_session.add(playbook)
+        await async_session.flush()
+        async_session.add(
+            EvolutionJob(
+                playbook_id=playbook.id,
+                status=EvolutionJobStatus.COMPLETED,
+                started_at=datetime.now(UTC),
+                completed_at=datetime.now(UTC),
+            )
+        )
         record = UsageRecord(
             user_id=user.id,
             operation="evolution_generator",
@@ -608,17 +638,22 @@ class TestCompleteBillingE2EWorkflow:
 
         # Step 5: Check usage status
         status = await get_user_usage_status(async_session, user.id, SubscriptionTier.FREE)
-        assert status.current_requests == 1
-        assert status.current_tokens == 7000
+        assert status.current_hosted_eval_runs == 1
+        assert status.current_total_tokens == 7000
         assert status.is_within_limits is True
 
         # Step 6: Simulate checkout completion (upgrade to starter)
-        mock_event = MagicMock(spec=stripe.Event)
-        mock_event.type = WebhookEventType.CHECKOUT_SESSION_COMPLETED
-        mock_event.data.object = MagicMock(
+        mock_event = _make_webhook_event(
+            WebhookEventType.CHECKOUT_SESSION_COMPLETED,
+            event_id="evt_full_flow_checkout",
             customer="cus_billing_test",
             subscription="sub_billing_test",
-            metadata={"user_id": str(user.id), "tier": "starter"},
+            mode="subscription",
+            metadata={
+                "user_id": str(user.id),
+                "tier": "starter",
+                "plan_code": "starter",
+            },
         )
 
         result = await handle_webhook_event(async_session, mock_event)
@@ -633,12 +668,12 @@ class TestCompleteBillingE2EWorkflow:
 
         # Step 8: Check upgraded limits
         starter_limits = get_tier_limits(SubscriptionTier.STARTER)
-        assert starter_limits.monthly_requests > free_limits.monthly_requests
+        assert starter_limits.monthly_hosted_eval_runs > free_limits.monthly_hosted_eval_runs
 
         # Step 9: Simulate subscription cancellation
-        cancel_event = MagicMock(spec=stripe.Event)
-        cancel_event.type = WebhookEventType.SUBSCRIPTION_DELETED
-        cancel_event.data.object = MagicMock(
+        cancel_event = _make_webhook_event(
+            WebhookEventType.SUBSCRIPTION_DELETED,
+            event_id="evt_full_flow_cancel",
             id="sub_billing_test",
             customer="cus_billing_test",
         )
