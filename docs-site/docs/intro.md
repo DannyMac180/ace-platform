@@ -94,6 +94,7 @@ Playbooks are structured instructions for AI agents. Unlike static prompts, ACE 
 - Explore the [Getting Started](/docs/getting-started/quick-start) guide
 - Explore the [ACE CLI](/docs/getting-started/ace-cli) guide for local-first onboarding
 - Compare paths above, then start with either [ACE OSS & Local Start](/docs/getting-started/oss-local-start) or [ACE Cloud Quick Start](/docs/getting-started/quick-start)
+- If you want the local/self-managed path, continue with the [OSS Overview](/docs/getting-started/oss-overview) and [Local Quickstart](/docs/getting-started/local-quickstart)
 - Learn the shared model in [Core Concepts](/docs/getting-started/core-concepts)
 - Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
 - Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)
