@@ -7,9 +7,14 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-from llm import timed_llm_call
-from logger import log_curator_failure, log_curator_operation_diff
-from playbook_utils import apply_curator_operations, extract_json_from_text
+try:
+    from ...llm import timed_llm_call
+    from ...logger import log_curator_failure, log_curator_operation_diff
+    from ...playbook_utils import apply_curator_operations, extract_json_from_text
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from llm import timed_llm_call  # type: ignore
+    from logger import log_curator_failure, log_curator_operation_diff  # type: ignore
+    from playbook_utils import apply_curator_operations, extract_json_from_text  # type: ignore
 
 from ..prompts.curator import CURATOR_PROMPT, CURATOR_PROMPT_NO_GT
 

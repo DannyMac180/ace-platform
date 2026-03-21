@@ -76,6 +76,9 @@ dependencies = [
 [project.scripts]
 ace = "ace_platform.cli:main"
 symphony = "ace_platform.symphony.cli:main"
+ace-platform-api = "ace_platform.api.__main__:main"
+ace-platform-worker = "ace_platform.workers.__main__:worker_main"
+ace-platform-beat = "ace_platform.workers.__main__:beat_main"
 
 [project.optional-dependencies]
 dev = [

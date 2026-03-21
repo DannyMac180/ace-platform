@@ -13,9 +13,14 @@ import os
 from datetime import datetime
 from typing import Any, Optional
 
-from logger import *
-from playbook_utils import *
-from utils import *
+try:
+    from ..logger import *  # noqa: F403
+    from ..playbook_utils import *  # noqa: F403
+    from ..utils import *  # noqa: F403
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from logger import *  # type: ignore # noqa: F403
+    from playbook_utils import *  # type: ignore # noqa: F403
+    from utils import *  # type: ignore # noqa: F403
 
 from .core import BulletpointAnalyzer, Curator, Generator, Reflector
 

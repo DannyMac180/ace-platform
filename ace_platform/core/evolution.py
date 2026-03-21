@@ -1,28 +1,19 @@
-"""Evolution service that wraps ace_core for playbook evolution.
-
-This service provides a platform-level interface to the ACE three-agent
-architecture (Generator, Reflector, Curator) for evolving playbooks
-based on outcome feedback.
-"""
+"""Evolution service that wraps `ace_core` for playbook evolution."""
 
 import json
 import logging
-import sys
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import openai
 
+from ace_core import Curator, Reflector
+from ace_core.playbook_utils import (
+    get_next_global_id,
+    get_playbook_stats,
+    update_bullet_counts,
+)
 from ace_platform.config import Settings, get_settings
-
-# Add ace_core to path for imports (must be done after local imports, before ace_core imports)
-ACE_CORE_PATH = Path(__file__).parent.parent.parent / "ace_core"
-if str(ACE_CORE_PATH) not in sys.path:
-    sys.path.insert(0, str(ACE_CORE_PATH))
-
-# Import after ace_core path is set up
-from playbook_utils import update_bullet_counts  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +130,6 @@ class EvolutionService:
     def _get_reflector(self):
         """Lazily initialize the Reflector agent."""
         if self._reflector is None:
-            from ace.core.reflector import Reflector
-
             self._reflector = Reflector(
                 api_client=self.api_client,
                 api_provider=self.settings.evolution_api_provider,
@@ -152,8 +141,6 @@ class EvolutionService:
     def _get_curator(self):
         """Lazily initialize the Curator agent."""
         if self._curator is None:
-            from ace.core.curator import Curator
-
             self._curator = Curator(
                 api_client=self.api_client,
                 api_provider=self.settings.evolution_api_provider,
@@ -172,8 +159,6 @@ class EvolutionService:
         Returns:
             Dictionary with playbook statistics.
         """
-        from playbook_utils import get_playbook_stats
-
         return get_playbook_stats(playbook_content)
 
     def _get_next_global_id(self, playbook_content: str) -> int:
@@ -185,8 +170,6 @@ class EvolutionService:
         Returns:
             Next available global ID.
         """
-        from playbook_utils import get_next_global_id
-
         return get_next_global_id(playbook_content)
 
     def _format_outcomes_for_reflection(self, outcomes: list[OutcomeData]) -> str:

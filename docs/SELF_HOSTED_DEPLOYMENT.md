@@ -204,7 +204,7 @@ docker compose up -d postgres redis
 
 # Run app locally
 source venv/bin/activate
-uvicorn ace_platform.api.main:app --reload
+ace-platform-api --reload
 ```
 
 ### Production Mode

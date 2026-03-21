@@ -8,13 +8,13 @@ This package contains Celery workers for background task processing:
 
 Usage:
     # Start worker for all queues
-    celery -A ace_platform.workers.celery_app worker -l info
+    ace-platform-worker
 
     # Start worker for evolution queue only
-    celery -A ace_platform.workers.celery_app worker -l info -Q evolution
+    ace-platform-worker -Q evolution
 
     # Start beat scheduler for periodic tasks
-    celery -A ace_platform.workers.celery_app beat -l info
+    ace-platform-beat
 """
 
 from ace_platform.workers.admin_alerts_task import send_daily_spend_summary

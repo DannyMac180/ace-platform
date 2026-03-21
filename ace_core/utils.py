@@ -170,7 +170,10 @@ def evaluate_single_test_sample(args_tuple, data_processor) -> tuple[dict, str]:
         args_tuple: Tuple of (index, task_dict, generator, playbook, max_tokens, log_dir, use_json_mode)
         data_processor: DataProcessor instance with answer_is_correct method
     """
-    from playbook_utils import render_active_playbook
+    try:
+        from .playbook_utils import render_active_playbook
+    except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+        from playbook_utils import render_active_playbook  # type: ignore
 
     (i, task_dict, generator, playbook, max_tokens, log_dir, use_json_mode) = args_tuple
     try:

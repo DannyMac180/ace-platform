@@ -20,12 +20,12 @@ except ImportError:
     print("Warning: sentence-transformers or faiss not available for bulletpoint analysis.")
     print("Install with: pip install sentence-transformers faiss-cpu")
 
-from playbook_utils import (
-    ACTIVE_BULLET_STATUSES,
-)
-from playbook_utils import (
-    parse_playbook_line as parse_playbook_metadata_line,
-)
+try:
+    from ...playbook_utils import ACTIVE_BULLET_STATUSES
+    from ...playbook_utils import parse_playbook_line as parse_playbook_metadata_line
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from playbook_utils import ACTIVE_BULLET_STATUSES  # type: ignore
+    from playbook_utils import parse_playbook_line as parse_playbook_metadata_line  # type: ignore
 
 
 def parse_playbook_line(line: str) -> dict[str, Any] | None:

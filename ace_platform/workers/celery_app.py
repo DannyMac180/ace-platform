@@ -6,10 +6,10 @@ the main entry point for running Celery workers.
 
 Usage:
     # Start worker
-    celery -A ace_platform.workers.celery_app worker -l info
+    ace-platform-worker
 
     # Start beat scheduler (for periodic tasks)
-    celery -A ace_platform.workers.celery_app beat -l info
+    ace-platform-beat
 """
 
 from celery import Celery

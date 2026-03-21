@@ -11,7 +11,11 @@ import time
 from datetime import datetime
 
 import openai
-from logger import log_llm_call, log_problematic_request
+
+try:
+    from .logger import log_llm_call, log_problematic_request
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from logger import log_llm_call, log_problematic_request  # type: ignore
 
 
 def timed_llm_call(

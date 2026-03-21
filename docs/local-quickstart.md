@@ -71,12 +71,13 @@ source venv/bin/activate && alembic upgrade head
 
 ### 4. Start the runtime
 
-Run these in separate shells:
+Run these in separate shells. The packaged API and worker entrypoints are the
+preferred standalone contract for the transition runtime:
 
 ```bash
-source venv/bin/activate && uvicorn ace_platform.api.main:app --reload
+source venv/bin/activate && ace-platform-api --reload
 source venv/bin/activate && python -m ace_platform.mcp.server
-source venv/bin/activate && celery -A ace_platform.workers.celery_app worker -l info
+source venv/bin/activate && ace-platform-worker
 ```
 
 The API will be available at `http://localhost:8000` and the local MCP server

@@ -70,6 +70,25 @@ guide:
 | `web/` | Hosted/cloud-oriented app surface | Dashboard frontend for managed workflows |
 | `docs/` | Mixed documentation surface | Public docs plus architecture notes describing the split |
 
+## Hosted Boundary Rules
+
+The hosted/backend split should follow these dependency ownership rules while
+the extraction is still in progress:
+
+- `ace-core` is the only shared public Python package that hosted/private code
+  should rely on today.
+- `ace_platform/` remains a mixed transition area for the local runtime and
+  cloud-side services. It is not the public package boundary for future
+  private-repo dependencies.
+- Do not use repo-local `sys.path` edits or checkout-only imports such as
+  `playbook_utils` or `ace.core.*` to reach shared ACE functionality. Use the
+  packaged `ace_core.*` import path instead.
+- For the transition runtime in this repository, use the explicit service
+  entrypoints `ace-platform-api`, `ace-platform-worker`, and
+  `ace-platform-beat` (or `python -m ace_platform.api` /
+  `python -m ace_platform.workers`) instead of relying on module-path launch
+  strings as the deployment contract.
+
 ## Target Layout
 
 The target package/service layout from the product spec appendix is:

@@ -11,7 +11,10 @@ import json
 import os
 from datetime import datetime
 
-from playbook_utils import parse_playbook_line
+try:
+    from .playbook_utils import parse_playbook_line
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from playbook_utils import parse_playbook_line  # type: ignore
 
 
 def log_llm_call(log_dir, call_info):

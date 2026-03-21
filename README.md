@@ -274,9 +274,9 @@ cp .env.example .env
 docker compose up -d postgres redis
 alembic upgrade head
 
-uvicorn ace_platform.api.main:app --reload
+ace-platform-api --reload
 python -m ace_platform.mcp.server
-celery -A ace_platform.workers.celery_app worker -l info
+ace-platform-worker
 ```
 
 For the frontend:

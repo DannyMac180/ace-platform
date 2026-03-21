@@ -6,7 +6,10 @@ Analyzes generator outputs and provides feedback on bullet usage.
 import json
 from typing import Any, Optional
 
-from llm import timed_llm_call
+try:
+    from ...llm import timed_llm_call
+except ImportError:  # pragma: no cover - legacy standalone ACE entrypoints
+    from llm import timed_llm_call  # type: ignore
 
 from ..prompts.reflector import REFLECTOR_PROMPT, REFLECTOR_PROMPT_NO_GT
 
