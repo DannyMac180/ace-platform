@@ -33,6 +33,12 @@ from ace_platform.core.stripe_config import (
 )
 
 
+def make_settings(**overrides) -> StripeProductSettings:
+    """Build isolated Stripe settings without reading the local .env file."""
+
+    return StripeProductSettings(_env_file=None, **overrides)
+
+
 class TestPriceConfig:
     """Tests for PriceConfig dataclass."""
 
@@ -181,7 +187,7 @@ class TestGetProductConfig:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_starter_tier_config(self, mock_settings):
         """Test STARTER tier returns correct config."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
             stripe_starter_yearly_price_id="price_starter_yearly",
@@ -202,7 +208,7 @@ class TestGetProductConfig:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_pro_tier_config(self, mock_settings):
         """Test PRO tier returns correct config."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_pro_product_id="prod_pro",
             stripe_pro_monthly_price_id="price_pro_monthly",
         )
@@ -220,7 +226,7 @@ class TestGetProductConfig:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_ultra_tier_config(self, mock_settings):
         """Test ULTRA tier returns correct config."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_ultra_product_id="prod_ultra",
             stripe_ultra_monthly_price_id="price_ultra_monthly",
         )
@@ -237,7 +243,7 @@ class TestGetProductConfig:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_enterprise_tier_config(self, mock_settings):
         """Test ENTERPRISE tier returns config with custom pricing."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_enterprise_product_id="prod_enterprise",
         )
 
@@ -263,7 +269,7 @@ class TestGetPriceIdForTier:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_starter_monthly_price(self, mock_settings):
         """Test getting Starter monthly price ID."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
         )
@@ -274,7 +280,7 @@ class TestGetPriceIdForTier:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_starter_yearly_price(self, mock_settings):
         """Test getting Starter yearly price ID."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
             stripe_starter_yearly_price_id="price_starter_yearly",
@@ -286,7 +292,7 @@ class TestGetPriceIdForTier:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_yearly_fallback_to_monthly(self, mock_settings):
         """Test yearly falls back to monthly if yearly not configured."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
             stripe_starter_yearly_price_id="",  # No yearly price
@@ -303,7 +309,7 @@ class TestTierLookup:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_price_id_monthly(self, mock_settings):
         """Test looking up tier from monthly price ID."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
             stripe_pro_product_id="prod_pro",
@@ -319,7 +325,7 @@ class TestTierLookup:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_price_id_yearly(self, mock_settings):
         """Test looking up tier from yearly price ID."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
             stripe_starter_yearly_price_id="price_starter_yearly",
@@ -331,7 +337,7 @@ class TestTierLookup:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_price_id_unknown(self, mock_settings):
         """Test looking up unknown price ID returns None."""
-        mock_settings.return_value = StripeProductSettings()
+        mock_settings.return_value = make_settings()
 
         tier = get_tier_from_price_id("price_unknown")
         assert tier is None
@@ -339,7 +345,7 @@ class TestTierLookup:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_product_id(self, mock_settings):
         """Test looking up tier from product ID."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter",
             stripe_pro_product_id="prod_pro",
@@ -355,7 +361,7 @@ class TestTierLookup:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_tier_from_product_id_unknown(self, mock_settings):
         """Test looking up unknown product ID returns None."""
-        mock_settings.return_value = StripeProductSettings()
+        mock_settings.return_value = make_settings()
 
         tier = get_tier_from_product_id("prod_unknown")
         assert tier is None
@@ -367,14 +373,14 @@ class TestIsStripeConfigured:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_not_configured_when_empty(self, mock_settings):
         """Test returns False when no IDs configured."""
-        mock_settings.return_value = StripeProductSettings()
+        mock_settings.return_value = make_settings()
 
         assert is_stripe_configured() is False
 
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_not_configured_partial(self, mock_settings):
         """Test returns False when only partially configured."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             # Missing price ID
         )
@@ -384,7 +390,7 @@ class TestIsStripeConfigured:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_configured_when_starter_complete(self, mock_settings):
         """Test returns True when Starter tier is fully configured."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter_monthly",
         )
@@ -398,7 +404,7 @@ class TestGetAllProducts:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_all_products(self, mock_settings):
         """Test getting all configured products."""
-        mock_settings.return_value = StripeProductSettings(
+        mock_settings.return_value = make_settings(
             stripe_starter_product_id="prod_starter",
             stripe_starter_monthly_price_id="price_starter",
             stripe_pro_product_id="prod_pro",
@@ -422,7 +428,7 @@ class TestGetAllProducts:
     @patch("ace_platform.core.stripe_config.get_stripe_product_settings")
     def test_get_all_products_empty_settings(self, mock_settings):
         """Test get_all_products with no configured products."""
-        mock_settings.return_value = StripeProductSettings()
+        mock_settings.return_value = make_settings()
 
         products = get_all_products()
 
