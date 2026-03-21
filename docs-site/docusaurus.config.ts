@@ -102,6 +102,14 @@ const config: Config = {
               label: 'ACE Cloud Quick Start',
               to: '/docs/getting-started/quick-start',
             },
+            {
+              label: 'User Guides',
+              to: '/docs/user-guides/creating-playbooks',
+            },
+            {
+              label: 'MCP Integration',
+              to: '/docs/developer-guides/mcp-integration/overview',
+            },
           ],
         },
         {

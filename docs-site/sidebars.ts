@@ -10,6 +10,8 @@ const sidebars: SidebarsConfig = {
         'getting-started/oss-local-start',
         'getting-started/quick-start',
         'getting-started/ace-cli',
+        'getting-started/oss-overview',
+        'getting-started/local-quickstart',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
@@ -20,6 +22,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'user-guides/creating-playbooks',
         'user-guides/workspaces-and-teams',
+        'user-guides/team-playbook-review',
         'user-guides/understanding-evolution',
         'user-guides/managing-api-keys',
         'user-guides/billing-subscriptions',
