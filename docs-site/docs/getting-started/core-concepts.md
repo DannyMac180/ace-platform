@@ -155,6 +155,16 @@ Evolution happens:
 | `completed` | Successfully created new version |
 | `failed` | Error occurred during evolution |
 
+## Hosted Workspaces
+
+Hosted ACE uses a workspace model for every cloud user.
+
+- a `personal` workspace is the hosted one-user shape
+- a `team` workspace is the same hosted model with invites, shared workspace features, and collaboration roles enabled
+- existing hosted solo users are represented as `personal` workspaces instead of a separate product shape
+
+See [Workspaces & Teams](/docs/user-guides/workspaces-and-teams) for the user-facing guide to upgrades, invites, member management, and roles.
+
 ## API Keys
 
 **API keys** authenticate your MCP tool access to ACE.
