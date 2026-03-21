@@ -37,6 +37,7 @@ from ace_platform.db.models import (
 )
 
 logger = logging.getLogger(__name__)
+_SUBSCRIPTION_TIER_RANK = {tier: rank for rank, tier in enumerate(SubscriptionTier)}
 
 
 class WebhookEventType(str, Enum):
@@ -291,6 +292,33 @@ def _get_subscription_tier_enum(
     return get_subscription_tier_for_plan_code(raw_metadata.get("plan_code"))
 
 
+def _normalize_subscription_tier(raw_tier: str | None) -> SubscriptionTier:
+    """Return a safe tier value for upgrade comparisons."""
+
+    if not raw_tier:
+        return SubscriptionTier.FREE
+
+    try:
+        return SubscriptionTier(raw_tier)
+    except ValueError:
+        return SubscriptionTier.FREE
+
+
+def _is_upgrade_tier_change(
+    previous_tier: str | None,
+    new_tier: SubscriptionTier | None,
+) -> bool:
+    """Return whether the new tier is a real upgrade over the prior tier."""
+
+    if new_tier is None:
+        return False
+
+    return (
+        _SUBSCRIPTION_TIER_RANK[new_tier]
+        > _SUBSCRIPTION_TIER_RANK[_normalize_subscription_tier(previous_tier)]
+    )
+
+
 def _get_subscription_plan_code(
     subscription: stripe.Subscription,
     metadata: dict | None = None,
@@ -347,7 +375,9 @@ async def _handle_checkout_completed(
     # Handle subscription checkout
     # Update user with customer and subscription ID
     tier = metadata.get("tier")
+    prior_tier = user.subscription_tier
     is_trial = metadata.get("is_trial") == "true"
+    target_tier = SubscriptionTier(tier) if tier in SubscriptionTier._value2member_map_ else None
 
     # Build update values
     update_values: dict = {
@@ -385,9 +415,7 @@ async def _handle_checkout_completed(
         status=(
             WorkspaceSubscriptionStatus.TRIALING if is_trial else WorkspaceSubscriptionStatus.ACTIVE
         ),
-        subscription_tier=(
-            SubscriptionTier(tier) if tier in SubscriptionTier._value2member_map_ else None
-        ),
+        subscription_tier=target_tier,
         plan_code=metadata.get("plan_code"),
         provider_customer_id=customer_id,
         provider_subscription_id=subscription_id,
@@ -407,6 +435,26 @@ async def _handle_checkout_completed(
                 experiment_variant=user.signup_variant,
                 event_data={
                     "source": "stripe_webhook",
+                    "stripe_event_type": event.type,
+                    "stripe_subscription_id": subscription_id,
+                },
+            )
+        )
+    elif _is_upgrade_tier_change(prior_tier, target_tier):
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.UPGRADE_COMPLETED,
+                anonymous_id=user.signup_anonymous_id,
+                source=user.signup_source,
+                channel=user.signup_channel,
+                campaign=user.signup_campaign,
+                experiment_variant=user.signup_variant,
+                event_data={
+                    "source": "stripe_webhook",
+                    "upgrade_kind": "subscription",
+                    "target_tier": tier,
+                    "target_plan_code": metadata.get("plan_code"),
                     "stripe_event_type": event.type,
                     "stripe_subscription_id": subscription_id,
                 },
@@ -602,6 +650,7 @@ async def _handle_subscription_updated(
             event_type=event.type,
         )
 
+    prior_tier = user.subscription_tier
     sub_id = _stripe_get(subscription, "id")
     metadata = _stripe_get(subscription, "metadata") or {}
     tier = _get_subscription_tier_enum(subscription, metadata)
@@ -640,6 +689,29 @@ async def _handle_subscription_updated(
         current_period_end=period_end,
         trial_ends_at=update_values["trial_ends_at"],
     )
+
+    if _is_upgrade_tier_change(prior_tier, tier):
+        db.add(
+            AcquisitionEvent(
+                user_id=user.id,
+                event_type=AcquisitionEventType.UPGRADE_COMPLETED,
+                anonymous_id=user.signup_anonymous_id,
+                source=user.signup_source,
+                channel=user.signup_channel,
+                campaign=user.signup_campaign,
+                experiment_variant=user.signup_variant,
+                event_data={
+                    "source": "stripe_webhook",
+                    "upgrade_kind": "subscription",
+                    "target_tier": tier.value,
+                    "target_plan_code": plan_code,
+                    "stripe_event_type": event.type,
+                    "stripe_subscription_id": sub_id,
+                    "previous_tier": prior_tier,
+                },
+            )
+        )
+
     await db.commit()
 
     logger.info(f"Subscription updated for user {user.id}: status={status}")

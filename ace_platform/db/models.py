@@ -347,6 +347,11 @@ class AcquisitionEventType(str, enum.Enum):
     HERO_VIDEO_PLAYED = "hero_video_played"
     OAUTH_ERROR = "oauth_error"
     OAUTH_FALLBACK_USED = "oauth_fallback_used"
+    CLI_INIT_COMPLETED = "cli_init_completed"
+    CLI_SEED_COMPLETED = "cli_seed_completed"
+    CLI_BENCHMARK_COMPLETED = "cli_benchmark_completed"
+    UPGRADE_COMPLETED = "upgrade_completed"
+    RETENTION_ACTIVE = "retention_active"
 
 
 class User(Base):

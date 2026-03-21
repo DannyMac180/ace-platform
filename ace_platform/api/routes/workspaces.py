@@ -78,6 +78,8 @@ from ace_platform.core.workspaces import (
     upgrade_personal_workspace_to_team,
 )
 from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
     EvolutionJob,
     EvolutionJobStatus,
     Playbook,
@@ -993,6 +995,24 @@ async def upgrade_personal_workspace_to_team_route(
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    db.add(
+        AcquisitionEvent(
+            user_id=current_user.id,
+            event_type=AcquisitionEventType.UPGRADE_COMPLETED,
+            anonymous_id=current_user.signup_anonymous_id,
+            source=current_user.signup_source,
+            channel=current_user.signup_channel,
+            campaign=current_user.signup_campaign,
+            experiment_variant=current_user.signup_variant,
+            event_data={
+                "source": "workspace_route",
+                "upgrade_kind": "workspace_plan",
+                "target_plan": WorkspacePlan.TEAM.value,
+                "workspace_id": str(workspace.id),
+            },
+        )
+    )
 
     await db.commit()
     workspace = await get_workspace_for_user(db, workspace.id, current_user.id)

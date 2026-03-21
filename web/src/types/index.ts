@@ -520,7 +520,12 @@ export type AcquisitionEventType =
   | 'hero_video_loaded'
   | 'hero_video_played'
   | 'oauth_error'
-  | 'oauth_fallback_used';
+  | 'oauth_fallback_used'
+  | 'cli_init_completed'
+  | 'cli_seed_completed'
+  | 'cli_benchmark_completed'
+  | 'upgrade_completed'
+  | 'retention_active';
 
 export interface AnalyticsEventPayload {
   event_type: AcquisitionEventType;
@@ -538,6 +543,27 @@ export interface FunnelFilters {
   days?: number;
   source?: string;
   experiment_variant?: string;
+}
+
+export interface ProductAnalyticsMetric {
+  key: string;
+  label: string;
+  count: number;
+}
+
+export interface ProductAnalyticsRetention {
+  returning_users: number;
+  retained_after_day_1: number;
+  retained_after_day_7: number;
+  retained_after_day_30: number;
+}
+
+export interface ProductAnalyticsReport {
+  days: number;
+  start_date: string;
+  end_date: string;
+  metrics: ProductAnalyticsMetric[];
+  retention: ProductAnalyticsRetention;
 }
 
 export interface TopUser {

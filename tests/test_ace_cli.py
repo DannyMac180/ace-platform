@@ -4,6 +4,7 @@ import json
 import textwrap
 
 import httpx
+import pytest
 
 import ace_platform.cli as ace_cli
 from ace_core.portability import (
@@ -12,6 +13,11 @@ from ace_core.portability import (
     bundle_from_json,
     bundle_to_json,
 )
+
+
+@pytest.fixture(autouse=True)
+def disable_cli_analytics(monkeypatch) -> None:
+    monkeypatch.setattr(ace_cli, "_emit_cli_analytics_event", lambda *_args, **_kwargs: None)
 
 
 class _StubClient:
@@ -175,6 +181,35 @@ def test_init_command_force_overwrites_with_custom_settings(tmp_path, capsys) ->
     assert 'mcp_url = "https://staging.example/mcp"' in config_text
 
 
+def test_init_command_emits_product_analytics(tmp_path, monkeypatch) -> None:
+    project_dir = tmp_path / "telemetry-project"
+    project_dir.mkdir()
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        ace_cli,
+        "_emit_cli_analytics_event",
+        lambda event_type, **kwargs: calls.append({"event_type": event_type, **kwargs}),
+    )
+
+    exit_code = ace_cli.main(["init", "--path", str(project_dir), "--default-profile", "hosted"])
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "event_type": "cli_init_completed",
+            "project_root": project_dir.resolve(),
+            "event_data": {
+                "project_name": "telemetry-project",
+                "default_profile": "hosted",
+                "git_enabled": False,
+                "agent_mode": False,
+                "output_mode": "text",
+            },
+        }
+    ]
+
+
 def test_benchmark_command_compares_baseline_and_ace_outputs(tmp_path, capsys) -> None:
     benchmark_path = tmp_path / "benchmark.json"
     benchmark_path.write_text(
@@ -243,6 +278,60 @@ def test_benchmark_command_can_emit_json_summary(tmp_path, capsys) -> None:
     assert payload["comparison"]["net_passed_delta"] == 1
     assert payload["comparison"]["ace_wins"] == 1
     assert payload["cases"][0]["outcome"] == "ace_win"
+
+
+def test_benchmark_command_emits_product_analytics_when_config_present(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    project_dir = tmp_path / "benchmark-project"
+    project_dir.mkdir()
+    benchmark_dir = project_dir / "benchmarks"
+    benchmark_dir.mkdir()
+    benchmark_path = benchmark_dir / "suite.json"
+    benchmark_path.write_text(
+        json.dumps(
+            {
+                "id": "telemetry-benchmark",
+                "metric": "contains",
+                "cases": [
+                    {
+                        "id": "case-1",
+                        "prompt": "unused",
+                        "expected_output": "portable",
+                        "baseline_output": "baseline miss",
+                        "ace_output": "portable local runtime",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (project_dir / "ace.toml").write_text(
+        textwrap.dedent(
+            """
+            [profiles.hosted]
+            api_url = "https://ace.example"
+            """
+        ).strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        ace_cli,
+        "_emit_cli_analytics_event",
+        lambda event_type, **kwargs: calls.append({"event_type": event_type, **kwargs}),
+    )
+
+    exit_code = ace_cli.main(["benchmark", "--input", str(benchmark_path), "--format", "json"])
+
+    assert exit_code == 0
+    assert calls[0]["event_type"] == "cli_benchmark_completed"
+    assert calls[0]["project_root"] == benchmark_path.resolve()
+    assert calls[0]["event_data"]["benchmark_id"] == "telemetry-benchmark"
+    assert calls[0]["event_data"]["ace_wins"] == 1
 
 
 def test_benchmark_command_rejects_missing_case_fields(tmp_path, capsys) -> None:

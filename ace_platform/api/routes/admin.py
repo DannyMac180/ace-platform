@@ -176,6 +176,33 @@ class ConversionFunnelResponse(BaseModel):
     conversion_signup_to_paid_active_non_trial_pct: float
 
 
+class ProductAnalyticsMetricResponse(BaseModel):
+    """One product analytics metric shown on the admin dashboard."""
+
+    key: str
+    label: str
+    count: int
+
+
+class ProductAnalyticsRetentionResponse(BaseModel):
+    """Retention summary derived from authenticated return activity."""
+
+    returning_users: int
+    retained_after_day_1: int
+    retained_after_day_7: int
+    retained_after_day_30: int
+
+
+class ProductAnalyticsResponse(BaseModel):
+    """Activation and retention metrics needed for product analytics."""
+
+    days: int
+    start_date: datetime
+    end_date: datetime
+    metrics: list[ProductAnalyticsMetricResponse]
+    retention: ProductAnalyticsRetentionResponse
+
+
 class TopUserResponse(BaseModel):
     """Top user by spend."""
 
@@ -553,6 +580,56 @@ def build_conversion_funnel_response(
         conversion_signup_to_trial_started_pct=_conversion_pct(signups, trial_started),
         conversion_signup_to_paid_active_non_trial_pct=_conversion_pct(
             signups, paid_active_non_trial
+        ),
+    )
+
+
+def build_product_analytics_response(
+    *,
+    days: int,
+    start_date: datetime,
+    end_date: datetime,
+    signup_count: int,
+    cli_init_count: int,
+    cli_seed_count: int,
+    cli_benchmark_count: int,
+    upgrade_count: int,
+    returning_users: int,
+    retained_after_day_1: int,
+    retained_after_day_7: int,
+    retained_after_day_30: int,
+) -> ProductAnalyticsResponse:
+    """Build the product analytics response payload."""
+
+    return ProductAnalyticsResponse(
+        days=days,
+        start_date=start_date,
+        end_date=end_date,
+        metrics=[
+            ProductAnalyticsMetricResponse(key="signup", label="Signups", count=signup_count),
+            ProductAnalyticsMetricResponse(key="init", label="CLI init", count=cli_init_count),
+            ProductAnalyticsMetricResponse(key="seed", label="CLI seed", count=cli_seed_count),
+            ProductAnalyticsMetricResponse(
+                key="benchmark",
+                label="CLI benchmark",
+                count=cli_benchmark_count,
+            ),
+            ProductAnalyticsMetricResponse(
+                key="upgrade",
+                label="Upgrades completed",
+                count=upgrade_count,
+            ),
+            ProductAnalyticsMetricResponse(
+                key="retention",
+                label="Retention-active users",
+                count=returning_users,
+            ),
+        ],
+        retention=ProductAnalyticsRetentionResponse(
+            returning_users=returning_users,
+            retained_after_day_1=retained_after_day_1,
+            retained_after_day_7=retained_after_day_7,
+            retained_after_day_30=retained_after_day_30,
         ),
     )
 
@@ -1039,6 +1116,83 @@ async def get_conversion_funnel(
         trial_started=int(trial_started),
         first_playbook_created=int(first_playbook_created),
         paid_active_non_trial=int(paid_active_non_trial),
+    )
+
+
+@router.get(
+    "/product-analytics",
+    response_model=ProductAnalyticsResponse,
+    summary="Product analytics for activation and retention",
+)
+async def get_product_analytics(
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    days: int = Query(30, ge=1, le=365),
+) -> ProductAnalyticsResponse:
+    """Get admin-visible product analytics for activation and retention behavior."""
+
+    now = datetime.now(UTC)
+    start = now - timedelta(days=days)
+
+    async def _count_events(event_type: AcquisitionEventType) -> int:
+        return int(
+            (
+                await db.scalar(
+                    select(func.count(AcquisitionEvent.id)).where(
+                        AcquisitionEvent.created_at >= start,
+                        AcquisitionEvent.event_type == event_type,
+                    )
+                )
+            )
+            or 0
+        )
+
+    async def _count_returning_users(min_age_days: int | None = None) -> int:
+        filters = [
+            AcquisitionEvent.created_at >= start,
+            AcquisitionEvent.event_type == AcquisitionEventType.RETENTION_ACTIVE,
+            AcquisitionEvent.user_id.is_not(None),
+        ]
+        if min_age_days is not None:
+            filters.append(
+                AcquisitionEvent.created_at >= User.created_at + timedelta(days=min_age_days)
+            )
+
+        return int(
+            (
+                await db.scalar(
+                    select(func.count(func.distinct(AcquisitionEvent.user_id)))
+                    .select_from(AcquisitionEvent)
+                    .join(User, User.id == AcquisitionEvent.user_id)
+                    .where(*filters)
+                )
+            )
+            or 0
+        )
+
+    signup_count = await _count_events(AcquisitionEventType.REGISTER_SUCCESS)
+    cli_init_count = await _count_events(AcquisitionEventType.CLI_INIT_COMPLETED)
+    cli_seed_count = await _count_events(AcquisitionEventType.CLI_SEED_COMPLETED)
+    cli_benchmark_count = await _count_events(AcquisitionEventType.CLI_BENCHMARK_COMPLETED)
+    upgrade_count = await _count_events(AcquisitionEventType.UPGRADE_COMPLETED)
+    returning_users = await _count_returning_users()
+    retained_after_day_1 = await _count_returning_users(min_age_days=1)
+    retained_after_day_7 = await _count_returning_users(min_age_days=7)
+    retained_after_day_30 = await _count_returning_users(min_age_days=30)
+
+    return build_product_analytics_response(
+        days=days,
+        start_date=start,
+        end_date=now,
+        signup_count=signup_count,
+        cli_init_count=cli_init_count,
+        cli_seed_count=cli_seed_count,
+        cli_benchmark_count=cli_benchmark_count,
+        upgrade_count=upgrade_count,
+        returning_users=returning_users,
+        retained_after_day_1=retained_after_day_1,
+        retained_after_day_7=retained_after_day_7,
+        retained_after_day_30=retained_after_day_30,
     )
 
 

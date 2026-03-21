@@ -8,7 +8,7 @@ These tests verify:
 4. Response schema validation
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -27,14 +27,17 @@ from ace_platform.api.routes.admin import (
     JobQueueHealthResponse,
     OperationalHealthResponse,
     PlatformStatsResponse,
+    ProductAnalyticsResponse,
     SyncHealthResponse,
     TopUserResponse,
     WorkspaceBackupItem,
     WorkspaceBackupRestoreResponse,
     build_conversion_funnel_response,
+    build_product_analytics_response,
     create_workspace_backup,
     get_conversion_funnel,
     get_operational_health,
+    get_product_analytics,
     get_sync_health_snapshot,
     list_workspace_backups,
     restore_workspace_backup,
@@ -207,6 +210,57 @@ class TestAdminSchemas:
         assert response.conversion_signup_to_trial_started_pct == 0.0
         assert response.conversion_signup_to_paid_active_non_trial_pct == 0.0
 
+    def test_product_analytics_response(self):
+        """Test product analytics schema."""
+        now = datetime.now(timezone.utc)
+        response = ProductAnalyticsResponse(
+            days=30,
+            start_date=now,
+            end_date=now,
+            metrics=[
+                {"key": "signup", "label": "Signups", "count": 12},
+                {"key": "retention", "label": "Returning users", "count": 5},
+            ],
+            retention={
+                "returning_users": 5,
+                "retained_after_day_1": 4,
+                "retained_after_day_7": 2,
+                "retained_after_day_30": 1,
+            },
+        )
+        assert response.metrics[0].key == "signup"
+        assert response.retention.retained_after_day_7 == 2
+
+    def test_build_product_analytics_response(self):
+        """Test product analytics response builder."""
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(days=30)
+        response = build_product_analytics_response(
+            days=30,
+            start_date=start,
+            end_date=end,
+            signup_count=8,
+            cli_init_count=6,
+            cli_seed_count=4,
+            cli_benchmark_count=3,
+            upgrade_count=2,
+            returning_users=5,
+            retained_after_day_1=4,
+            retained_after_day_7=2,
+            retained_after_day_30=1,
+        )
+
+        assert [metric.key for metric in response.metrics] == [
+            "signup",
+            "init",
+            "seed",
+            "benchmark",
+            "upgrade",
+            "retention",
+        ]
+        assert response.metrics[3].count == 3
+        assert response.retention.returning_users == 5
+
     @pytest.mark.asyncio
     async def test_get_conversion_funnel_scopes_later_stages_to_prior_cohorts(self):
         """Ensure later funnel queries are constrained to prior-stage users."""
@@ -261,6 +315,20 @@ class TestAdminSchemas:
         assert "acquisition_events.experiment_variant = :experiment_variant_1" in event_sql
         assert "users.signup_source = :signup_source_1" in user_sql
         assert "users.signup_variant = :signup_variant_1" in user_sql
+
+    @pytest.mark.asyncio
+    async def test_get_product_analytics_counts_required_behaviors(self):
+        """Ensure the admin product analytics report queries all required metrics."""
+        mock_db = AsyncMock()
+        mock_db.scalar = AsyncMock(side_effect=[9, 7, 5, 4, 3, 6, 5, 2, 1])
+
+        response = await get_product_analytics(_admin=object(), db=mock_db, days=30)
+
+        assert [metric.count for metric in response.metrics] == [9, 7, 5, 4, 3, 6]
+        assert response.retention.retained_after_day_1 == 5
+        assert response.retention.retained_after_day_7 == 2
+        assert response.retention.retained_after_day_30 == 1
+        assert mock_db.scalar.call_count == 9
 
     def test_top_user_response(self):
         """Test top user response schema."""

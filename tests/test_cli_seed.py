@@ -147,3 +147,46 @@ def test_seed_command_rejects_paths_outside_project_root(tmp_path, capsys) -> No
     assert "ACE seed aborted:" in captured.err
     assert "playbooks_dir must stay within" in captured.err
     assert not (tmp_path / "outside").exists()
+
+
+def test_seed_command_emits_product_analytics(tmp_path, monkeypatch) -> None:
+    project_dir = tmp_path / "seed-telemetry-project"
+    project_dir.mkdir()
+    (project_dir / "README.md").write_text("# Seed Telemetry\n", encoding="utf-8")
+    (project_dir / "ace.toml").write_text(
+        "\n".join(
+            [
+                "[project]",
+                "playbooks_dir = 'playbooks'",
+                "",
+                "[profiles.hosted]",
+                "api_url = 'https://ace.example'",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        ace_cli,
+        "_emit_cli_analytics_event",
+        lambda event_type, **kwargs: calls.append({"event_type": event_type, **kwargs}),
+    )
+
+    exit_code = ace_cli.main(["seed", "--path", str(project_dir)])
+
+    assert exit_code == 0
+    assert calls == [
+        {
+            "event_type": "cli_seed_completed",
+            "project_root": project_dir.resolve(),
+            "event_data": {
+                "created_count": 2,
+                "overwritten_count": 0,
+                "skipped_count": 0,
+                "scanned_input_count": 1,
+                "force": False,
+            },
+        }
+    ]

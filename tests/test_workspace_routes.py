@@ -50,7 +50,13 @@ from ace_platform.api.routes.workspaces import (
 )
 from ace_platform.core.security import create_access_token, hash_password
 from ace_platform.core.workspaces import DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
-from ace_platform.db.models import Base, User, WorkspaceMembership
+from ace_platform.db.models import (
+    AcquisitionEvent,
+    AcquisitionEventType,
+    Base,
+    User,
+    WorkspaceMembership,
+)
 
 RUN_INTEGRATION_TESTS = os.environ.get("RUN_WORKSPACE_INTEGRATION_TESTS") == "1"
 
@@ -492,6 +498,14 @@ class TestWorkspaceRoutesIntegration:
         assert len(memberships) == 1
         assert memberships[0]["user_id"] == str(owner["user"].id)
         assert memberships[0]["role"] == "owner"
+
+        upgrade_event_count = await async_session.scalar(
+            select(func.count(AcquisitionEvent.id)).where(
+                AcquisitionEvent.user_id == owner["user"].id,
+                AcquisitionEvent.event_type == AcquisitionEventType.UPGRADE_COMPLETED,
+            )
+        )
+        assert upgrade_event_count == 1
 
     async def test_workspace_crud_and_membership_management(
         self,
