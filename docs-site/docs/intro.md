@@ -3,98 +3,97 @@ sidebar_position: 1
 slug: /
 ---
 
-# Introduction to ACE
+# Choose Your ACE Path
 
-ACE is a **Playbooks as a Service** solution that provides self-improving AI instructions for your agents. Built on the Agentic Context Engineer (ACE) architecture, the platform helps your AI agents get better at their tasks over time.
+ACE is a local-first playbook engine with hosted cloud options for convenience, collaboration, and governance. Use this page to choose the right starting point before you dive into setup details.
 
-## What is ACE?
+## The Four ACE Offers
 
-ACE stands for **Agentic Context Engineer**. It's a three-agent architecture that continuously improves playbooks based on real-world outcomes:
+| Offer | Best for | Start here |
+| --- | --- | --- |
+| `ACE OSS` | A single user who wants local control or self-managed infrastructure | [ACE OSS & Local Start](/docs/getting-started/oss-local-start) |
+| `ACE Cloud Personal` | A solo user who wants ACE-hosted convenience | [ACE Cloud Quick Start](/docs/getting-started/quick-start) |
+| `ACE Cloud Team` | A team that needs shared workspaces, invites, and collaboration | [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-cloud-team) |
+| `ACE Enterprise` | An organization that needs governance, compliance, or private deployment options | [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-enterprise) |
 
-1. **Generator** - Produces outputs based on playbook instructions
-2. **Reflector** - Analyzes outcomes to identify improvement opportunities
-3. **Curator** - Synthesizes feedback into improved playbook versions
+## The Short Version
 
-## What are Playbooks?
+ACE separates two ideas that are easy to blur together:
 
-Playbooks are structured instructions that guide AI agents on how to perform specific tasks. Unlike static prompts, ACE playbooks:
+- deployment mode: local/self-managed, ACE-hosted cloud, or private deployment
+- workspace plan: personal, team, or enterprise
 
-- **Evolve automatically** based on recorded outcomes
-- **Version controlled** so you can track changes over time
-- **Accessible via MCP** for seamless integration with AI agents that support MCP
+That means:
 
-## Key Features
+- `ACE OSS` is a real product, not a crippled trial
+- `ACE Cloud Personal` is for one hosted user and does not require a team
+- `ACE Cloud Team` adds shared workflows and team administration
+- `ACE Enterprise` adds governance, compliance, and deployment control
 
-### Self-Improving Instructions
+## Start With The Right Guide
 
-Record outcomes from your AI tasks, and ACE automatically improves the underlying playbooks. The more you use them, the better they get.
+### Start with `ACE OSS` if:
 
-### MCP Integration
+- you want local control or self-managed infrastructure
+- you are comfortable managing your own model keys, storage, and backups
+- you want the ACE engine without ACE-operated cloud services
 
-Access your playbooks directly from Claude Desktop, Claude Code, or any MCP-compatible agent. No API integration required.
+Start here: [ACE OSS & Local Start](/docs/getting-started/oss-local-start)
 
-### Version History
+### Start with `ACE Cloud Personal` if:
 
-Every evolution creates a new version. Compare changes, understand improvements, and roll back if needed.
+- you are a solo user who wants hosted convenience
+- you want cloud sync, backups, and managed background execution
+- you do not need shared team workflows yet
 
-### Usage Analytics
+Start here: [ACE Cloud Quick Start](/docs/getting-started/quick-start)
 
-Track how your playbooks are being used and monitor evolution progress through the dashboard.
+### Start with `ACE Cloud Team` if:
 
-## Quick Example
+- multiple people need the same ACE workspace
+- you need invites, shared playbooks, reviews, or team visibility
+- collaboration matters more than simple solo hosting
 
-```
-Use the ace record_outcome tool with:
-- playbook_id: "abc123"
-- task_description: "Summarized quarterly earnings report"
-- outcome: "success"
-- notes: "Summary was accurate and well-structured"
-```
+Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-cloud-team)
 
-After enough outcomes are recorded, ACE automatically evolves the playbook to incorporate lessons learned.
+### Start with `ACE Enterprise` if:
+
+- your organization needs governance, compliance, or audit controls
+- procurement requires private deployment or contractual support
+- identity management and admin controls are part of the buying decision
+
+Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-enterprise)
 
 ## Getting Started
-
-Ready to try ACE? Here's the fastest path:
 
 1. **[Create an account](/docs/getting-started/creating-account)** - Sign up and verify your email
 2. **[Quick Start](/docs/getting-started/quick-start)** - Set up your first playbook in 5 minutes
 3. **[ACE CLI](/docs/getting-started/ace-cli)** - Bootstrap a local or agent-friendly setup with the shipped CLI commands
 4. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
 
-## Use Cases
+## Why The Split Matters
 
-ACE is ideal for:
+The ACE v2 architecture keeps the boundary clear:
 
-- **Code Review Agents** - Improve review quality based on feedback
-- **Documentation Writers** - Learn from corrections and preferences
-- **Data Analysis** - Refine analysis approaches from outcomes
-- **Customer Support** - Enhance response quality over time
-- **Content Generation** - Adapt to style and quality feedback
+- `ACE OSS` stays genuinely useful without ACE-operated services
+- hosted value comes from private cloud services such as sync, backups, managed jobs, and team governance
+- team and enterprise features build on top of the hosted individual experience instead of replacing it
 
-## Architecture Overview
+## What ACE Is
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                           ACE                                │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────┐    ┌──────────┐    ┌──────────┐              │
-│  │Generator │───▶│Reflector │───▶│ Curator  │              │
-│  └──────────┘    └──────────┘    └──────────┘              │
-│       │                               │                     │
-│       ▼                               ▼                     │
-│  ┌──────────┐                   ┌──────────┐               │
-│  │ Playbook │◀──────────────────│ Evolved  │               │
-│  │  v1.0    │                   │  v2.0    │               │
-│  └──────────┘                   └──────────┘               │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
+ACE stands for **Agentic Context Engineer**. It uses a three-agent architecture that continuously improves playbooks based on real-world outcomes:
+
+1. **Generator**: produces outputs based on playbook instructions
+2. **Reflector**: analyzes outcomes to identify improvement opportunities
+3. **Curator**: synthesizes feedback into improved playbook versions
+
+Playbooks are structured instructions for AI agents. Unlike static prompts, ACE playbooks evolve from recorded outcomes, keep version history, and stay accessible through MCP and related tooling.
 
 ## Next Steps
 
 - Explore the [Getting Started](/docs/getting-started/quick-start) guide
 - Explore the [ACE CLI](/docs/getting-started/ace-cli) guide for local-first onboarding
+- Compare paths above, then start with either [ACE OSS & Local Start](/docs/getting-started/oss-local-start) or [ACE Cloud Quick Start](/docs/getting-started/quick-start)
+- Learn the shared model in [Core Concepts](/docs/getting-started/core-concepts)
 - Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
 - Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)

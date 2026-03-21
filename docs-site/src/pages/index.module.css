@@ -54,6 +54,7 @@
 .feature {
   text-align: center;
   padding: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .featureIcon {
@@ -107,6 +108,10 @@
 
 .linkCards {
   justify-content: center;
+}
+
+.linkCards :global(.col) {
+  margin-bottom: 1.5rem;
 }
 
 .linkCard {
