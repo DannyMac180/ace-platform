@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
       label: 'User Guides',
       items: [
         'user-guides/creating-playbooks',
+        'user-guides/workspaces-and-teams',
         'user-guides/understanding-evolution',
         'user-guides/managing-api-keys',
         'user-guides/billing-subscriptions',

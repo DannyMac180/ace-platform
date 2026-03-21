@@ -6,7 +6,20 @@ sidebar_position: 4
 
 Manage your ACE subscription, usage, and billing.
 
+## Subscription vs Workspace Plan
+
+Hosted ACE separates billing state from workspace shape.
+
+| Concept | What it controls |
+| --- | --- |
+| Billing subscription | Trial status, hosted access, and usage limits |
+| Workspace plan | Whether the workspace is `personal`, `team`, or `enterprise`, plus collaboration features |
+
+If you need invites, roles, member management, or the personal-to-team upgrade path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
+
 ## Plans Overview
+
+This section covers subscription and billing tiers. It does not replace the hosted workspace model.
 
 | Plan | Playbooks | Evolutions/month | Price |
 |------|-----------|------------------|-------|
