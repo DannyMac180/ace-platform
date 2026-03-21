@@ -6,7 +6,20 @@ sidebar_position: 4
 
 This page explains the hosted ACE plans and where each one fits. If you want local or self-managed `ACE OSS`, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead. `ACE OSS` does not require an ACE-hosted subscription.
 
+## Subscription vs Workspace Plan
+
+Hosted ACE separates billing state from workspace shape.
+
+| Concept | What it controls |
+| --- | --- |
+| Billing subscription | Trial status, hosted access, and usage limits |
+| Workspace plan | Whether the workspace is `personal`, `team`, or `enterprise`, plus collaboration features |
+
+If you need invites, roles, member management, or the personal-to-team upgrade path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
+
 ## Hosted Plans Overview
+
+This section covers hosted packaging. It does not replace the hosted workspace model.
 
 | Plan | Best for | Core value |
 | --- | --- | --- |
