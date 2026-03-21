@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
       label: 'Getting Started',
       items: [
         'getting-started/quick-start',
+        'getting-started/product-split',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
@@ -16,6 +17,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'User Guides',
       items: [
+        'user-guides/hosted-plans-migration',
         'user-guides/creating-playbooks',
         'user-guides/understanding-evolution',
         'user-guides/managing-api-keys',

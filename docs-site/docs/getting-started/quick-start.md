@@ -6,11 +6,25 @@ sidebar_position: 1
 
 Get up and running with ACE in 5 minutes.
 
+If you are deciding between self-managed and hosted ACE, start with
+[Choosing the right ACE product](/docs/getting-started/product-split).
+
+If you already use hosted ACE and want the March 2026 change summary first,
+read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
 ## Prerequisites
 
 - An ACE account ([create one here](https://app.aceagent.io))
 - Verified email address
 - An API key with appropriate scopes
+
+:::note
+New hosted signups begin in a personal workspace. When you need invites,
+shared playbooks, or team visibility, the upgrade path is
+`ACE Cloud Personal` to `ACE Cloud Team`. See the
+[hosted plans update](/docs/user-guides/hosted-plans-migration) for the full
+March 2026 migration summary.
+:::
 
 ## Step 1: Create an API Key
 
@@ -140,6 +154,7 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 
 ## What's Next?
 
+- Compare [ACE OSS and ACE Cloud](/docs/getting-started/product-split)
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options
 - Read about [Recording Outcomes](/docs/developer-guides/recording-outcomes) effectively

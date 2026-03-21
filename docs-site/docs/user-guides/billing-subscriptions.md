@@ -2,100 +2,77 @@
 sidebar_position: 4
 ---
 
-# Billing & Subscriptions
+# Workspaces, Plans, and Billing
 
-Manage your ACE subscription, usage, and billing.
+ACE uses workspace-based hosted plans so solo users and teams can follow a
+clear path without losing access to hosted convenience.
+
+If you are looking for the March 2026 change summary first, read the
+[hosted plans update](/docs/user-guides/hosted-plans-migration).
+
+## Workspace Model
+
+Every hosted ACE customer belongs to a workspace.
+
+- A `personal` workspace is for one user on `ACE Cloud Personal`.
+- A `team` workspace is for shared collaboration on `ACE Cloud Team`.
+- Enterprise deployments build on the team model with stronger governance and
+  deployment controls.
+
+This keeps hosted ACE on one path:
+
+- start as one user on a personal workspace
+- move to a team workspace when collaboration becomes necessary
+- add enterprise controls only when organizational requirements demand them
 
 ## Plans Overview
 
-| Plan | Playbooks | Evolutions/month | Price |
-|------|-----------|------------------|-------|
-| **Free Trial** | 1 | 10 | Free |
-| **Starter** | 5 | 100 | $9/month |
-| **Pro** | 20 | 500 | $29/month |
-| **Ultra** | 100 | 2,000 | $79/month |
-
-:::note
-The Free Trial requires a payment method on file to trigger evolutions.
-:::
+| Plan | Best for | Includes |
+| --- | --- | --- |
+| `ACE Cloud Personal` | One hosted user who wants convenience | One-user workspace, cloud sync, backups, managed background execution |
+| `ACE Cloud Team` | Teams that need shared workflows | Shared workspace, invites, shared playbooks, reviews, approvals, permissions |
+| `ACE Enterprise` | Organizations with governance or deployment requirements | Advanced governance, auditability, contractual support, private deployment options |
 
 ## Choosing a Plan
 
-### Starter Plan
+### `ACE Cloud Personal`
 
-Best for:
-- Individual developers
-- Personal projects
-- Getting started with ACE
+Best if:
 
-### Pro Plan
+- you are the only active user
+- you want hosted ACE without self-hosting overhead
+- you want your workspace to stay private and portable across devices
 
-Best for:
-- Professional developers
-- Small teams
-- Multiple active projects
+### `ACE Cloud Team`
 
-### Ultra Plan
+Best if:
 
-Best for:
-- Power users
-- Larger teams
-- High-volume usage
+- multiple people need the same ACE workspace
+- you need invites, shared playbooks, or approvals
+- you need shared visibility rather than just solo hosted convenience
 
-## Subscribing
+### `ACE Enterprise`
 
-### From the Dashboard
+Best if:
 
-1. Go to **Settings** > **Billing**
-2. Click **Upgrade Plan**
-3. Select your desired plan
-4. Enter payment details
-5. Click **Subscribe**
+- compliance, governance, or procurement requirements drive the decision
+- you need stronger admin controls and auditability
+- private deployment terms are part of the buying process
 
-### Payment Methods
+## Moving from Personal to Team
 
-We accept:
-- Credit cards (Visa, Mastercard, Amex)
-- Debit cards
-- Link (one-click checkout)
+The ACE v2 model is designed so hosted users can grow without switching to a
+different product family:
 
-All payments processed securely via Stripe.
+1. Start in `ACE Cloud Personal` with a one-user hosted workspace.
+2. Keep using ACE as a solo customer while your work stays individual.
+3. Move to `ACE Cloud Team` when you need a shared workspace and invites.
 
-## Managing Your Subscription
+For the customer-facing migration summary for existing hosted solo users, read
+the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
-### Viewing Current Plan
+## Related Docs
 
-1. Go to **Settings** > **Billing**
-2. View your current plan details:
-   - Plan name
-   - Billing cycle
-   - Next billing date
-   - Current usage
-
-### Changing Plans
-
-**Upgrading:**
-1. Go to the **Pricing** page
-2. Select a higher plan
-3. Complete checkout
-
-Upgrades take effect immediately. You'll be charged a prorated amount.
-
-**Downgrading:**
-1. Go to the **Pricing** page
-2. Select a lower plan
-3. Confirm the change
-
-Downgrades take effect at the end of your current billing period.
-
-### Canceling
-
-1. Go to **Settings** > **Billing**
-2. Click **Cancel Subscription**
-3. Optionally provide feedback
-4. Confirm cancellation
-
-After cancellation:
-- Access continues until period ends
-- Data retained for 30 days
-- Can reactivate anytime
+- [Choosing the right ACE product](/docs/getting-started/product-split)
+- [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
+- [Quick Start](/docs/getting-started/quick-start)

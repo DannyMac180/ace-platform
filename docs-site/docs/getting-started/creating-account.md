@@ -6,6 +6,10 @@ sidebar_position: 3
 
 Get started with ACE by creating and verifying your account.
 
+If you are choosing between `ACE OSS`, `ACE Cloud Personal`, and
+`ACE Cloud Team`, read
+[Choosing the right ACE product](/docs/getting-started/product-split) first.
+
 ## Sign Up
 
 ### Option 1: Email & Password
@@ -49,10 +53,19 @@ Email verification is required to:
 - Click **Resend Verification** in the dashboard
 - Contact support if issues persist
 
+## Workspace Setup
+
+New hosted accounts start in a personal workspace designed for one user.
+
+If you are an existing hosted solo customer and want the March 2026 migration
+summary, read the
+[hosted plans update](/docs/user-guides/hosted-plans-migration).
+
 ## Next Steps
 
 With your account ready:
 
-1. [Create an API Key](/docs/user-guides/managing-api-keys)
+1. [Review the product split](/docs/getting-started/product-split)
 2. [Set up your first playbook](/docs/getting-started/quick-start)
-3. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
+3. [Read the hosted plans update](/docs/user-guides/hosted-plans-migration)
+4. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
