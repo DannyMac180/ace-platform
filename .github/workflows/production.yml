@@ -368,6 +368,7 @@ jobs:
             --app "${BACKEND_APP}" \
             --config fly.toml \
             --image "${{ github.event.inputs.backend_image }}" \
+            --skip-release-command \
             --strategy immediate \
             --wait-timeout 15m
 

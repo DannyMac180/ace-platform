@@ -180,10 +180,14 @@ fly releases --app ace-platform-web --image
 6. Approve the protected `production` environment if required.
 7. Re-check backend/frontend health and inspect `fly status` / `fly logs`.
 
+The production rollback workflow skips Fly's release command for the backend
+image so an older container can be restored even if the database has already
+advanced past that image's Alembic revision graph.
+
 ### CLI rollback from the private repo
 
 ```bash
-fly deploy --app ace-platform --config fly.toml --image registry.fly.io/ace-platform:<label>
+fly deploy --app ace-platform --config fly.toml --image registry.fly.io/ace-platform:<label> --skip-release-command
 cd web
 fly deploy --app ace-platform-web --config fly.toml --image registry.fly.io/ace-platform-web:<label>
 ```
