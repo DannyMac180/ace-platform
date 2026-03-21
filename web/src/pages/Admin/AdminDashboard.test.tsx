@@ -9,6 +9,7 @@ const {
   mockGetOperationalHealth,
   mockGetSignups,
   mockGetFunnel,
+  mockGetProductAnalytics,
   mockGetTopUsers,
   mockAuthState,
 } = vi.hoisted(() => {
@@ -23,6 +24,7 @@ const {
     mockGetOperationalHealth: vi.fn(),
     mockGetSignups: vi.fn(),
     mockGetFunnel: vi.fn(),
+    mockGetProductAnalytics: vi.fn(),
     mockGetTopUsers: vi.fn(),
     mockAuthState,
   };
@@ -38,6 +40,7 @@ vi.mock('../../utils/api', () => ({
     getOperationalHealth: mockGetOperationalHealth,
     getSignups: mockGetSignups,
     getFunnel: mockGetFunnel,
+    getProductAnalytics: mockGetProductAnalytics,
     getTopUsers: mockGetTopUsers,
   },
 }));
@@ -120,6 +123,25 @@ describe('AdminDashboard', () => {
       conversion_first_playbook_to_paid_active_non_trial_pct: 50,
       conversion_signup_to_trial_started_pct: 37.5,
       conversion_signup_to_paid_active_non_trial_pct: 12.5,
+    });
+    mockGetProductAnalytics.mockResolvedValue({
+      days: 30,
+      start_date: '2026-02-19T00:00:00Z',
+      end_date: '2026-03-20T00:00:00Z',
+      metrics: [
+        { key: 'signup', label: 'Signups', count: 8 },
+        { key: 'init', label: 'CLI init', count: 6 },
+        { key: 'seed', label: 'CLI seed', count: 4 },
+        { key: 'benchmark', label: 'CLI benchmark', count: 3 },
+        { key: 'upgrade', label: 'Upgrades', count: 2 },
+        { key: 'retention', label: 'Returning users', count: 5 },
+      ],
+      retention: {
+        returning_users: 5,
+        retained_after_day_1: 4,
+        retained_after_day_7: 2,
+        retained_after_day_30: 1,
+      },
     });
     mockGetTopUsers.mockResolvedValue([]);
   });
