@@ -5,7 +5,9 @@ slug: /
 
 # Introduction to ACE
 
-ACE is a **Playbooks as a Service** solution that provides self-improving AI instructions for your agents. Built on the Agentic Context Engineer (ACE) architecture, the platform helps your AI agents get better at their tasks over time.
+ACE is a platform for self-improving AI instructions. You can use it as a
+hosted cloud product or through a local-first OSS path, depending on whether
+you want managed convenience or self-managed control.
 
 ## What is ACE?
 
@@ -55,11 +57,20 @@ After enough outcomes are recorded, ACE automatically evolves the playbook to in
 
 ## Getting Started
 
-Ready to try ACE? Here's the fastest path:
+Ready to try ACE? Choose the path that matches how you want to run it:
 
-1. **[Create an account](/docs/getting-started/creating-account)** - Sign up and verify your email
-2. **[Quick Start](/docs/getting-started/quick-start)** - Set up your first playbook in 5 minutes
-3. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
+1. **[ACE Cloud Quick Start](/docs/getting-started/quick-start)** - Start with the hosted dashboard, API keys, and managed MCP flow
+2. **[OSS Overview](/docs/getting-started/oss-overview)** - Understand what is public OSS, what stays hosted, and which local path fits
+3. **[Local Quickstart](/docs/getting-started/local-quickstart)** - Run the extracted OSS package or the self-managed local runtime
+4. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
+
+## Choose Your Path
+
+| Path | Best for | Start here |
+| --- | --- | --- |
+| Hosted ACE | Fastest setup, hosted auth, sync, and dashboard workflows | [ACE Cloud Quick Start](/docs/getting-started/quick-start) |
+| ACE OSS package | Embedding the ACE engine inside your own Python workflow | [OSS Overview](/docs/getting-started/oss-overview) |
+| Self-managed local runtime | Running ACE's API, CLI, and MCP server on your own infrastructure | [Local Quickstart](/docs/getting-started/local-quickstart) |
 
 ## Use Cases
 
@@ -94,5 +105,6 @@ ACE is ideal for:
 ## Next Steps
 
 - Explore the [Getting Started](/docs/getting-started/quick-start) guide
+- Explore the [OSS and local setup path](/docs/getting-started/oss-overview)
 - Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
 - Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)

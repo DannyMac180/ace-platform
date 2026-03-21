@@ -95,6 +95,10 @@ const config: Config = {
               to: '/docs/getting-started/quick-start',
             },
             {
+              label: 'OSS & Local Setup',
+              to: '/docs/getting-started/oss-overview',
+            },
+            {
               label: 'User Guides',
               to: '/docs/user-guides/creating-playbooks',
             },

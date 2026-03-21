@@ -8,6 +8,8 @@ const sidebars: SidebarsConfig = {
       label: 'Getting Started',
       items: [
         'getting-started/quick-start',
+        'getting-started/oss-overview',
+        'getting-started/local-quickstart',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],

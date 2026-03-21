@@ -2,9 +2,23 @@
 sidebar_position: 1
 ---
 
-# Quick Start
+# ACE Cloud Quick Start
 
-Get up and running with ACE in 5 minutes.
+Get up and running with hosted ACE in 5 minutes.
+
+:::info Looking For The OSS Or Self-Managed Path?
+If you want ACE without the hosted cloud service, start with the
+[OSS Overview](/docs/getting-started/oss-overview) and then follow the
+[Local Quickstart](/docs/getting-started/local-quickstart).
+:::
+
+## Choose Your Path
+
+| Path | Best for | Start here |
+| --- | --- | --- |
+| Hosted ACE Cloud | Managed setup, dashboard, sync, and billing | This guide |
+| ACE OSS package | Embedding the ACE engine in your own Python workflow | [OSS Overview](/docs/getting-started/oss-overview) |
+| Self-managed local runtime | Running the ACE API, CLI, and MCP server yourself | [Local Quickstart](/docs/getting-started/local-quickstart) |
 
 ## Prerequisites
 
@@ -141,6 +155,7 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 ## What's Next?
 
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
+- Explore the [OSS and local setup path](/docs/getting-started/oss-overview)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options
 - Read about [Recording Outcomes](/docs/developer-guides/recording-outcomes) effectively
 

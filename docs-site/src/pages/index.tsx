@@ -102,19 +102,25 @@ function HomepageQuickLinks() {
       <div className="container">
         <h2 className={styles.sectionTitle}>Quick Links</h2>
         <div className={clsx('row', styles.linkCards)}>
-          <div className="col col--4">
+          <div className="col col--3">
             <Link to="/docs/getting-started/quick-start" className={styles.linkCard}>
-              <h3>Quick Start</h3>
-              <p>Get up and running in 5 minutes</p>
+              <h3>ACE Cloud Quick Start</h3>
+              <p>Get up and running with the hosted path in 5 minutes</p>
             </Link>
           </div>
-          <div className="col col--4">
+          <div className="col col--3">
+            <Link to="/docs/getting-started/oss-overview" className={styles.linkCard}>
+              <h3>OSS & Local Setup</h3>
+              <p>Choose between the OSS package and the self-managed runtime</p>
+            </Link>
+          </div>
+          <div className="col col--3">
             <Link to="/docs/developer-guides/mcp-integration/claude-code" className={styles.linkCard}>
               <h3>Claude Code Setup</h3>
               <p>Integrate with Claude Code CLI</p>
             </Link>
           </div>
-          <div className="col col--4">
+          <div className="col col--3">
             <Link to="/docs/developer-guides/recording-outcomes" className={styles.linkCard}>
               <h3>Recording Outcomes</h3>
               <p>Feed ACE the feedback it needs to evolve</p>
