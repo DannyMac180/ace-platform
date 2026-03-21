@@ -4,7 +4,17 @@ sidebar_position: 3
 
 # Creating an Account
 
-Get started with ACE by creating and verifying your account.
+Get started with ACE by creating your account and choosing the sign-in path
+that fits your setup.
+
+On ACE Cloud, you can onboard in two ways:
+
+- **Email and password + API key** for a provider-neutral path that works well
+  with MCP clients like Claude Code or Codex
+- **Hosted OAuth** for faster sign-in with Google or GitHub
+
+Hosted OAuth is a convenience layer, not a requirement. Both paths land in the
+same hosted workspace.
 
 ## Sign Up
 
@@ -16,15 +26,44 @@ Get started with ACE by creating and verifying your account.
 4. Create a strong password (minimum 8 characters)
 5. Click **Create Account**
 6. Check your email for verification link
+7. Verify your email before creating API keys or using verification-gated
+   hosted features
 
-### Option 2: OAuth Providers
+This is the recommended path if you want to manage ACE access with an API key
+instead of signing your MCP client in through hosted OAuth.
+
+### Option 2: Hosted OAuth
 
 Sign up instantly using:
 
 - **Google** - Use your Google Workspace or personal account
 - **GitHub** - Recommended for developers
 
-OAuth signup automatically verifies your email.
+Hosted OAuth automatically verifies your email on ACE Cloud, so it can shorten
+the path into the product. You can still switch to API-key-based MCP access
+later from the dashboard.
+
+## Recommended Onboarding Paths
+
+### Provider-Neutral MCP Setup
+
+Use this flow for Claude Code, Codex, or any MCP client where you want to
+authenticate with an ACE API key:
+
+1. Create your account with **email and password**
+2. Verify your email
+3. Start your trial or subscribe
+4. Create an API key in the dashboard
+5. Add that key to your MCP client using the `X-API-Key` header
+
+### Fastest Hosted Sign-In
+
+Use this flow if you want the quickest way into the hosted app:
+
+1. Sign up with **Google** or **GitHub**
+2. Land in your workspace with email verification already satisfied
+3. Start your trial or subscribe when you need API-key-gated hosted features
+4. Create an API key later if you want MCP access without relying on hosted OAuth
 
 ## Email Verification
 
@@ -34,6 +73,12 @@ Email verification is required to:
 - Record outcomes
 - Trigger evolutions
 - Access billing features
+
+On ACE Cloud:
+
+- **Email/password accounts** must complete email verification before those
+  actions are unlocked
+- **Hosted OAuth accounts** are treated as verified immediately
 
 ### Verification Process
 
