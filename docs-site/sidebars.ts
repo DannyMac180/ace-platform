@@ -7,7 +7,9 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Getting Started',
       items: [
+        'getting-started/oss-local-start',
         'getting-started/quick-start',
+        'getting-started/ace-cli',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
@@ -17,6 +19,7 @@ const sidebars: SidebarsConfig = {
       label: 'User Guides',
       items: [
         'user-guides/creating-playbooks',
+        'user-guides/workspaces-and-teams',
         'user-guides/understanding-evolution',
         'user-guides/managing-api-keys',
         'user-guides/billing-subscriptions',

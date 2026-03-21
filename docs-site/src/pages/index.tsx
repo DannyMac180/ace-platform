@@ -18,13 +18,18 @@ function HomepageHeader() {
         <div className={styles.buttons}>
           <Link
             className={clsx('button button--primary button--lg', styles.heroButton)}
-            href={`${appUrl}/login`}>
-            Get Started
+            to="/docs/">
+            Choose Your Path
           </Link>
           <Link
             className={clsx('button button--secondary button--lg', styles.heroButton)}
-            to="/docs/developer-guides/mcp-integration/overview">
-            MCP Integration
+            to="/docs/getting-started/oss-local-start">
+            ACE OSS & Local Start
+          </Link>
+          <Link
+            className={clsx('button button--secondary button--lg', styles.heroButton)}
+            href={`${appUrl}/login`}>
+            ACE Cloud Sign In
           </Link>
         </div>
       </div>
@@ -40,33 +45,42 @@ type FeatureItem = {
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Self-Improving Playbooks',
+    title: 'ACE OSS',
     icon: '♠',
     description: (
       <>
-        Record outcomes after each task, and ACE automatically evolves
-        your playbooks based on real-world results. The more you use them,
-        the better they get.
+        Run ACE locally or on your own infrastructure with your own model keys,
+        storage, and operational control.
       </>
     ),
   },
   {
-    title: 'MCP Integration',
+    title: 'ACE Cloud Personal',
     icon: '♥',
     description: (
       <>
-        Connect directly to Claude Desktop, Claude Code, or any MCP-compatible
-        agent. Access playbooks without writing integration code.
+        Get hosted convenience for one user with sync, backups, and managed
+        background execution.
       </>
     ),
   },
   {
-    title: 'Version Control Built-In',
+    title: 'ACE Cloud Team',
     icon: '♦',
     description: (
       <>
-        Every change creates a new version. Compare diffs, understand improvements,
-        and roll back if needed. Full history at your fingertips.
+        Add shared workspaces, invites, approvals, and team-level visibility
+        when multiple people need the same ACE workflow.
+      </>
+    ),
+  },
+  {
+    title: 'ACE Enterprise',
+    icon: '♣',
+    description: (
+      <>
+        Add governance, compliance, and private deployment options for
+        organizations with stronger control requirements.
       </>
     ),
   },
@@ -74,7 +88,7 @@ const FeatureList: FeatureItem[] = [
 
 function Feature({title, icon, description}: FeatureItem) {
   return (
-    <div className={clsx('col col--4', styles.feature)}>
+    <div className={clsx('col col--6', styles.feature)}>
       <div className={styles.featureIcon}>{icon}</div>
       <h3 className={styles.featureTitle}>{title}</h3>
       <p className={styles.featureDescription}>{description}</p>
@@ -102,22 +116,28 @@ function HomepageQuickLinks() {
       <div className="container">
         <h2 className={styles.sectionTitle}>Quick Links</h2>
         <div className={clsx('row', styles.linkCards)}>
-          <div className="col col--4">
+          <div className="col col--6">
             <Link to="/docs/getting-started/quick-start" className={styles.linkCard}>
-              <h3>Quick Start</h3>
-              <p>Get up and running in 5 minutes</p>
+              <h3>ACE Cloud Quick Start</h3>
+              <p>Hosted onboarding for Personal, Team, and Enterprise paths</p>
             </Link>
           </div>
-          <div className="col col--4">
-            <Link to="/docs/developer-guides/mcp-integration/claude-code" className={styles.linkCard}>
-              <h3>Claude Code Setup</h3>
-              <p>Integrate with Claude Code CLI</p>
+          <div className="col col--6">
+            <Link to="/docs/getting-started/oss-local-start" className={styles.linkCard}>
+              <h3>ACE OSS & Local Start</h3>
+              <p>Find the local runtime, OSS overview, and self-hosted entry points</p>
             </Link>
           </div>
-          <div className="col col--4">
-            <Link to="/docs/developer-guides/recording-outcomes" className={styles.linkCard}>
-              <h3>Recording Outcomes</h3>
-              <p>Feed ACE the feedback it needs to evolve</p>
+          <div className="col col--6">
+            <Link to="/docs/user-guides/billing-subscriptions" className={styles.linkCard}>
+              <h3>ACE Cloud Plans</h3>
+              <p>Compare Personal, Team, and Enterprise hosted plans</p>
+            </Link>
+          </div>
+          <div className="col col--6">
+            <Link to="/docs/developer-guides/mcp-integration/overview" className={styles.linkCard}>
+              <h3>MCP Integration</h3>
+              <p>Connect ACE to Claude Desktop, Claude Code, and related clients</p>
             </Link>
           </div>
         </div>
@@ -131,7 +151,7 @@ export default function Home(): React.JSX.Element {
   return (
     <Layout
       title={`${siteConfig.title} Documentation`}
-      description="Documentation for ACE - Playbooks as a Service with self-improving AI instructions">
+      description="Documentation for ACE's OSS, hosted personal, team, and enterprise product paths.">
       <HomepageHeader />
       <main>
         <HomepageFeatures />

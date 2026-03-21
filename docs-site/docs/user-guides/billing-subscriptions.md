@@ -2,15 +2,19 @@
 sidebar_position: 4
 ---
 
-# Hosted Plans, Billing, and Limits
+# ACE Cloud Plans, Billing, and Limits
 
 ACE Cloud uses a plan-aware entitlement model. This page explains what your
 hosted workspace includes, what counts against limits, what warning and blocked
 states mean, and when you should upgrade.
 
-## Two Layers You Will See In Hosted ACE
+If you want local or self-managed `ACE OSS`, start with
+[ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead.
+`ACE OSS` does not require an ACE-hosted subscription.
 
-Hosted ACE currently exposes two related concepts:
+## Subscription vs Workspace Plan
+
+Hosted ACE currently exposes three related concepts:
 
 | Layer | Values you may see | What it controls |
 | --- | --- | --- |
@@ -21,11 +25,28 @@ Hosted ACE currently exposes two related concepts:
 Think of the **workspace plan** as the shape of the workspace and the
 **billing tier** as the usage envelope that funds hosted operations.
 
+If you need invites, roles, member management, or the personal-to-team upgrade
+path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
+
 :::note
 Hosted entitlements such as cloud sync, hosted backups, hosted evals, billing
 checks, and ACE-managed inference are cloud-side services. They do not apply to
 ACE OSS or self-managed local usage.
 :::
+
+## Hosted Plans Overview
+
+This section covers hosted packaging. It does not replace the hosted workspace
+model.
+
+| Plan | Best for | Core value |
+| --- | --- | --- |
+| `ACE Cloud Personal` | One user who wants hosted convenience | Hosted workspace, cloud sync, backups, managed background execution |
+| `ACE Cloud Team` | Teams that need shared workflows | Team workspace, invites, shared playbooks, approvals, and permissions |
+| `ACE Enterprise` | Organizations with control requirements | Governance, compliance, auditability, support, and private deployment options |
+
+Current packaging and checkout details live on the
+[ACE pricing page](https://app.aceagent.io/pricing).
 
 ## Workspace Plans And Core Entitlements
 
@@ -142,7 +163,26 @@ Choose the upgrade path that matches the thing you are running out of:
 - **Need governance or private deployment terms**:
   move to **enterprise**.
 - **Blocked by billing state, not by plan size**:
-  update the payment method or reactivate the subscription before changing tiers.
+  update the payment method or reactivate the subscription before changing
+  tiers.
+
+## Where `ACE OSS` Fits
+
+`ACE OSS` is not the free tier of ACE Cloud. It is the self-managed product
+path for users who want to run ACE without ACE-operated services.
+
+Choose `ACE OSS` if you want:
+
+- local control
+- your own infrastructure and model credentials
+- a genuinely useful single-user runtime without hosted dependencies
+
+Choose ACE Cloud if you want:
+
+- less setup work
+- hosted sync and backups
+- managed jobs or inference convenience
+- team collaboration or enterprise governance
 
 ## Where To Check In The App
 
@@ -156,6 +196,7 @@ Use these app surfaces together:
 ## Related Guides
 
 - [Creating an Account](/docs/getting-started/creating-account)
+- [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
 - [Core Concepts](/docs/getting-started/core-concepts)
 - [Understanding Evolution](/docs/user-guides/understanding-evolution)
 - [Managing API Keys](/docs/user-guides/managing-api-keys)
