@@ -59,7 +59,8 @@ Ready to try ACE? Here's the fastest path:
 
 1. **[Create an account](/docs/getting-started/creating-account)** - Sign up and verify your email
 2. **[Quick Start](/docs/getting-started/quick-start)** - Set up your first playbook in 5 minutes
-3. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
+3. **[ACE CLI](/docs/getting-started/ace-cli)** - Bootstrap a local or agent-friendly setup with the shipped CLI commands
+4. **[Core Concepts](/docs/getting-started/core-concepts)** - Understand playbooks, outcomes, and evolution
 
 ## Use Cases
 
@@ -94,5 +95,6 @@ ACE is ideal for:
 ## Next Steps
 
 - Explore the [Getting Started](/docs/getting-started/quick-start) guide
+- Explore the [ACE CLI](/docs/getting-started/ace-cli) guide for local-first onboarding
 - Learn about [MCP Integration](/docs/developer-guides/mcp-integration/overview)
 - Learn how to [record outcomes](/docs/developer-guides/recording-outcomes)

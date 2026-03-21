@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
       label: 'Getting Started',
       items: [
         'getting-started/quick-start',
+        'getting-started/ace-cli',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
