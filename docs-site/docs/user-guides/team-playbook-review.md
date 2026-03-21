@@ -19,7 +19,7 @@ the shared team registry yet.
 |-------|---------|------------------|
 | `draft` | Private working copy | Playbook detail page and playbook cards |
 | `proposed` | Submitted for review | Playbook detail page and playbook cards |
-| `approved` | Accepted for team reuse | Playbook detail page, playbook cards, and shared registry |
+| `approved` | Marked as ready for team reuse | Playbook detail page and playbook cards |
 | `archived` | Removed from active circulation | Playbook detail page and playbook cards |
 
 ### Review Actions
@@ -50,21 +50,24 @@ current state and who last changed it.
 
 ## Shared Registry
 
-Only `approved` team playbooks appear in the **Approved team playbooks** section
-on the dashboard. This is the shared registry for the workspace.
+The dashboard section is labeled **Approved team playbooks** and acts as the
+shared registry for the workspace.
+
+Today, the registry is populated from active team playbooks. The review state
+is still useful metadata on the playbook itself, but the backend does not
+currently enforce an `approved`-only filter for this list.
 
 The registry helps members find reusable playbooks without searching through
 each person's private drafts. Each card shows:
 
 - the playbook name and description
-- the owner or `You` when the approved playbook already belongs to you
+- the owner or `You` when the shared playbook already belongs to you
 - version count
 - whether the playbook is ready to reuse or already in your library
 
-If nothing has been approved yet, the registry stays empty until a team
-playbook reaches the `approved` state.
+If no active shared playbooks are available yet, the registry stays empty.
 
-## Reusing an Approved Team Playbook
+## Reusing a Shared Team Playbook
 
 To reuse a playbook from the shared registry:
 
@@ -72,10 +75,10 @@ To reuse a playbook from the shared registry:
 2. Find the playbook in **Approved team playbooks**.
 3. Click **Reuse**.
 
-ACE copies that approved playbook into your own library so you can work from it
-without editing the shared source in place.
+ACE copies that shared playbook into your own library so you can work from it
+without editing the source playbook in place.
 
-If the registry card says **In your library**, the current approved playbook is
+If the registry card says **In your library**, the current shared playbook is
 already owned by you, so there is nothing new to copy.
 
 ## Typical Workflow
@@ -83,10 +86,10 @@ already owned by you, so there is nothing new to copy.
 1. Create a playbook from the dashboard.
 2. Refine the content until the draft is ready.
 3. Open the playbook detail page and click **Submit for Review**.
-4. Reviewers inspect the playbook and either **Approve** it or **Return to
-   Draft**.
-5. Once approved, the playbook appears in the shared registry on the dashboard.
-6. Other members click **Reuse** to copy it into their own libraries.
+4. Review the playbook content on its detail page and use **Approve** or
+   **Return to Draft** when you want to change its review state again.
+5. Open the dashboard's shared registry section to find active team playbooks.
+6. Use **Reuse** to copy a shared playbook into your own library.
 
 ## Related Docs
 

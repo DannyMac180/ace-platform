@@ -131,8 +131,8 @@ ready to be shared more broadly.
 | Review state | What it means | Typical next step |
 |--------------|---------------|-------------------|
 | `draft` | Working copy owned by an individual member | Submit it for review |
-| `proposed` | Waiting for reviewer approval | Approve it, return it to draft, or archive it |
-| `approved` | Accepted as a reusable team playbook | Discover it in the shared registry |
+| `proposed` | Waiting for the next review decision | Approve it, return it to draft, or archive it |
+| `approved` | Marked as ready for team reuse | Reuse it or return it to draft for more edits |
 | `archived` | Removed from active team circulation | Return it to draft if it should be edited again |
 
 Use the review action buttons on the playbook detail page to move between these

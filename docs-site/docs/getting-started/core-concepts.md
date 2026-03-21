@@ -76,7 +76,7 @@ archived.
 |--------------|-------------|
 | `draft` | Editable working copy that has not been submitted for review |
 | `proposed` | Submitted and waiting for review decision |
-| `approved` | Accepted and shown in the team's shared registry |
+| `approved` | Marked as ready for team reuse |
 | `archived` | Retired from active circulation |
 
 See [Team Playbook Review & Registry](/docs/user-guides/team-playbook-review)
