@@ -388,6 +388,19 @@ jobs:
           curl -fsSL "${BACKEND_HEALTH_URL}" >/dev/null
           curl -fsSL "${FRONTEND_HEALTH_URL}" >/dev/null
 
+      - name: Verify rollback backend process groups
+        run: |
+          set -euo pipefail
+          machines_json="$(flyctl machine list -a "${BACKEND_APP}" --json)"
+
+          for process in api worker beat; do
+            running_count="$(jq --arg process "${process}" '[.[] | select(.config.metadata.fly_process_group == $process) | select(.state == "started" or .state == "running")] | length' <<< "${machines_json}")"
+            if [[ "${running_count}" -lt 1 ]]; then
+              echo "Expected at least one running ${process} machine for ${BACKEND_APP}"
+              exit 1
+            fi
+          done
+
       - name: Rollback summary
         run: |
           echo "## Production Rollback Complete" >> "${GITHUB_STEP_SUMMARY}"

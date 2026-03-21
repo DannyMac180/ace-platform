@@ -178,7 +178,8 @@ fly releases --app ace-platform-web --image
 4. Type `rollback` in the confirmation input.
 5. Paste the exact backend and frontend image refs from step 1.
 6. Approve the protected `production` environment if required.
-7. Re-check backend/frontend health and inspect `fly status` / `fly logs`.
+7. Re-check backend/frontend health, confirm the backend app has running `api`,
+   `worker`, and `beat` machines, and inspect `fly status` / `fly logs`.
 
 The production rollback workflow skips Fly's release command for the backend
 image so an older container can be restored even if the database has already
