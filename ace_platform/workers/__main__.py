@@ -12,8 +12,8 @@ def _run(command: str, argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:]) if argv is None else list(argv)
     if not args:
         args = DEFAULT_LOG_LEVEL_ARGS.copy()
-    celery_app.start([command, *args])
-    return 0
+    result = celery_app.start([command, *args])
+    return 0 if result is None else int(result)
 
 
 def worker_main(argv: list[str] | None = None) -> int:
