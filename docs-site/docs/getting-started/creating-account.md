@@ -1,11 +1,12 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 ---
 
-# Creating an Account
+# Create an ACE Cloud Account
 
-Get started with ACE by creating your account and choosing the sign-in path
-that fits your setup.
+Create and verify an account for `ACE Cloud Personal`, `ACE Cloud Team`, or `ACE Enterprise`.
+
+If you want `ACE OSS` on your own machine or infrastructure, you do not need an ACE-hosted account. Start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
 
 On ACE Cloud, you can onboard in two ways:
 

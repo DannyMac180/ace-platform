@@ -1,16 +1,33 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
-# Quick Start
+# ACE Cloud Quick Start
 
-Get up and running with ACE in 5 minutes.
+Get up and running with ACE-hosted onboarding in 5 minutes.
+
+This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`. If you want the local or self-managed `ACE OSS` path instead, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
+
+If you want the self-managed or agent-friendly setup path instead of the hosted
+dashboard flow, start with the [ACE CLI guide](/docs/getting-started/ace-cli).
+That guide covers `ace init`, `ace doctor`, `ace seed`, `ace benchmark`,
+`ace export`, and `ace import`.
 
 ## Prerequisites
 
-- An ACE account ([create one here](https://app.aceagent.io))
+- An ACE Cloud account ([create one here](https://app.aceagent.io))
 - Verified email address
 - An API key with appropriate scopes
+
+## Which Hosted Plan Is This For?
+
+The setup below is the hosted entry point for all ACE Cloud customers:
+
+- `ACE Cloud Personal`: solo hosted convenience
+- `ACE Cloud Team`: shared workspace collaboration
+- `ACE Enterprise`: governance and deployment-control needs on top of the hosted model
+
+If you are still deciding, read [Choose Your ACE Path](/docs/) first.
 
 ## Step 1: Create an API Key
 
@@ -24,6 +41,16 @@ Get up and running with ACE in 5 minutes.
    - `evolution:read` - Check evolution status
    - `evolution:write` - Trigger evolution manually
 5. Copy your API key (you won't see it again!)
+
+## Prefer Local Or Agent-Friendly Onboarding?
+
+Use the [ACE CLI guide](/docs/getting-started/ace-cli) when you want to:
+
+- bootstrap a repository with `ace init`
+- validate a self-managed setup with `ace doctor`
+- generate starter playbooks with `ace seed`
+- prove value with `ace benchmark`
+- move playbooks between hosted and local contexts with `ace export` and `ace import`
 
 ## Step 2: Create Your First Playbook
 
@@ -141,6 +168,7 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 ## What's Next?
 
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
+- Learn the [ACE CLI activation and portability flow](/docs/getting-started/ace-cli)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options
 - Read about [Recording Outcomes](/docs/developer-guides/recording-outcomes) effectively
 
