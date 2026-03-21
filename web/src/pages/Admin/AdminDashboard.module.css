@@ -34,6 +34,130 @@
   margin: var(--space-xs) 0 0 0;
 }
 
+.operationalSection {
+  margin-bottom: var(--space-xl);
+}
+
+.operationalHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.operationalTimestamp {
+  margin: var(--space-xs) 0 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.operationalGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-lg);
+}
+
+.operationalCard {
+  padding: var(--space-lg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    var(--bg-secondary);
+}
+
+.operationalCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.operationalTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.operationalSummary {
+  margin: var(--space-xs) 0 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.statusBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.statusHealthy {
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+}
+
+.statusAttention {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.statusDegraded {
+  background: rgba(239, 68, 68, 0.14);
+  color: #b91c1c;
+}
+
+.statusIdle {
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.metricItem {
+  padding: var(--space-sm);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  min-width: 0;
+}
+
+.metricValue {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.metricLabel {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.operationalFooter {
+  margin: var(--space-md) 0 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Stats Grid */
 .statsGrid {
   display: grid;
@@ -208,11 +332,18 @@
     grid-template-columns: 1fr;
   }
 
+  .operationalCardTop,
   .funnelHeader,
   .funnelRates {
     flex-direction: column;
     align-items: flex-start;
     gap: var(--space-xs);
+  }
+}
+
+@media (max-width: 640px) {
+  .metricGrid {
+    grid-template-columns: 1fr;
   }
 }
 
