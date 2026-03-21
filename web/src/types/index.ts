@@ -391,6 +391,41 @@ export interface PlatformStats {
   tier_distribution: Record<string, number>;
 }
 
+export interface SyncHealth {
+  status: string;
+  enabled_workspaces: number;
+  active_workspaces_24h: number;
+  sync_events_24h: number;
+  last_activity_at: string | null;
+}
+
+export interface JobQueueHealth {
+  status: string;
+  queued_jobs: number;
+  running_jobs: number;
+  failed_jobs_24h: number;
+  jobs_observed_24h: number;
+  oldest_queued_at: string | null;
+  last_completed_at: string | null;
+}
+
+export interface InferenceGatewayHealth {
+  status: string;
+  enabled_workspaces: number;
+  configured_providers: string[];
+  requests_24h: number;
+  total_tokens_24h: number;
+  total_cost_usd_24h: string;
+  last_request_at: string | null;
+}
+
+export interface OperationalHealth {
+  generated_at: string;
+  sync: SyncHealth;
+  job_queue: JobQueueHealth;
+  inference_gateway: InferenceGatewayHealth;
+}
+
 export interface AdminUserItem {
   id: string;
   email: string;

@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AdminUser
 from ace_platform.api.deps import get_db
+from ace_platform.config import get_settings
 from ace_platform.core import workspace_backups as workspace_backup_service
+from ace_platform.core.managed_inference import MANAGED_INFERENCE_OPERATION
 from ace_platform.core.metering import (
     get_platform_daily_summary,
     get_top_users_by_spend,
@@ -25,10 +27,18 @@ from ace_platform.db.models import (
     AcquisitionEvent,
     AcquisitionEventType,
     AuditLog,
+    EvolutionJob,
+    EvolutionJobStatus,
+    Membership,
     Playbook,
     SubscriptionStatus,
     UsageRecord,
     User,
+    Workspace,
+    WorkspaceDeploymentMode,
+    WorkspaceEntitlement,
+    WorkspacePlan,
+    WorkspaceSyncTombstone,
 )
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -47,6 +57,49 @@ class PlatformStatsResponse(BaseModel):
     signups_this_week: int
     total_cost_today: str
     tier_distribution: dict[str, int]
+
+
+class SyncHealthResponse(BaseModel):
+    """Hosted sync rollout health snapshot."""
+
+    status: str
+    enabled_workspaces: int
+    active_workspaces_24h: int
+    sync_events_24h: int
+    last_activity_at: datetime | None
+
+
+class JobQueueHealthResponse(BaseModel):
+    """Hosted job queue health snapshot."""
+
+    status: str
+    queued_jobs: int
+    running_jobs: int
+    failed_jobs_24h: int
+    jobs_observed_24h: int
+    oldest_queued_at: datetime | None
+    last_completed_at: datetime | None
+
+
+class InferenceGatewayHealthResponse(BaseModel):
+    """Managed inference rollout health snapshot."""
+
+    status: str
+    enabled_workspaces: int
+    configured_providers: list[str]
+    requests_24h: int
+    total_tokens_24h: int
+    total_cost_usd_24h: str
+    last_request_at: datetime | None
+
+
+class OperationalHealthResponse(BaseModel):
+    """Cloud operational health surfaces for rollout monitoring."""
+
+    generated_at: datetime
+    sync: SyncHealthResponse
+    job_queue: JobQueueHealthResponse
+    inference_gateway: InferenceGatewayHealthResponse
 
 
 class AdminUserItem(BaseModel):
@@ -220,6 +273,266 @@ def _conversion_pct(source_count: int, target_count: int) -> float:
     return round((target_count / source_count) * 100, 2)
 
 
+def _sync_health_status(
+    *,
+    enabled_workspaces: int,
+    active_workspaces_24h: int,
+    last_activity_at: datetime | None,
+    now: datetime,
+) -> str:
+    """Classify sync rollout health from recent hosted sync activity."""
+    if enabled_workspaces == 0:
+        return "idle"
+    if last_activity_at is None or active_workspaces_24h == 0:
+        return "attention"
+    if last_activity_at < now - timedelta(days=1):
+        return "attention"
+    return "healthy"
+
+
+def _job_queue_health_status(
+    *,
+    queued_jobs: int,
+    running_jobs: int,
+    failed_jobs_24h: int,
+    oldest_queued_at: datetime | None,
+    now: datetime,
+) -> str:
+    """Classify queue health from backlog and recent failures."""
+    if queued_jobs == 0 and running_jobs == 0 and failed_jobs_24h == 0:
+        return "idle"
+    if failed_jobs_24h > 0:
+        return "attention"
+    if oldest_queued_at is not None and oldest_queued_at < now - timedelta(minutes=15):
+        return "degraded"
+    if queued_jobs > 0:
+        return "attention"
+    return "healthy"
+
+
+def _inference_gateway_health_status(
+    *,
+    enabled_workspaces: int,
+    configured_providers: list[str],
+    requests_24h: int,
+) -> str:
+    """Classify inference gateway health from readiness and recent traffic."""
+    if not configured_providers:
+        return "degraded" if enabled_workspaces > 0 else "idle"
+    if requests_24h == 0:
+        return "idle"
+    return "healthy"
+
+
+async def get_sync_health_snapshot(
+    db: AsyncSession,
+    *,
+    now: datetime,
+) -> SyncHealthResponse:
+    """Summarize hosted cloud-sync rollout activity for the admin dashboard."""
+    window_start = now - timedelta(days=1)
+    workspace_rows = (
+        await db.execute(
+            select(Workspace.id, Membership.user_id)
+            .join(WorkspaceEntitlement, WorkspaceEntitlement.workspace_id == Workspace.id)
+            .join(Membership, Membership.workspace_id == Workspace.id)
+            .where(
+                Workspace.plan == WorkspacePlan.PERSONAL,
+                Workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD,
+                WorkspaceEntitlement.cloud_sync.is_(True),
+            )
+        )
+    ).all()
+
+    workspace_ids = {row.id for row in workspace_rows}
+    user_to_workspaces: dict[UUID, set[UUID]] = {}
+    for row in workspace_rows:
+        user_to_workspaces.setdefault(row.user_id, set()).add(row.id)
+
+    playbook_rows = []
+    if user_to_workspaces:
+        playbook_rows = (
+            await db.execute(
+                select(
+                    Playbook.user_id,
+                    func.count(Playbook.id).label("event_count"),
+                    func.max(Playbook.updated_at).label("last_activity_at"),
+                )
+                .where(
+                    Playbook.user_id.in_(list(user_to_workspaces.keys())),
+                    Playbook.updated_at >= window_start,
+                )
+                .group_by(Playbook.user_id)
+            )
+        ).all()
+
+    tombstone_rows = []
+    if workspace_ids:
+        tombstone_rows = (
+            await db.execute(
+                select(
+                    WorkspaceSyncTombstone.workspace_id,
+                    func.count(WorkspaceSyncTombstone.entity_id).label("event_count"),
+                    func.max(WorkspaceSyncTombstone.deleted_at).label("last_activity_at"),
+                )
+                .where(
+                    WorkspaceSyncTombstone.workspace_id.in_(list(workspace_ids)),
+                    WorkspaceSyncTombstone.deleted_at >= window_start,
+                )
+                .group_by(WorkspaceSyncTombstone.workspace_id)
+            )
+        ).all()
+
+    active_workspace_ids: set[UUID] = set()
+    for row in playbook_rows:
+        active_workspace_ids.update(user_to_workspaces.get(row.user_id, set()))
+    active_workspace_ids.update(row.workspace_id for row in tombstone_rows)
+
+    last_activity_at = None
+    activity_candidates = [
+        row.last_activity_at for row in playbook_rows if row.last_activity_at is not None
+    ]
+    activity_candidates.extend(
+        row.last_activity_at for row in tombstone_rows if row.last_activity_at is not None
+    )
+    if activity_candidates:
+        last_activity_at = max(activity_candidates)
+
+    sync_events_24h = sum(int(row.event_count or 0) for row in playbook_rows)
+    sync_events_24h += sum(int(row.event_count or 0) for row in tombstone_rows)
+
+    return SyncHealthResponse(
+        status=_sync_health_status(
+            enabled_workspaces=len(workspace_ids),
+            active_workspaces_24h=len(active_workspace_ids),
+            last_activity_at=last_activity_at,
+            now=now,
+        ),
+        enabled_workspaces=len(workspace_ids),
+        active_workspaces_24h=len(active_workspace_ids),
+        sync_events_24h=sync_events_24h,
+        last_activity_at=last_activity_at,
+    )
+
+
+async def get_job_queue_health_snapshot(
+    db: AsyncSession,
+    *,
+    now: datetime,
+) -> JobQueueHealthResponse:
+    """Summarize hosted background queue activity for the admin dashboard."""
+    window_start = now - timedelta(days=1)
+    completion_at = func.coalesce(
+        EvolutionJob.completed_at, EvolutionJob.started_at, EvolutionJob.created_at
+    )
+
+    row = (
+        await db.execute(
+            select(
+                func.count(EvolutionJob.id)
+                .filter(EvolutionJob.status == EvolutionJobStatus.QUEUED)
+                .label("queued_jobs"),
+                func.count(EvolutionJob.id)
+                .filter(EvolutionJob.status == EvolutionJobStatus.RUNNING)
+                .label("running_jobs"),
+                func.count(EvolutionJob.id)
+                .filter(
+                    EvolutionJob.status == EvolutionJobStatus.FAILED,
+                    completion_at >= window_start,
+                )
+                .label("failed_jobs_24h"),
+                func.count(EvolutionJob.id)
+                .filter(completion_at >= window_start)
+                .label("jobs_observed_24h"),
+                func.min(EvolutionJob.created_at)
+                .filter(EvolutionJob.status == EvolutionJobStatus.QUEUED)
+                .label("oldest_queued_at"),
+                func.max(EvolutionJob.completed_at)
+                .filter(EvolutionJob.status == EvolutionJobStatus.COMPLETED)
+                .label("last_completed_at"),
+            )
+        )
+    ).one()
+
+    queued_jobs = int(row.queued_jobs or 0)
+    running_jobs = int(row.running_jobs or 0)
+    failed_jobs_24h = int(row.failed_jobs_24h or 0)
+
+    return JobQueueHealthResponse(
+        status=_job_queue_health_status(
+            queued_jobs=queued_jobs,
+            running_jobs=running_jobs,
+            failed_jobs_24h=failed_jobs_24h,
+            oldest_queued_at=row.oldest_queued_at,
+            now=now,
+        ),
+        queued_jobs=queued_jobs,
+        running_jobs=running_jobs,
+        failed_jobs_24h=failed_jobs_24h,
+        jobs_observed_24h=int(row.jobs_observed_24h or 0),
+        oldest_queued_at=row.oldest_queued_at,
+        last_completed_at=row.last_completed_at,
+    )
+
+
+async def get_inference_gateway_health_snapshot(
+    db: AsyncSession,
+    *,
+    now: datetime,
+) -> InferenceGatewayHealthResponse:
+    """Summarize managed inference readiness and recent usage."""
+    window_start = now - timedelta(days=1)
+    settings = get_settings()
+    configured_providers = []
+    if settings.openai_api_key:
+        configured_providers.append("openai")
+    if settings.anthropic_api_key:
+        configured_providers.append("anthropic")
+
+    enabled_workspaces = (
+        await db.scalar(
+            select(func.count(Workspace.id))
+            .join(WorkspaceEntitlement, WorkspaceEntitlement.workspace_id == Workspace.id)
+            .where(
+                Workspace.deployment_mode == WorkspaceDeploymentMode.CLOUD,
+                WorkspaceEntitlement.managed_inference.is_(True),
+            )
+        )
+    ) or 0
+
+    usage_row = (
+        await db.execute(
+            select(
+                func.count(UsageRecord.id).label("requests_24h"),
+                func.coalesce(func.sum(UsageRecord.total_tokens), 0).label("total_tokens_24h"),
+                func.coalesce(func.sum(UsageRecord.cost_usd), Decimal("0")).label(
+                    "total_cost_usd_24h"
+                ),
+                func.max(UsageRecord.created_at).label("last_request_at"),
+            ).where(
+                UsageRecord.operation == MANAGED_INFERENCE_OPERATION,
+                UsageRecord.created_at >= window_start,
+            )
+        )
+    ).one()
+
+    requests_24h = int(usage_row.requests_24h or 0)
+
+    return InferenceGatewayHealthResponse(
+        status=_inference_gateway_health_status(
+            enabled_workspaces=int(enabled_workspaces),
+            configured_providers=configured_providers,
+            requests_24h=requests_24h,
+        ),
+        enabled_workspaces=int(enabled_workspaces),
+        configured_providers=configured_providers,
+        requests_24h=requests_24h,
+        total_tokens_24h=int(usage_row.total_tokens_24h or 0),
+        total_cost_usd_24h=str(usage_row.total_cost_usd_24h),
+        last_request_at=usage_row.last_request_at,
+    )
+
+
 def build_conversion_funnel_response(
     *,
     days: int,
@@ -361,6 +674,28 @@ async def get_platform_stats(
         signups_this_week=signups_this_week,
         total_cost_today=str(daily_summary.total_cost_usd),
         tier_distribution=tier_distribution,
+    )
+
+
+@router.get(
+    "/operational-health",
+    response_model=OperationalHealthResponse,
+    summary="Operational health for hosted cloud rollout services",
+)
+async def get_operational_health(
+    _admin: AdminUser,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> OperationalHealthResponse:
+    """Return rollout-oriented cloud health snapshots for hosted services."""
+    now = datetime.now(UTC)
+    sync = await get_sync_health_snapshot(db, now=now)
+    job_queue = await get_job_queue_health_snapshot(db, now=now)
+    inference_gateway = await get_inference_gateway_health_snapshot(db, now=now)
+    return OperationalHealthResponse(
+        generated_at=now,
+        sync=sync,
+        job_queue=job_queue,
+        inference_gateway=inference_gateway,
     )
 
 

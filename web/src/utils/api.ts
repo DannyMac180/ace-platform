@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
 import type {
   AdminAuditEvent,
+  OperationalHealth,
   AdminUserDetail,
   AdminUserItem,
   AnalyticsEventPayload,
@@ -568,6 +569,11 @@ export const analyticsApi = {
 export const adminApi = {
   getStats: async (): Promise<PlatformStats> => {
     const response = await api.get<PlatformStats>('/admin/stats');
+    return response.data;
+  },
+
+  getOperationalHealth: async (): Promise<OperationalHealth> => {
+    const response = await api.get<OperationalHealth>('/admin/operational-health');
     return response.data;
   },
 
