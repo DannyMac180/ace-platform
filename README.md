@@ -295,6 +295,11 @@ More deployment detail:
 - [Architecture overview](docs/ARCHITECTURE.md)
 - [Next iteration working stream](docs/next_iteration_working_stream.md)
 
+GitHub Actions runtime note:
+
+- The repo workflows now rely on the Node 24-compatible majors of `actions/checkout`, `actions/setup-python`, `actions/setup-node`, and `actions/cache`. Self-hosted GitHub Actions runners should be on `actions/runner` `v2.327.1` or newer before running these workflows.
+- Fly.io deploy jobs install `flyctl` via the official `https://fly.io/install.sh` script instead of `superfly/flyctl-actions/setup-flyctl`, because the published Fly setup action still declares the `node20` runtime.
+
 ## Required Environment Variables
 
 These are the minimum settings most self-hosted installations need:
