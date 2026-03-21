@@ -9,7 +9,9 @@ DEFAULT_LOG_LEVEL_ARGS = ["-l", "info"]
 
 def _run(command: str, argv: list[str] | None = None) -> int:
     """Start a Celery service without exposing module-path launch strings."""
-    args = list(argv) if argv else DEFAULT_LOG_LEVEL_ARGS.copy()
+    args = list(sys.argv[1:]) if argv is None else list(argv)
+    if not args:
+        args = DEFAULT_LOG_LEVEL_ARGS.copy()
     celery_app.start([command, *args])
     return 0
 

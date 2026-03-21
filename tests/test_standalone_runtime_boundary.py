@@ -90,6 +90,17 @@ def test_worker_entrypoint_uses_celery_start() -> None:
     start_mock.assert_called_once_with(["worker", "-l", "info"])
 
 
+def test_worker_console_script_preserves_cli_args(monkeypatch) -> None:
+    from ace_platform.workers import __main__ as workers_main
+
+    monkeypatch.setattr(workers_main.sys, "argv", ["ace-platform-worker", "-Q", "evolution"])
+
+    with patch.object(workers_main.celery_app, "start") as start_mock:
+        assert workers_main.worker_main() == 0
+
+    start_mock.assert_called_once_with(["worker", "-Q", "evolution"])
+
+
 def test_worker_entrypoint_dispatches_beat_mode() -> None:
     from ace_platform.workers import __main__ as workers_main
 
@@ -97,3 +108,14 @@ def test_worker_entrypoint_dispatches_beat_mode() -> None:
         assert workers_main.main(["beat", "-l", "debug"]) == 0
 
     start_mock.assert_called_once_with(["beat", "-l", "debug"])
+
+
+def test_beat_console_script_preserves_cli_args(monkeypatch) -> None:
+    from ace_platform.workers import __main__ as workers_main
+
+    monkeypatch.setattr(workers_main.sys, "argv", ["ace-platform-beat", "-l", "warning"])
+
+    with patch.object(workers_main.celery_app, "start") as start_mock:
+        assert workers_main.beat_main() == 0
+
+    start_mock.assert_called_once_with(["beat", "-l", "warning"])
