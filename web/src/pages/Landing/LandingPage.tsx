@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Logo } from '../../components/Logo';
 import { appendAttributionParams } from '../../lib/attribution';
 import { trackAcquisitionEvent } from '../../lib/analytics';
@@ -100,7 +100,7 @@ export function LandingPage() {
   const registerHref = appendAttributionParams('/register');
   const loginHref = appendAttributionParams('/login');
 
-  const attachVideoSource = () => {
+  const attachVideoSource = useCallback(() => {
     const video = videoRef.current;
     if (!video || videoSourceAttached) {
       return;
@@ -116,7 +116,7 @@ export function LandingPage() {
     trackAcquisitionEvent('hero_video_loaded', {
       surface: 'landing_spa',
     });
-  };
+  }, [videoSourceAttached]);
 
   useEffect(() => {
     trackAcquisitionEvent('landing_view', {
@@ -178,7 +178,7 @@ export function LandingPage() {
 
     observer.observe(video);
     return () => observer.disconnect();
-  }, [videoSourceAttached]);
+  }, [attachVideoSource]);
 
   return (
     <div className={styles.page}>

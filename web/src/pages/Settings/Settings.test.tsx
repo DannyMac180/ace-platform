@@ -183,7 +183,11 @@ describe('Settings', () => {
     renderSettings();
 
     await screen.findByRole('heading', { name: 'Workspace Members' });
-    await user.type(screen.getByLabelText('Invite by email'), 'teammate@example.com');
+    await waitFor(() => {
+      expect(screen.queryByText('Loading workspace membership data...')).not.toBeInTheDocument();
+    });
+
+    await user.type(await screen.findByLabelText('Invite by email'), 'teammate@example.com');
     await user.click(screen.getByRole('button', { name: 'Send invite' }));
 
     await waitFor(() => {
