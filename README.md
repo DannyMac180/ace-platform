@@ -291,6 +291,7 @@ npm run dev -- --port 3000
 More deployment detail:
 
 - [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md)
+- [Private repo deploy runbook](docs/PRIVATE_REPO_DEPLOY.md)
 - [Environment variable reference](docs/ENVIRONMENT_VARIABLES.md)
 - [Architecture overview](docs/ARCHITECTURE.md)
 - [Next iteration working stream](docs/next_iteration_working_stream.md)

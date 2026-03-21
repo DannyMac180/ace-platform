@@ -30,7 +30,6 @@ kill_timeout = 30
 # =============================================================================
 [processes]
   api = "uvicorn ace_platform.api.main:app --host 0.0.0.0 --port 8000 --workers 1"
-  mcp = "python -m ace_platform.mcp.server http"
   worker = "celery -A ace_platform.workers.celery_app worker --loglevel=info --concurrency=1"
   beat = "celery -A ace_platform.workers.celery_app beat --loglevel=info"
 
@@ -42,6 +41,16 @@ kill_timeout = 30
   DEBUG = "true"
   API_HOST = "0.0.0.0"
   API_PORT = "8000"
+  BILLING_ENABLED = "true"
+  FRONTEND_URL = "https://ace-platform-web-staging.fly.dev"
+  OAUTH_REDIRECT_BASE_URL = "https://ace-platform-staging.fly.dev"
+  DOCS_URL = "https://ace-platform-docs-staging.fly.dev"
+  CORS_ORIGINS = "[\"https://ace-platform-web-staging.fly.dev\", \"http://localhost:3000\"]"
+  SESSION_COOKIE_SECURE = "true"
+  SESSION_COOKIE_SAMESITE = "lax"
+  EMAIL_FROM_ADDRESS = "noreply@aceagent.io"
+  EMAIL_FROM_NAME = "ACE Platform"
+  SUPPORT_EMAIL = "support@aceagent.io"
   SENTRY_TRACES_SAMPLE_RATE = "0.1"
   SENTRY_PROFILES_SAMPLE_RATE = "0.05"
   SENTRY_TRANSPORT_QUEUE_SIZE = "100"
@@ -88,6 +97,7 @@ kill_timeout = 30
 # =============================================================================
 [deploy]
   release_command = "alembic upgrade head"
+  release_command_timeout = "20m"
   strategy = "rolling"
 
 # =============================================================================
@@ -98,12 +108,6 @@ kill_timeout = 30
   size = "shared-cpu-1x"
   memory = "512mb"
   processes = ["api"]
-
-# MCP server
-[[vm]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-  processes = ["mcp"]
 
 # Worker (still needs memory for LLM processing)
 [[vm]]

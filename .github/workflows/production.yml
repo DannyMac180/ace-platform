@@ -1,32 +1,78 @@
 name: Deploy to Production
 
 on:
-  # Manual trigger only - production deploys should be intentional
   workflow_dispatch:
     inputs:
+      action:
+        description: Select whether to deploy the current revision or roll back to a prior image
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - rollback
       confirm:
-        description: 'Type "deploy" to confirm production deployment'
+        description: Type "deploy" for a release or "rollback" for a rollback run
         required: true
         type: string
+      backend_image:
+        description: Rollback only. Exact backend image reference from `fly releases --image`
+        required: false
+        type: string
+      frontend_image:
+        description: Rollback only. Exact frontend image reference from `fly releases --image`
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 env:
-  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  BACKEND_APP: ace-platform
+  FRONTEND_APP: ace-platform-web
+  BACKEND_HEALTH_URL: https://aceagent.io/health
+  FRONTEND_HEALTH_URL: https://app.aceagent.io/
+  RELEASE_LABEL: ${{ github.sha }}
 
 jobs:
-  validate:
-    name: Validate Deployment
+  validate-request:
+    name: Validate Release Request
     runs-on: ubuntu-latest
+
     steps:
-      - name: Confirm deployment
-        if: ${{ github.event.inputs.confirm != 'deploy' }}
+      - name: Confirm requested operation
         run: |
-          echo "Deployment not confirmed. Please type 'deploy' to confirm."
-          exit 1
+          set -euo pipefail
+
+          action="${{ github.event.inputs.action }}"
+          confirm="${{ github.event.inputs.confirm }}"
+          backend_image="${{ github.event.inputs.backend_image }}"
+          frontend_image="${{ github.event.inputs.frontend_image }}"
+
+          if [[ "${action}" == "deploy" && "${confirm}" != "deploy" ]]; then
+            echo "Production deploy not confirmed. Type 'deploy' to proceed."
+            exit 1
+          fi
+
+          if [[ "${action}" == "rollback" && "${confirm}" != "rollback" ]]; then
+            echo "Production rollback not confirmed. Type 'rollback' to proceed."
+            exit 1
+          fi
+
+          if [[ "${action}" == "rollback" ]]; then
+            if [[ -z "${backend_image}" || -z "${frontend_image}" ]]; then
+              echo "Rollback requires both backend_image and frontend_image inputs."
+              exit 1
+            fi
+          fi
 
   test-backend:
     name: Test Backend
+    if: ${{ github.event.inputs.action == 'deploy' }}
     runs-on: ubuntu-latest
-    needs: validate
+    needs: validate-request
 
     services:
       postgres:
@@ -59,8 +105,8 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
 
       - name: Install dependencies
         run: |
@@ -76,13 +122,13 @@ jobs:
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: test-secret-key
           OPENAI_API_KEY: sk-test-fake-key
-        run: |
-          pytest tests/ -v --ignore=tests/test_e2e_billing_flow.py -q
+        run: pytest tests/ -v --ignore=tests/test_e2e_billing_flow.py -q
 
   test-frontend:
     name: Test Frontend
+    if: ${{ github.event.inputs.action == 'deploy' }}
     runs-on: ubuntu-latest
-    needs: validate
+    needs: validate-request
 
     steps:
       - uses: actions/checkout@v4
@@ -90,8 +136,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
@@ -110,13 +156,57 @@ jobs:
         working-directory: web
         env:
           VITE_API_URL: https://aceagent.io
+          VITE_DOCS_URL: https://docs.aceagent.io/docs
+          VITE_SENTRY_ENVIRONMENT: production
+          VITE_SENTRY_RELEASE: ${{ github.sha }}
+          VITE_SENTRY_TRACES_SAMPLE_RATE: "0.05"
         run: npm run build
+
+  build-backend-artifact:
+    name: Build Backend Artifact
+    if: ${{ github.event.inputs.action == 'deploy' }}
+    runs-on: ubuntu-latest
+    needs: test-backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend production artifact
+        run: docker build --target production -t ace-platform/backend:${{ github.sha }} .
+
+  build-frontend-artifact:
+    name: Build Frontend Artifact
+    if: ${{ github.event.inputs.action == 'deploy' }}
+    runs-on: ubuntu-latest
+    needs: test-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend production artifact
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=https://aceagent.io \
+            --build-arg VITE_DOCS_URL=https://docs.aceagent.io/docs \
+            --build-arg VITE_SENTRY_ENVIRONMENT=production \
+            --build-arg VITE_SENTRY_RELEASE=${{ github.sha }} \
+            --build-arg VITE_SENTRY_TRACES_SAMPLE_RATE=0.05 \
+            -t ace-platform/web:${{ github.sha }} \
+            web
 
   deploy-production:
     name: Deploy to Production
+    if: ${{ github.event.inputs.action == 'deploy' }}
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
-    environment: production  # Requires environment approval if configured
+    needs:
+      - validate-request
+      - test-backend
+      - test-frontend
+      - build-backend-artifact
+      - build-frontend-artifact
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -124,13 +214,13 @@ jobs:
       - name: Set up Fly.io
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy Backend to Production
+      - name: Deploy backend app
         run: |
           set -euo pipefail
 
           cleanup_stale_release_machines() {
             local stale_ids
-            stale_ids="$(flyctl machine list -a ace-platform --json | jq -r '.[] | select(.config.metadata.fly_process_group == "fly_app_release_command") | select(.state == "created" or .state == "pending" or .state == "starting" or .state == "stopped" or .state == "suspended" or .state == "replacing") | .id')"
+            stale_ids="$(flyctl machine list -a "${BACKEND_APP}" --json | jq -r '.[] | select(.config.metadata.fly_process_group == "fly_app_release_command") | select(.state == "created" or .state == "pending" or .state == "starting" or .state == "stopped" or .state == "suspended" or .state == "replacing") | .id')"
 
             if [[ -z "${stale_ids}" ]]; then
               echo "No stale release command machines detected."
@@ -141,13 +231,16 @@ jobs:
             while IFS= read -r machine_id; do
               [[ -z "${machine_id}" ]] && continue
               echo " - Destroying ${machine_id}"
-              flyctl machine destroy "${machine_id}" -a ace-platform --force || true
+              flyctl machine destroy "${machine_id}" -a "${BACKEND_APP}" --force || true
             done <<< "${stale_ids}"
           }
 
           deploy_backend() {
             local depot_flag="$1"
             flyctl deploy \
+              --app "${BACKEND_APP}" \
+              --config fly.toml \
+              --image-label "${RELEASE_LABEL}" \
               --remote-only \
               --wait-timeout 15m \
               --release-command-timeout 20m \
@@ -179,7 +272,7 @@ jobs:
           echo "Backend deploy failed after 3 attempts."
           exit 1
 
-      - name: Deploy Frontend to Production
+      - name: Deploy frontend app
         working-directory: web
         run: |
           set -euo pipefail
@@ -187,6 +280,15 @@ jobs:
           deploy_frontend() {
             local depot_flag="$1"
             flyctl deploy \
+              --app "${FRONTEND_APP}" \
+              --config fly.toml \
+              --image-label "${RELEASE_LABEL}" \
+              --build-arg VITE_API_URL=https://aceagent.io \
+              --build-arg VITE_DOCS_URL=https://docs.aceagent.io/docs \
+              --build-arg VITE_SENTRY_DSN="${{ secrets.FRONTEND_VITE_SENTRY_DSN }}" \
+              --build-arg VITE_SENTRY_ENVIRONMENT=production \
+              --build-arg VITE_SENTRY_RELEASE="${RELEASE_LABEL}" \
+              --build-arg VITE_SENTRY_TRACES_SAMPLE_RATE=0.05 \
               --remote-only \
               --wait-timeout 10m \
               --depot="${depot_flag}"
@@ -214,20 +316,80 @@ jobs:
           echo "Frontend deploy failed after 3 attempts."
           exit 1
 
-      - name: Verify Backend Deployment
+      - name: Verify backend health
         run: |
           sleep 15
-          curl -f https://aceagent.io/health || exit 1
+          curl -fsSL "${BACKEND_HEALTH_URL}" >/dev/null
 
-      - name: Verify Frontend Deployment
+      - name: Verify backend process groups
         run: |
-          curl -f https://app.aceagent.io/ || exit 1
+          set -euo pipefail
+          machines_json="$(flyctl machine list -a "${BACKEND_APP}" --json)"
 
-      - name: Deployment Summary
+          for process in api worker beat; do
+            running_count="$(jq --arg process "${process}" '[.[] | select(.config.metadata.fly_process_group == $process) | select(.state == "started" or .state == "running")] | length' <<< "${machines_json}")"
+            if [[ "${running_count}" -lt 1 ]]; then
+              echo "Expected at least one running ${process} machine for ${BACKEND_APP}"
+              exit 1
+            fi
+          done
+
+      - name: Verify frontend health
+        run: curl -fsSL "${FRONTEND_HEALTH_URL}" >/dev/null
+
+      - name: Deployment summary
         run: |
-          echo "## Production Deployment Complete" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Backend URL:** https://aceagent.io" >> $GITHUB_STEP_SUMMARY
-          echo "- **Frontend URL:** https://app.aceagent.io" >> $GITHUB_STEP_SUMMARY
-          echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Deployed by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "## Production Deployment Complete" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Backend app: ${BACKEND_APP}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Frontend app: ${FRONTEND_APP}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Release label: ${RELEASE_LABEL}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Commit: ${{ github.sha }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Deployed by: ${{ github.actor }}" >> "${GITHUB_STEP_SUMMARY}"
+
+  rollback-production:
+    name: Roll Back Production
+    if: ${{ github.event.inputs.action == 'rollback' }}
+    runs-on: ubuntu-latest
+    needs: validate-request
+    environment: production
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Fly.io
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Roll back backend app
+        run: |
+          flyctl deploy \
+            --app "${BACKEND_APP}" \
+            --config fly.toml \
+            --image "${{ github.event.inputs.backend_image }}" \
+            --strategy immediate \
+            --wait-timeout 15m
+
+      - name: Roll back frontend app
+        working-directory: web
+        run: |
+          flyctl deploy \
+            --app "${FRONTEND_APP}" \
+            --config fly.toml \
+            --image "${{ github.event.inputs.frontend_image }}" \
+            --strategy immediate \
+            --wait-timeout 10m
+
+      - name: Verify rollback health
+        run: |
+          sleep 15
+          curl -fsSL "${BACKEND_HEALTH_URL}" >/dev/null
+          curl -fsSL "${FRONTEND_HEALTH_URL}" >/dev/null
+
+      - name: Rollback summary
+        run: |
+          echo "## Production Rollback Complete" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Backend image: ${{ github.event.inputs.backend_image }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "- Frontend image: ${{ github.event.inputs.frontend_image }}" >> "${GITHUB_STEP_SUMMARY}"

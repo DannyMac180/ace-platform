@@ -5,37 +5,23 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  merge_group:
+
+permissions:
+  contents: read
 
 env:
-  PYTHON_VERSION: "3.11"
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
   DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ace_platform_test
   REDIS_URL: redis://localhost:6379/0
   RUN_EVOLUTION_IDEMPOTENCY_TESTS: "1"
 
 jobs:
-  lint:
-    name: Lint & Format
+  backend-validation:
+    name: Backend Validation
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install ruff
-        run: pip install ruff
-
-      - name: Check formatting
-        run: ruff format --check ace_platform/ tests/
-
-      - name: Check linting
-        run: ruff check ace_platform/ tests/
-
-  test:
-    name: Test
-    runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:16-alpine
@@ -82,6 +68,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Check formatting
+        run: ruff format --check ace_platform/ tests/
+
+      - name: Check linting
+        run: ruff check ace_platform/ tests/
+
       - name: Run database migrations
         run: alembic upgrade head
 
@@ -95,3 +87,69 @@ jobs:
           fail_ci_if_error: false
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  frontend-validation:
+    name: Frontend Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: web
+        run: npx vitest run
+
+      - name: Build
+        working-directory: web
+        env:
+          VITE_API_URL: https://aceagent.io
+          VITE_DOCS_URL: https://docs.aceagent.io/docs
+          VITE_SENTRY_ENVIRONMENT: ci
+          VITE_SENTRY_RELEASE: ${{ github.sha }}
+          VITE_SENTRY_TRACES_SAMPLE_RATE: "0.05"
+        run: npm run build
+
+  backend-release-artifact:
+    name: Backend Release Artifact
+    runs-on: ubuntu-latest
+    needs: backend-validation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend release image
+        run: docker build --target production -t ace-platform/backend:${{ github.sha }} .
+
+  frontend-release-artifact:
+    name: Frontend Release Artifact
+    runs-on: ubuntu-latest
+    needs: frontend-validation
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build frontend release image
+        run: |
+          docker build \
+            --build-arg VITE_API_URL=https://aceagent.io \
+            --build-arg VITE_DOCS_URL=https://docs.aceagent.io/docs \
+            --build-arg VITE_SENTRY_ENVIRONMENT=production \
+            --build-arg VITE_SENTRY_RELEASE=${{ github.sha }} \
+            --build-arg VITE_SENTRY_TRACES_SAMPLE_RATE=0.05 \
+            -t ace-platform/web:${{ github.sha }} \
+            web

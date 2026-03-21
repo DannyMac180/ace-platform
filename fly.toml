@@ -46,6 +46,17 @@ kill_timeout = 30
   DEBUG = "false"
   API_HOST = "0.0.0.0"
   API_PORT = "8000"
+  BILLING_ENABLED = "true"
+  FRONTEND_URL = "https://app.aceagent.io"
+  OAUTH_REDIRECT_BASE_URL = "https://aceagent.io"
+  DOCS_URL = "https://docs.aceagent.io"
+  CORS_ORIGINS = "[\"https://app.aceagent.io\", \"https://ace-platform-web.fly.dev\", \"http://localhost:3000\"]"
+  SESSION_COOKIE_SECURE = "true"
+  SESSION_COOKIE_SAMESITE = "lax"
+  SESSION_COOKIE_DOMAIN = ".aceagent.io"
+  EMAIL_FROM_ADDRESS = "noreply@aceagent.io"
+  EMAIL_FROM_NAME = "ACE Platform"
+  SUPPORT_EMAIL = "support@aceagent.io"
   SENTRY_TRACES_SAMPLE_RATE = "0.1"
   SENTRY_PROFILES_SAMPLE_RATE = "0.05"
   SENTRY_TRANSPORT_QUEUE_SIZE = "100"
@@ -93,6 +104,7 @@ kill_timeout = 30
 [deploy]
   # Run database migrations before starting new instances
   release_command = "alembic upgrade head"
+  release_command_timeout = "20m"
   strategy = "rolling"
 
 # =============================================================================
