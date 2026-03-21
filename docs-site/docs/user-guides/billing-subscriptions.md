@@ -2,77 +2,116 @@
 sidebar_position: 4
 ---
 
-# Workspaces, Plans, and Billing
+# ACE Cloud Plans & Subscriptions
 
-ACE uses workspace-based hosted plans so solo users and teams can follow a
-clear path without losing access to hosted convenience.
+This page explains the hosted ACE plans and where each one fits. If you want local or self-managed `ACE OSS`, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead. `ACE OSS` does not require an ACE-hosted subscription.
 
-If you are looking for the March 2026 change summary first, read the
-[hosted plans update](/docs/user-guides/hosted-plans-migration).
+If you are looking for the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
-## Workspace Model
+## Subscription vs Workspace Plan
 
-Every hosted ACE customer belongs to a workspace.
+Hosted ACE separates billing state from workspace shape.
 
-- A `personal` workspace is for one user on `ACE Cloud Personal`.
-- A `team` workspace is for shared collaboration on `ACE Cloud Team`.
-- Enterprise deployments build on the team model with stronger governance and
-  deployment controls.
+| Concept | What it controls |
+| --- | --- |
+| Billing subscription | Trial status, hosted access, and usage limits |
+| Workspace plan | Whether the workspace is `personal`, `team`, or `enterprise`, plus collaboration features |
 
-This keeps hosted ACE on one path:
+If you need invites, roles, member management, or the personal-to-team upgrade path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
 
-- start as one user on a personal workspace
-- move to a team workspace when collaboration becomes necessary
-- add enterprise controls only when organizational requirements demand them
+## Hosted Plans Overview
 
-## Plans Overview
+This section covers hosted packaging. It does not replace the hosted workspace model.
 
-| Plan | Best for | Includes |
+| Plan | Best for | Core value |
 | --- | --- | --- |
-| `ACE Cloud Personal` | One hosted user who wants convenience | One-user workspace, cloud sync, backups, managed background execution |
-| `ACE Cloud Team` | Teams that need shared workflows | Shared workspace, invites, shared playbooks, reviews, approvals, permissions |
-| `ACE Enterprise` | Organizations with governance or deployment requirements | Advanced governance, auditability, contractual support, private deployment options |
+| `ACE Cloud Personal` | One user who wants hosted convenience | Hosted workspace, cloud sync, backups, managed background execution |
+| `ACE Cloud Team` | Teams that need shared workflows | Team workspace, invites, shared playbooks, approvals, and permissions |
+| `ACE Enterprise` | Organizations with control requirements | Governance, compliance, auditability, support, and private deployment options |
 
-## Choosing a Plan
+Current packaging and checkout details live on the [ACE pricing page](https://app.aceagent.io/pricing).
 
-### `ACE Cloud Personal`
+## ACE Cloud Personal
 
-Best if:
+Choose `ACE Cloud Personal` if:
 
-- you are the only active user
-- you want hosted ACE without self-hosting overhead
-- you want your workspace to stay private and portable across devices
+- you are a solo user who wants hosted ACE without self-hosting overhead
+- you want your workspace to follow you across devices
+- you want backups, sync, hosted evals, or managed background jobs
 
-### `ACE Cloud Team`
+What it is:
 
-Best if:
+- a one-user hosted workspace
+- the fastest hosted on-ramp for an individual
+- the hosted plan that keeps solo users first-class without requiring team features
 
-- multiple people need the same ACE workspace
-- you need invites, shared playbooks, or approvals
-- you need shared visibility rather than just solo hosted convenience
+## ACE Cloud Team
 
-### `ACE Enterprise`
+Choose `ACE Cloud Team` if:
 
-Best if:
+- multiple people need to work in the same ACE environment
+- you need shared playbooks, member invites, reviews, or ownership controls
+- collaboration and accountability matter as much as hosting convenience
 
-- compliance, governance, or procurement requirements drive the decision
-- you need stronger admin controls and auditability
-- private deployment terms are part of the buying process
+What it adds on top of Personal:
 
-## Moving from Personal to Team
+- shared team workspaces
+- invitations and membership management
+- shared playbook workflows and approvals
+- team-level permissions and visibility
 
-The ACE v2 model is designed so hosted users can grow without switching to a
-different product family:
+## ACE Enterprise
+
+Choose `ACE Enterprise` if:
+
+- governance, compliance, or auditability are part of the decision
+- procurement or security policy requires private deployment terms
+- identity, admin controls, or support commitments matter as much as product capability
+
+What it adds on top of Team:
+
+- stronger governance and operational controls
+- enterprise support and commercial terms
+- private deployment options where needed
+
+## Moving From Personal To Team
+
+The ACE v2 hosted model is designed so solo users can grow without switching to a different product family:
 
 1. Start in `ACE Cloud Personal` with a one-user hosted workspace.
 2. Keep using ACE as a solo customer while your work stays individual.
-3. Move to `ACE Cloud Team` when you need a shared workspace and invites.
+3. Move to `ACE Cloud Team` when you need a shared workspace, invites, or team visibility.
 
-For the customer-facing migration summary for existing hosted solo users, read
-the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+For the customer-facing migration summary for existing hosted solo users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
+## Upgrading Or Managing Hosted Plans
+
+From the hosted dashboard:
+
+1. Go to the **Pricing** page
+2. Compare the hosted plan that matches your current needs
+3. Upgrade when you need collaboration, governance, or a larger hosted envelope
+
+## Where `ACE OSS` Fits
+
+`ACE OSS` is not the free tier of ACE Cloud. It is the self-managed product path for users who want to run ACE without ACE-operated services.
+
+Choose `ACE OSS` if you want:
+
+- local control
+- your own infrastructure and model credentials
+- a genuinely useful single-user runtime without hosted dependencies
+
+Choose ACE Cloud if you want:
+
+- less setup work
+- hosted sync and backups
+- managed jobs or inference convenience
+- team collaboration or enterprise governance
 
 ## Related Docs
 
 - [Choosing the right ACE product](/docs/getting-started/product-split)
 - [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
-- [Quick Start](/docs/getting-started/quick-start)
+- [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
+- [ACE Cloud Quick Start](/docs/getting-started/quick-start)

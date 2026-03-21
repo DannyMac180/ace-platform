@@ -1,14 +1,14 @@
 ---
-sidebar_position: 3
+sidebar_position: 4
 ---
 
-# Creating an Account
+# Create an ACE Cloud Account
 
-Get started with ACE by creating and verifying your account.
+Create and verify an account for `ACE Cloud Personal`, `ACE Cloud Team`, or `ACE Enterprise`.
 
-If you are choosing between `ACE OSS`, `ACE Cloud Personal`, and
-`ACE Cloud Team`, read
-[Choosing the right ACE product](/docs/getting-started/product-split) first.
+If you want `ACE OSS` on your own machine or infrastructure, you do not need an ACE-hosted account. Start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
+
+If you are choosing between `ACE OSS`, `ACE Cloud Personal`, and `ACE Cloud Team`, read [Choosing the right ACE product](/docs/getting-started/product-split) first.
 
 ## Sign Up
 
@@ -53,19 +53,24 @@ Email verification is required to:
 - Click **Resend Verification** in the dashboard
 - Contact support if issues persist
 
-## Workspace Setup
+## Your First Hosted Workspace
 
-New hosted accounts start in a personal workspace designed for one user.
+When you create a hosted ACE account, ACE places you into a hosted `personal` workspace.
 
-If you are an existing hosted solo customer and want the March 2026 migration
-summary, read the
-[hosted plans update](/docs/user-guides/hosted-plans-migration).
+That means:
+
+- your hosted account has a one-seat workspace by default
+- you can keep using ACE as a solo hosted user without enabling team features
+- invites and shared workspace features stay off until you upgrade that workspace to `team`
+
+If you were already a hosted solo user before the workspace rollout, ACE maps that account into the same `personal` workspace model without requiring a separate signup. If you want the March 2026 migration summary for existing hosted users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Next Steps
 
 With your account ready:
 
-1. [Review the product split](/docs/getting-started/product-split)
-2. [Set up your first playbook](/docs/getting-started/quick-start)
+1. [Create an API Key](/docs/user-guides/managing-api-keys)
+2. [Understand personal vs team workspaces](/docs/user-guides/workspaces-and-teams)
 3. [Read the hosted plans update](/docs/user-guides/hosted-plans-migration)
-4. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
+4. [Set up your first playbook](/docs/getting-started/quick-start)
+5. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)

@@ -1,29 +1,37 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
-# Quick Start
+# ACE Cloud Quick Start
 
-Get up and running with ACE in 5 minutes.
+Get up and running with ACE-hosted onboarding in 5 minutes.
 
-If you are deciding between self-managed and hosted ACE, start with
-[Choosing the right ACE product](/docs/getting-started/product-split).
+This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`. If you want the local or self-managed `ACE OSS` path instead, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
 
-If you already use hosted ACE and want the March 2026 change summary first,
-read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+If you want the self-managed or agent-friendly setup path instead of the hosted dashboard flow, start with the [ACE CLI guide](/docs/getting-started/ace-cli). That guide covers `ace init`, `ace doctor`, `ace seed`, `ace benchmark`, `ace export`, and `ace import`.
+
+If you are deciding between self-managed and hosted ACE, start with [Choosing the right ACE product](/docs/getting-started/product-split).
+
+If you already use hosted ACE and want the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Prerequisites
 
-- An ACE account ([create one here](https://app.aceagent.io))
+- An ACE Cloud account ([create one here](https://app.aceagent.io))
 - Verified email address
 - An API key with appropriate scopes
 
+## Which Hosted Plan Is This For?
+
+The setup below is the hosted entry point for all ACE Cloud customers:
+
+- `ACE Cloud Personal`: solo hosted convenience
+- `ACE Cloud Team`: shared workspace collaboration
+- `ACE Enterprise`: governance and deployment-control needs on top of the hosted model
+
+If you are still deciding, read [Choose Your ACE Path](/docs/) first.
+
 :::note
-New hosted signups begin in a personal workspace. When you need invites,
-shared playbooks, or team visibility, the upgrade path is
-`ACE Cloud Personal` to `ACE Cloud Team`. See the
-[hosted plans update](/docs/user-guides/hosted-plans-migration) for the full
-March 2026 migration summary.
+New hosted signups begin in a personal workspace. When you need invites, shared playbooks, or team visibility, the upgrade path is `ACE Cloud Personal` to `ACE Cloud Team`. See the [hosted plans update](/docs/user-guides/hosted-plans-migration) for the full March 2026 migration summary.
 :::
 
 ## Step 1: Create an API Key
@@ -38,6 +46,16 @@ March 2026 migration summary.
    - `evolution:read` - Check evolution status
    - `evolution:write` - Trigger evolution manually
 5. Copy your API key (you won't see it again!)
+
+## Prefer Local Or Agent-Friendly Onboarding?
+
+Use the [ACE CLI guide](/docs/getting-started/ace-cli) when you want to:
+
+- bootstrap a repository with `ace init`
+- validate a self-managed setup with `ace doctor`
+- generate starter playbooks with `ace seed`
+- prove value with `ace benchmark`
+- move playbooks between hosted and local contexts with `ace export` and `ace import`
 
 ## Step 2: Create Your First Playbook
 
@@ -57,7 +75,7 @@ Your agent will use the `create_playbook` tool to generate well-structured instr
 1. Log in to your [ACE Dashboard](https://app.aceagent.io)
 2. Click **New Playbook** in the sidebar
 3. Give it a name (e.g., "Code Review Assistant")
-4. Optionally add initial content, or leave it blank to start—the playbook will evolve as you record outcomes
+4. Optionally add initial content, or leave it blank to start. The playbook will evolve as you record outcomes
 5. Click **Save**
 
 ## Step 3: Connect via MCP
@@ -156,6 +174,8 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 
 - Compare [ACE OSS and ACE Cloud](/docs/getting-started/product-split)
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
+- Learn the [ACE CLI activation and portability flow](/docs/getting-started/ace-cli)
+- Read the [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options
 - Read about [Recording Outcomes](/docs/developer-guides/recording-outcomes) effectively
 
