@@ -6,7 +6,11 @@ sidebar_position: 2
 
 Get up and running with ACE-hosted onboarding in 5 minutes.
 
-This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`. If you want the local or self-managed `ACE OSS` path instead, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
+This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`.
+If you want the local or self-managed `ACE OSS` path instead, start with
+[ACE OSS & Local Start](/docs/getting-started/oss-local-start), then continue
+to the [OSS Overview](/docs/getting-started/oss-overview) or
+[Local Quickstart](/docs/getting-started/local-quickstart).
 
 If you want the self-managed or agent-friendly setup path instead of the hosted dashboard flow, start with the [ACE CLI guide](/docs/getting-started/ace-cli). That guide covers `ace init`, `ace doctor`, `ace seed`, `ace benchmark`, `ace export`, and `ace import`.
 
@@ -174,6 +178,7 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 
 - Compare [ACE OSS and ACE Cloud](/docs/getting-started/product-split)
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
+- Explore the [OSS and local setup path](/docs/getting-started/oss-overview)
 - Learn the [ACE CLI activation and portability flow](/docs/getting-started/ace-cli)
 - Read the [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options

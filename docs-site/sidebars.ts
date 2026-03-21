@@ -11,6 +11,8 @@ const sidebars: SidebarsConfig = {
         'getting-started/quick-start',
         'getting-started/ace-cli',
         'getting-started/product-split',
+        'getting-started/oss-overview',
+        'getting-started/local-quickstart',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
