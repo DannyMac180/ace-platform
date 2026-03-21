@@ -91,6 +91,12 @@ The repo has not finished the extraction described in the spec yet. That creates
 
 This is an implementation-stage divergence, not a product-strategy divergence. Until the extraction lands, code review should classify new modules by the boundary in this ADR rather than by where they happen to live today.
 
+As of March 20, 2026, the private companion repository
+`DannyMac180/ace-private` has been created and seeded with an initial hosted
+backend extraction tranche. Until the packaging and runtime wiring are complete,
+this repository remains the transition workspace and may still contain
+duplicated hosted-only modules.
+
 ## Consequences
 
 - Future extraction work must keep `ace_core` and the local runtime free of private cloud dependencies.

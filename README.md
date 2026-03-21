@@ -137,6 +137,12 @@ supported boundary is defined by capability, not only by folder name.
 | `playbooks/` | Public starter playbooks and portability assets |
 | `docs/` | Public docs, install docs, and architecture/boundary references |
 
+As of March 20, 2026, the private companion repo
+[`DannyMac180/ace-private`](https://github.com/DannyMac180/ace-private) has
+been created and seeded with an initial hosted-backend extraction tranche. This
+public repo remains the transition workspace until imports, packaging, CI, and
+deployment are rewired around that private repo.
+
 Target package layout from the next-iteration product spec:
 
 ```text

@@ -106,6 +106,12 @@ The current repository has not finished that extraction yet. Until it does, use
 the capability-based boundary above rather than assuming every current folder is
 already in its final home.
 
+As of March 20, 2026, the private companion repo
+[`DannyMac180/ace-private`](https://github.com/DannyMac180/ace-private) exists
+and has been seeded with the first hosted-backend extraction tranche. The
+current public repo is still transitional until those services are repackaged
+and the duplicated hosted modules are removed from here.
+
 ## Where To Start
 
 - If you want the fastest hosted experience, use [docs/QUICKSTART.md](./QUICKSTART.md).
