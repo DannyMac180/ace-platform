@@ -2,6 +2,10 @@
 
 Utility scripts for development, testing, and operations.
 
+Hosted/private deploy and operator-only scripts have moved to `ace-private`.
+If you need Fly deploy helpers, secret bootstrap, or hosted workspace migration
+automation, use the private repo instead of this public copy.
+
 ## Symphony
 
 ### run-symphony.sh

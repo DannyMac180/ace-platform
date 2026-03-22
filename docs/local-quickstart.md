@@ -16,7 +16,7 @@ If you want the hosted product instead, start with
 | Path | Use it when | What you get |
 | --- | --- | --- |
 | `packages/ace-core` | You want the ACE engine/library in your own Python workflow | Public OSS package with the core playbook engine |
-| Local runtime from this repo | You want ACE's local API, CLI, and MCP server running on your machine | Self-managed runtime using this repository plus your own infra |
+| Local runtime from this repo | You want ACE's local CLI and transition-stage self-managed runtime helpers on your machine | Self-managed runtime using this repository plus your own infra |
 
 ## Option 1: Install The Extracted OSS Package
 
@@ -81,6 +81,10 @@ source venv/bin/activate && celery -A ace_platform.workers.celery_app worker -l 
 
 The API will be available at `http://localhost:8000` and the local MCP server
 will be available from the same self-managed codebase.
+
+If you are looking for the hosted dashboard, cloud control-plane deployment
+assets, or operator-only automation, those no longer live in this public repo.
+Use `ace-private` for hosted/private deployment implementation work.
 
 ## What Local OSS Does Not Include
 

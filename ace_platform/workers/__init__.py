@@ -4,7 +4,7 @@ This package contains Celery workers for background task processing:
 - celery_app: Main Celery application configuration
 - evolution_task: Playbook evolution processing task
 - auto_evolution: Automatic evolution triggering periodic task
-- workspace_backups_task: Hosted personal backup sweeps
+- workspace_backups_task: Compatibility shim pointing hosted backup work to `ace-private`
 
 Usage:
     # Start worker for all queues
