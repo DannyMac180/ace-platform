@@ -66,8 +66,8 @@ guide:
 | --- | --- | --- |
 | `packages/ace-core/` | Public OSS | Extracted shared engine package |
 | `ace_core/` | Public OSS (legacy mirror) | Older core tree retained while extraction continues |
-| `ace_platform/` | Mixed transition area | Contains local runtime entrypoints and cloud-oriented services side by side |
-| `web/` | Hosted/cloud-oriented app surface | Dashboard frontend for managed workflows |
+| `ace_platform/` | Mixed transition area | Contains public runtime entrypoints plus temporary compatibility bridges while the split completes |
+| `web/` | Hosted/cloud-oriented shim | Public marker directory that points hosted dashboard work to `ace-private` |
 | `docs/` | Mixed documentation surface | Public docs plus architecture notes describing the split |
 
 ## Target Layout
@@ -105,6 +105,22 @@ apps/
 The current repository has not finished that extraction yet. Until it does, use
 the capability-based boundary above rather than assuming every current folder is
 already in its final home.
+
+## Hosted Implementation Canonical Home
+
+The hosted control-plane implementation is now expected to live in the private
+companion repo, `ace-private`.
+
+Use `ace-private` for:
+
+- hosted dashboard/frontend implementation
+- Fly deploy automation and app configs
+- operator-only secrets/bootstrap scripts
+- hosted personal-workspace migration and backup automation
+
+The public repo keeps OSS/core docs, examples, packages, and local/self-managed
+development paths. Any remaining public bridges to hosted behavior should be
+treated as compatibility shims, not the canonical implementation.
 
 ## Where To Start
 

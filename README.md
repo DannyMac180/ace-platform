@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="web/public/ace-favicon.svg" alt="ACE logo" width="72" />
+  <img src="ace_platform/static/ace-favicon.svg" alt="ACE logo" width="72" />
 </p>
 
 <h1 align="center">ACE</h1>
@@ -34,7 +34,7 @@
   <img src="https://img.shields.io/badge/license-MIT-2f855a" alt="MIT license" />
 </p>
 
-![ACE social card](web/public/ace-social-card.png)
+![ACE social card](ace_platform/static/ace-social-card.png)
 
 ## What ACE Does
 
@@ -102,7 +102,7 @@ If you want the open-source path, start with these docs in this order:
 
 1. [OSS overview](docs/oss-overview.md) for what is public OSS versus hosted/private cloud value.
 2. [Local quickstart](docs/local-quickstart.md) for the fastest self-managed setup.
-3. [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md) if you want the full ACE platform stack on your own infrastructure.
+3. [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md) if you want the public repo's self-managed OSS/runtime path.
 
 ## OSS Versus Hosted
 
@@ -132,8 +132,8 @@ supported boundary is defined by capability, not only by folder name.
 | --- | --- |
 | `packages/ace-core/` | Extracted public OSS package for the ACE engine and shared domain logic |
 | `ace_core/` | Legacy public core tree retained during extraction and compatibility work |
-| `ace_platform/` | Transitional runtime/control-plane workspace: includes local CLI/API/MCP entrypoints plus cloud-oriented services that are still being separated |
-| `web/` | Cloud dashboard frontend and hosted web UX |
+| `ace_platform/` | Transitional runtime workspace: keeps the public CLI/API/MCP entrypoints plus compatibility bridges while the split continues |
+| `web/` | Hosted dashboard shim directory pointing implementation work to `ace-private` |
 | `playbooks/` | Public starter playbooks and portability assets |
 | `docs/` | Public docs, install docs, and architecture/boundary references |
 
@@ -248,17 +248,13 @@ Notes:
 ```bash
 git clone https://github.com/DannyMac180/ace-platform.git
 cd ace-platform
-cp .env.example .env
-
-# Set at minimum:
-# OPENAI_API_KEY=...
-# JWT_SECRET_KEY=...
-
-docker compose --profile full up -d
-curl http://localhost:8000/health
+docker compose up -d postgres redis
 ```
 
-That starts PostgreSQL, Redis, migrations, the FastAPI API, the MCP server, Celery workers, and the scheduler.
+The public repo continues to support the OSS/local runtime and local infrastructure helpers.
+The hosted control-plane deployment path, dashboard app, Fly configs, and operator secrets/deploy
+automation now live in `ace-private`. See [docs/SELF_HOSTED_DEPLOYMENT.md](docs/SELF_HOSTED_DEPLOYMENT.md)
+for the boundary and the correct repo for hosted/private deployment work.
 
 ## Local Runtime Development Setup
 
@@ -279,15 +275,6 @@ python -m ace_platform.mcp.server
 celery -A ace_platform.workers.celery_app worker -l info
 ```
 
-For the frontend:
-
-```bash
-lsof -ti :3000 | xargs kill -9 2>/dev/null
-cd web
-npm ci
-npm run dev -- --port 3000
-```
-
 More deployment detail:
 
 - [Self-hosted deployment guide](docs/SELF_HOSTED_DEPLOYMENT.md)
@@ -298,7 +285,7 @@ More deployment detail:
 GitHub Actions runtime note:
 
 - The repo workflows now rely on the Node 24-compatible majors of `actions/checkout`, `actions/setup-python`, `actions/setup-node`, and `actions/cache`. Self-hosted GitHub Actions runners should be on `actions/runner` `v2.327.1` or newer before running these workflows.
-- Fly.io deploy jobs install `flyctl` via the official `https://fly.io/install.sh` script instead of `superfly/flyctl-actions/setup-flyctl`, because the published Fly setup action still declares the `node20` runtime.
+- Hosted Fly.io deploy automation now lives in `ace-private`; the public repo retains OSS/local CI plus docs deployment.
 
 ## Required Environment Variables
 
@@ -333,8 +320,8 @@ Start from [.env.example](.env.example) for the full list.
 | Path | Purpose |
 | --- | --- |
 | `ace_core/` | Core ACE logic and adaptation primitives |
-| `ace_platform/` | Hosted platform backend, API, MCP server, workers, and DB layer |
-| `web/` | React/Vite dashboard frontend |
+| `ace_platform/` | Public runtime package plus transition-stage compatibility shims |
+| `web/` | Hosted dashboard shim pointing to `ace-private` |
 | `docs-site/` | Documentation website source |
 | `playbooks/` | Starter playbook templates |
 | `tests/` | Backend and platform test suite |
@@ -356,15 +343,6 @@ public repository.
 source venv/bin/activate && ruff check ace_platform/ tests/
 source venv/bin/activate && ruff format ace_platform/ tests/
 source venv/bin/activate && pytest tests/ -v
-```
-
-If you touch the frontend, also run:
-
-```bash
-cd web
-npm ci
-npm run lint
-npx vitest run
 ```
 
 For larger changes, start with a small draft PR so we can align early.
