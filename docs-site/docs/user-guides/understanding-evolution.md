@@ -153,7 +153,13 @@ For detailed guidance on recording effective outcomes, see [Recording Outcomes](
 
 ## Evolution Limits
 
-Limits are based on your [subscription tier](/docs/user-guides/billing-subscriptions).
+Hosted evals count against the hosted usage envelope for your current workspace.
+If you are on a trial, feature access can stay on while the trial envelope still
+uses the smaller effective `free` limits.
+
+See [Hosted Plans, Billing, and Limits](/docs/user-guides/billing-subscriptions)
+for the current hosted eval allowances, managed inference envelopes, storage
+limits, and upgrade paths.
 
 ## Troubleshooting
 
@@ -161,7 +167,7 @@ Limits are based on your [subscription tier](/docs/user-guides/billing-subscript
 
 - Verify 5+ unprocessed outcomes exist
 - Check API key has `evolution:write` scope
-- Ensure you haven't hit monthly limit
+- Ensure you haven't hit a hosted eval block or billing-state block
 
 ### Evolution Taking Too Long
 
@@ -173,4 +179,4 @@ Limits are based on your [subscription tier](/docs/user-guides/billing-subscript
 
 - [Record effective outcomes](/docs/developer-guides/recording-outcomes)
 - [MCP integration](/docs/developer-guides/mcp-integration/overview)
-- [Manage billing](/docs/user-guides/billing-subscriptions)
+- [Review hosted plans and limits](/docs/user-guides/billing-subscriptions)

@@ -2,24 +2,44 @@
 sidebar_position: 4
 ---
 
-# ACE Cloud Plans & Subscriptions
+# ACE Cloud Plans, Billing, and Limits
 
-This page explains the hosted ACE plans and where each one fits. If you want local or self-managed `ACE OSS`, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead. `ACE OSS` does not require an ACE-hosted subscription.
+ACE Cloud uses a plan-aware entitlement model. This page explains what your
+hosted workspace includes, what counts against limits, what warning and blocked
+states mean, and when you should upgrade.
+
+If you want local or self-managed `ACE OSS`, start with
+[ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead.
+`ACE OSS` does not require an ACE-hosted subscription.
+
+If you are looking for the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Subscription vs Workspace Plan
 
-Hosted ACE separates billing state from workspace shape.
+Hosted ACE currently exposes three related concepts:
 
-| Concept | What it controls |
-| --- | --- |
-| Billing subscription | Trial status, hosted access, and usage limits |
-| Workspace plan | Whether the workspace is `personal`, `team`, or `enterprise`, plus collaboration features |
+| Layer | Values you may see | What it controls |
+| --- | --- | --- |
+| **Workspace plan** | `personal`, `team`, `enterprise` | Seat model, collaboration, and governance features |
+| **Billing tier / effective tier** | `free` (trial envelope), `starter`, `pro`, `ultra`, `enterprise` | Playbook allowance, hosted eval allowance, storage envelope, and managed inference budget |
+| **Billing state** | `active`, active + trial indicator, `past_due`, `unpaid`, `canceled`, `none` | Whether hosted paid features continue to work |
 
-If you need invites, roles, member management, or the personal-to-team upgrade path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
+Think of the **workspace plan** as the shape of the workspace and the
+**billing tier** as the usage envelope that funds hosted operations.
+
+If you need invites, roles, member management, or the personal-to-team upgrade
+path, use [Workspaces & Teams](/docs/user-guides/workspaces-and-teams).
+
+:::note
+Hosted entitlements such as cloud sync, hosted backups, hosted evals, billing
+checks, and ACE-managed inference are cloud-side services. They do not apply to
+ACE OSS or self-managed local usage.
+:::
 
 ## Hosted Plans Overview
 
-This section covers hosted packaging. It does not replace the hosted workspace model.
+This section covers hosted packaging. It does not replace the hosted workspace
+model.
 
 | Plan | Best for | Core value |
 | --- | --- | --- |
@@ -27,62 +47,145 @@ This section covers hosted packaging. It does not replace the hosted workspace m
 | `ACE Cloud Team` | Teams that need shared workflows | Team workspace, invites, shared playbooks, approvals, and permissions |
 | `ACE Enterprise` | Organizations with control requirements | Governance, compliance, auditability, support, and private deployment options |
 
-Current packaging and checkout details live on the [ACE pricing page](https://app.aceagent.io/pricing).
+Current packaging and checkout details live on the
+[ACE pricing page](https://app.aceagent.io/pricing).
 
-## ACE Cloud Personal
+## Workspace Plans And Core Entitlements
 
-Choose `ACE Cloud Personal` if:
+| Workspace plan | Best for | Core hosted entitlements | Typical upgrade trigger |
+| --- | --- | --- | --- |
+| **Personal** | One hosted user | Cloud sync, hosted backups, ACE-managed inference, hosted evals, one-seat workspace | You need more hosted allowance or want to invite teammates |
+| **Team** | Shared hosted work | Personal entitlements plus shared workspace features such as invites and approvals | You need multiple seats, shared playbooks, or workspace-level collaboration |
+| **Enterprise** | Governance-heavy or private deployments | Team capabilities plus enterprise governance, support, and deployment flexibility | You need SSO, auditability, procurement controls, or private deployment terms |
 
-- you are a solo user who wants hosted ACE without self-hosting overhead
-- you want your workspace to follow you across devices
-- you want backups, sync, hosted evals, or managed background jobs
+In the current product, a hosted user can see both values at once. For example,
+you might have a `personal` workspace while the billing and entitlement APIs
+still report a `starter`, `pro`, or `ultra` tier for the actual monthly usage
+envelope.
 
-What it is:
+## Trial Envelopes
 
-- a one-user hosted workspace
-- the fastest hosted on-ramp for an individual
-- the hosted plan that keeps solo users first-class without requiring team features
+When a hosted account is in an active trial:
 
-## ACE Cloud Team
+- hosted convenience features stay available,
+- the workspace still behaves like its selected workspace plan, but
+- usage enforcement falls back to the **trial envelope** until the trial ends.
 
-Choose `ACE Cloud Team` if:
+That trial envelope is currently the same effective limit shape as the internal
+`free` tier:
 
-- multiple people need to work in the same ACE environment
-- you need shared playbooks, member invites, reviews, or ownership controls
-- collaboration and accountability matter as much as hosting convenience
+- **1 playbook**
+- **5 hosted eval runs per billing period**
+- **5 MiB hosted storage**
+- **$1.00 of managed inference budget**
 
-What it adds on top of Personal:
+In entitlement responses, this usually appears as:
 
-- shared team workspaces
-- invitations and membership management
-- shared playbook workflows and approvals
-- team-level permissions and visibility
+- the selected subscription tier still reflecting the destination tier, such as
+  `starter`, and
+- the **effective tier** falling back to `free` while `is_trialing = true`.
 
-## ACE Enterprise
+This is why a trial workspace can still have hosted feature access while using a
+smaller temporary allowance.
 
-Choose `ACE Enterprise` if:
+## Current Hosted Usage Envelopes
 
-- governance, compliance, or auditability are part of the decision
-- procurement or security policy requires private deployment terms
-- identity, admin controls, or support commitments matter as much as product capability
+These are the current hosted envelopes enforced by the app today.
 
-What it adds on top of Team:
+| Effective tier | Typical plan code you may see | Max playbooks | Hosted eval runs / billing period | Managed inference budget / billing period | Hosted storage |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **Trial envelope** | `free`, active trial, or effective `free` limits | 1 | 5 | $1.00 | 5 MiB |
+| **Starter** | `starter` or `personal-starter` | 5 | 100 | $9.00 | 100 MiB |
+| **Pro** | `pro` or `personal-pro` | 20 | 500 | $29.00 | 1 GiB |
+| **Ultra** | `ultra` or `personal-ultra` | 100 | 2,000 | $79.00 | 10 GiB |
+| **Enterprise** | `enterprise` | Custom / unlimited | Custom / unlimited | Custom / unlimited | Custom / unlimited |
 
-- stronger governance and operational controls
-- enterprise support and commercial terms
-- private deployment options where needed
+Some hosted workspaces can also have **workspace-specific soft or hard
+thresholds** applied for:
+
+- hosted storage,
+- hosted eval runs,
+- managed inference requests, and
+- managed inference tokens.
+
+## Moving From Personal To Team
+
+The ACE v2 hosted model is designed so solo users can grow without switching to a different product family:
+
+1. Start in `ACE Cloud Personal` with a one-user hosted workspace.
+2. Keep using ACE as a solo customer while your work stays individual.
+3. Move to `ACE Cloud Team` when you need a shared workspace, invites, or team visibility.
+
+For the customer-facing migration summary for existing hosted solo users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Upgrading Or Managing Hosted Plans
 
-From the hosted dashboard:
+That is why your dashboard can show `warning` or `blocked` on a workspace even
+before the broader billing-period envelope is fully exhausted, even though the
+current hosted product does not expose self-service controls for editing those
+thresholds directly.
 
-1. Go to the **Pricing** page
-2. Compare the hosted plan that matches your current needs
-3. Upgrade when you need collaboration, governance, or a larger hosted envelope
+## What Counts Against Limits
+
+- **Playbooks**: creating or importing hosted playbooks counts against the
+  playbook allowance.
+- **Hosted evals**: each hosted eval run counts against the monthly hosted eval
+  envelope.
+- **Managed inference**: ACE-run model requests count toward managed inference
+  requests, tokens, and spend.
+- **Hosted storage**: stored hosted workspace data counts against the storage
+  envelope.
+
+## Warning And Blocked States
+
+The entitlement model uses three usage states:
+
+| State | What it means | What happens |
+| --- | --- | --- |
+| **ok** | You are below the configured thresholds. | Hosted actions continue normally. |
+| **warning** | You crossed a soft limit such as storage, hosted eval runs, or managed inference tokens. | The workspace still works, but you are close to a block and should clean up, wait for reset, or upgrade. |
+| **blocked** | You hit a hard workspace threshold or exhausted a billing-period envelope. | New hosted actions of that type are rejected until the limit resets, the workspace limit is raised, or the plan is upgraded. |
+
+Typical blocked examples:
+
+- **Managed inference blocked**: the workspace has hit a request or token limit.
+- **Hosted eval blocked**: the workspace has hit the hosted eval allowance.
+- **Billing-period budget blocked**: the workspace has exhausted the monthly
+  managed inference spend envelope.
+
+## Billing States And What They Mean
+
+| Billing state or signal | Meaning | What to do |
+| --- | --- | --- |
+| **No subscription / `none`** | Hosted paid access has not started yet. | Start a trial or subscribe from **Settings** > **Billing**. |
+| **Active** | Billing is in good standing. | Continue using hosted features within the current envelope. |
+| **Active + trial indicator** | The workspace is trialing. Access is on, but the trial envelope is still enforced. | Use the trial allowance to evaluate ACE, then keep billing active if you want the paid envelope after the trial ends. |
+| **Past due** | Payment collection failed. | Update the payment method in the billing portal. Hosted paid actions can be blocked until the account is current. |
+| **Unpaid** | The subscription remains unpaid. | Fix billing before expecting hosted paid features to resume. |
+| **Canceled** | The paid subscription has ended. | Resubscribe if you want to restore paid hosted access. |
+
+In workspace entitlement views, a Stripe `trialing` subscription is normalized
+to **active access** plus a separate `is_trialing` signal. That separation is
+intentional: access and limits are related, but they are not the same thing.
+
+## Upgrade Paths
+
+Choose the upgrade path that matches the thing you are running out of:
+
+- **Need more hosted allowance but still only one user**:
+  move up from trial -> `starter` -> `pro` -> `ultra`.
+- **Need invites, shared workflows, or more than one seat**:
+  upgrade the workspace from **personal** to **team**.
+- **Need governance or private deployment terms**:
+  move to **enterprise**.
+- **Blocked by billing state, not by plan size**:
+  update the payment method or reactivate the subscription before changing
+  tiers.
 
 ## Where `ACE OSS` Fits
 
-`ACE OSS` is not the free tier of ACE Cloud. It is the self-managed product path for users who want to run ACE without ACE-operated services.
+`ACE OSS` is not the free tier of ACE Cloud. It is the self-managed product
+path for users who want to run ACE without ACE-operated services.
 
 Choose `ACE OSS` if you want:
 
@@ -96,3 +199,23 @@ Choose ACE Cloud if you want:
 - hosted sync and backups
 - managed jobs or inference convenience
 - team collaboration or enterprise governance
+
+## Where To Check In The App
+
+Use these app surfaces together:
+
+- **Settings** > **Billing**: billing state, plan selection, and billing portal
+- **Workspace settings**: workspace plan, seat model, and managed inference mode
+- **Usage and entitlement readouts**: current counters plus `warning` or
+  `blocked` states
+
+## Related Docs
+
+- [Choosing the right ACE product](/docs/getting-started/product-split)
+- [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
+- [Creating an Account](/docs/getting-started/creating-account)
+- [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
+- [ACE Cloud Quick Start](/docs/getting-started/quick-start)
+- [Core Concepts](/docs/getting-started/core-concepts)
+- [Understanding Evolution](/docs/user-guides/understanding-evolution)
+- [Managing API Keys](/docs/user-guides/managing-api-keys)

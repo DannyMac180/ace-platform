@@ -10,6 +10,9 @@ const sidebars: SidebarsConfig = {
         'getting-started/oss-local-start',
         'getting-started/quick-start',
         'getting-started/ace-cli',
+        'getting-started/product-split',
+        'getting-started/oss-overview',
+        'getting-started/local-quickstart',
         'getting-started/core-concepts',
         'getting-started/creating-account',
       ],
@@ -18,6 +21,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'User Guides',
       items: [
+        'user-guides/hosted-plans-migration',
         'user-guides/creating-playbooks',
         'user-guides/workspaces-and-teams',
         'user-guides/team-playbook-review',

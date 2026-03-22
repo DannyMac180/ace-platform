@@ -6,12 +6,17 @@ sidebar_position: 2
 
 Get up and running with ACE-hosted onboarding in 5 minutes.
 
-This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`. If you want the local or self-managed `ACE OSS` path instead, start with [ACE OSS & Local Start](/docs/getting-started/oss-local-start).
+This guide is for `ACE Cloud Personal`, `ACE Cloud Team`, and `ACE Enterprise`.
+If you want the local or self-managed `ACE OSS` path instead, start with
+[ACE OSS & Local Start](/docs/getting-started/oss-local-start), then continue
+to the [OSS Overview](/docs/getting-started/oss-overview) or
+[Local Quickstart](/docs/getting-started/local-quickstart).
 
-If you want the self-managed or agent-friendly setup path instead of the hosted
-dashboard flow, start with the [ACE CLI guide](/docs/getting-started/ace-cli).
-That guide covers `ace init`, `ace doctor`, `ace seed`, `ace benchmark`,
-`ace export`, and `ace import`.
+If you want the self-managed or agent-friendly setup path instead of the hosted dashboard flow, start with the [ACE CLI guide](/docs/getting-started/ace-cli). That guide covers `ace init`, `ace doctor`, `ace seed`, `ace benchmark`, `ace export`, and `ace import`.
+
+If you are deciding between self-managed and hosted ACE, start with [Choosing the right ACE product](/docs/getting-started/product-split).
+
+If you already use hosted ACE and want the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
 
 ## Prerequisites
 
@@ -28,6 +33,10 @@ The setup below is the hosted entry point for all ACE Cloud customers:
 - `ACE Enterprise`: governance and deployment-control needs on top of the hosted model
 
 If you are still deciding, read [Choose Your ACE Path](/docs/) first.
+
+:::note
+New hosted signups begin in a personal workspace. When you need invites, shared playbooks, or team visibility, the upgrade path is `ACE Cloud Personal` to `ACE Cloud Team`. See the [hosted plans update](/docs/user-guides/hosted-plans-migration) for the full March 2026 migration summary.
+:::
 
 ## Step 1: Create an API Key
 
@@ -70,7 +79,7 @@ Your agent will use the `create_playbook` tool to generate well-structured instr
 1. Log in to your [ACE Dashboard](https://app.aceagent.io)
 2. Click **New Playbook** in the sidebar
 3. Give it a name (e.g., "Code Review Assistant")
-4. Optionally add initial content, or leave it blank to start—the playbook will evolve as you record outcomes
+4. Optionally add initial content, or leave it blank to start. The playbook will evolve as you record outcomes
 5. Click **Save**
 
 ## Step 3: Connect via MCP
@@ -167,8 +176,11 @@ After recording enough outcomes, ACE automatically evolves your playbook. Check 
 
 ## What's Next?
 
+- Compare [ACE OSS and ACE Cloud](/docs/getting-started/product-split)
 - Learn about [Core Concepts](/docs/getting-started/core-concepts)
+- Explore the [OSS and local setup path](/docs/getting-started/oss-overview)
 - Learn the [ACE CLI activation and portability flow](/docs/getting-started/ace-cli)
+- Read the [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
 - Explore [MCP Integration](/docs/developer-guides/mcp-integration/overview) options
 - Read about [Recording Outcomes](/docs/developer-guides/recording-outcomes) effectively
 
