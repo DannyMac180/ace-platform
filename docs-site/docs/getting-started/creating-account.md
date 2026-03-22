@@ -118,3 +118,4 @@ With your account ready:
 3. [Read the hosted plans update](/docs/user-guides/hosted-plans-migration)
 4. [Set up your first playbook](/docs/getting-started/quick-start)
 5. [Connect via MCP](/docs/developer-guides/mcp-integration/overview)
+6. [Review hosted plans, billing states, and usage limits](/docs/user-guides/billing-subscriptions)

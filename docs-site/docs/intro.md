@@ -13,8 +13,8 @@ ACE is a local-first playbook engine with hosted cloud options for convenience, 
 | --- | --- | --- |
 | `ACE OSS` | A single user who wants local control or self-managed infrastructure | [ACE OSS & Local Start](/docs/getting-started/oss-local-start) |
 | `ACE Cloud Personal` | A solo user who wants ACE-hosted convenience | [ACE Cloud Quick Start](/docs/getting-started/quick-start) |
-| `ACE Cloud Team` | A team that needs shared workspaces, invites, and collaboration | [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-cloud-team) |
-| `ACE Enterprise` | An organization that needs governance, compliance, or private deployment options | [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-enterprise) |
+| `ACE Cloud Team` | A team that needs shared workspaces, invites, and collaboration | [Workspaces & Teams](/docs/user-guides/workspaces-and-teams) |
+| `ACE Enterprise` | An organization that needs governance, compliance, or private deployment options | [ACE Cloud Plans, Billing, and Limits](/docs/user-guides/billing-subscriptions) |
 
 ## The Short Version
 
@@ -54,7 +54,7 @@ Start here: [ACE Cloud Quick Start](/docs/getting-started/quick-start)
 - you need invites, shared playbooks, reviews, or team visibility
 - collaboration matters more than simple solo hosting
 
-Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-cloud-team)
+Start here: [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
 
 ### Start with `ACE Enterprise` if:
 
@@ -62,7 +62,7 @@ Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscrip
 - procurement requires private deployment or contractual support
 - identity management and admin controls are part of the buying decision
 
-Start here: [ACE Cloud Plans & Subscriptions](/docs/user-guides/billing-subscriptions#ace-enterprise)
+Start here: [ACE Cloud Plans, Billing, and Limits](/docs/user-guides/billing-subscriptions)
 
 ## Getting Started
 
