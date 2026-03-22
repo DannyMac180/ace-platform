@@ -12,6 +12,8 @@ If you want local or self-managed `ACE OSS`, start with
 [ACE OSS & Local Start](/docs/getting-started/oss-local-start) instead.
 `ACE OSS` does not require an ACE-hosted subscription.
 
+If you are looking for the March 2026 change summary first, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
 ## Subscription vs Workspace Plan
 
 Hosted ACE currently exposes three related concepts:
@@ -106,6 +108,18 @@ thresholds** applied for:
 - managed inference requests, and
 - managed inference tokens.
 
+## Moving From Personal To Team
+
+The ACE v2 hosted model is designed so solo users can grow without switching to a different product family:
+
+1. Start in `ACE Cloud Personal` with a one-user hosted workspace.
+2. Keep using ACE as a solo customer while your work stays individual.
+3. Move to `ACE Cloud Team` when you need a shared workspace, invites, or team visibility.
+
+For the customer-facing migration summary for existing hosted solo users, read the [hosted plans update](/docs/user-guides/hosted-plans-migration).
+
+## Upgrading Or Managing Hosted Plans
+
 That is why your dashboard can show `warning` or `blocked` on a workspace even
 before the broader billing-period envelope is fully exhausted, even though the
 current hosted product does not expose self-service controls for editing those
@@ -195,10 +209,13 @@ Use these app surfaces together:
 - **Usage and entitlement readouts**: current counters plus `warning` or
   `blocked` states
 
-## Related Guides
+## Related Docs
 
+- [Choosing the right ACE product](/docs/getting-started/product-split)
+- [March 2026 hosted plans update](/docs/user-guides/hosted-plans-migration)
 - [Creating an Account](/docs/getting-started/creating-account)
 - [Workspaces & Teams](/docs/user-guides/workspaces-and-teams)
+- [ACE Cloud Quick Start](/docs/getting-started/quick-start)
 - [Core Concepts](/docs/getting-started/core-concepts)
 - [Understanding Evolution](/docs/user-guides/understanding-evolution)
 - [Managing API Keys](/docs/user-guides/managing-api-keys)
