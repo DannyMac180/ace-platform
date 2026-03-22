@@ -51,7 +51,40 @@ jobs:
           "$HOME/.fly/bin/flyctl" version
 
       - name: Deploy to Production
-        run: flyctl deploy --remote-only
+        run: |
+          set -euo pipefail
+
+          deploy_docs() {
+            local depot_flag="$1"
+            flyctl deploy \
+              --remote-only \
+              --wait-timeout 10m \
+              --depot="${depot_flag}"
+          }
+
+          for attempt in 1 2 3; do
+            echo "Docs deploy attempt ${attempt}/3"
+
+            if [[ "${attempt}" -eq 1 ]]; then
+              depot="true"
+            else
+              depot="false"
+            fi
+
+            if deploy_docs "${depot}"; then
+              echo "Docs deploy succeeded on attempt ${attempt}"
+              exit 0
+            fi
+
+            if [[ "${attempt}" -lt 3 ]]; then
+              sleep_seconds=$((attempt * 45))
+              echo "Docs deploy attempt ${attempt} failed. Retrying in ${sleep_seconds}s..."
+              sleep "${sleep_seconds}"
+            fi
+          done
+
+          echo "Docs deploy failed after 3 attempts."
+          exit 1
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
