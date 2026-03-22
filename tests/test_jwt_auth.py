@@ -1,7 +1,7 @@
 """Tests for JWT authentication and security utilities."""
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -246,6 +246,27 @@ class TestAuthDependencies:
         with pytest.raises(AuthenticationError) as exc:
             await get_optional_user(mock_db, token)
         assert "expired" in str(exc.value.detail)
+
+    @pytest.mark.asyncio
+    async def test_get_optional_user_ensures_personal_workspace(
+        self, mock_db, mock_user, monkeypatch
+    ):
+        """JWT auth should project legacy personal workspace state before returning."""
+        from ace_platform.api import auth as auth_module
+
+        db_result = MagicMock()
+        db_result.scalar_one_or_none.return_value = mock_user
+        mock_db.execute.return_value = db_result
+        ensure_workspace = AsyncMock()
+        monkeypatch.setattr(auth_module, "ensure_personal_workspace_for_user", ensure_workspace)
+        monkeypatch.setattr(auth_module, "set_user_context", MagicMock())
+
+        token = create_access_token(mock_user.id)
+
+        result = await get_optional_user(mock_db, token)
+
+        assert result == mock_user
+        ensure_workspace.assert_awaited_once_with(mock_db, mock_user)
 
     @pytest.mark.asyncio
     async def test_require_user_with_none(self):

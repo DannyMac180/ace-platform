@@ -181,7 +181,8 @@ async def test_google_callback_redirects_with_fragment_tokens(monkeypatch):
     )
     monkeypatch.setattr(oauth_routes, "get_identity_provider", lambda _provider: provider)
     monkeypatch.setattr(oauth_routes, "OAuthService", lambda _db: oauth_service)
-    monkeypatch.setattr(oauth_routes, "bootstrap_workspace_for_user", AsyncMock())
+    ensure_workspace = AsyncMock()
+    monkeypatch.setattr(oauth_routes, "ensure_personal_workspace_for_user", ensure_workspace)
     monkeypatch.setattr(oauth_routes, "audit_oauth_login_success", AsyncMock())
     monkeypatch.setattr(oauth_routes, "audit_oauth_login_failure", AsyncMock())
     monkeypatch.setattr(oauth_routes, "create_access_token", lambda _user_id: "ace-access-token")
@@ -201,3 +202,4 @@ async def test_google_callback_redirects_with_fragment_tokens(monkeypatch):
     assert call_kwargs["provider"] == OAuthProvider.GOOGLE
     assert call_kwargs["access_token"] == "provider-access-token"
     assert call_kwargs["refresh_token"] == "provider-refresh-token"
+    ensure_workspace.assert_awaited_once_with(db, user)

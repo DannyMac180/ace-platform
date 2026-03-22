@@ -11,7 +11,7 @@ use JSONB columns which are PostgreSQL-specific.
 """
 
 import os
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
@@ -23,6 +23,7 @@ from ace_platform.api.auth import (
     AuthenticationError,
     AuthorizationError,
     extract_api_key,
+    get_optional_auth,
     require_any_scope,
     require_auth,
     require_scope,
@@ -80,6 +81,37 @@ class TestExtractApiKey:
         """Test that non-Bearer Authorization headers are ignored."""
         key = extract_api_key(x_api_key=None, authorization="Basic dXNlcjpwYXNz")
         assert key is None
+
+
+@pytest.mark.asyncio
+async def test_get_optional_auth_ensures_personal_workspace(monkeypatch):
+    """API-key auth should repair legacy personal workspace state before returning."""
+    from ace_platform.api import auth as auth_module
+
+    db = MagicMock()
+    user = User(
+        id=uuid4(),
+        email="api-key-user@example.com",
+        hashed_password="hashed",
+        is_active=True,
+    )
+    api_key = MagicMock()
+
+    monkeypatch.setattr(
+        auth_module,
+        "authenticate_api_key_async",
+        AsyncMock(return_value=(api_key, user)),
+    )
+    ensure_workspace = AsyncMock()
+    monkeypatch.setattr(auth_module, "ensure_personal_workspace_for_user", ensure_workspace)
+    monkeypatch.setattr(auth_module, "set_user_context", MagicMock())
+
+    result = await get_optional_auth(db, "ace_test1234567890abcdefghijklmnopqrst")
+
+    assert isinstance(result, AuthContext)
+    assert result.user is user
+    assert result.api_key is api_key
+    ensure_workspace.assert_awaited_once_with(db, user)
 
 
 class TestAuthenticationError:
