@@ -1,13 +1,14 @@
-"""Celery task for hosted personal workspace backups."""
+"""Compatibility shim for the hosted workspace backup task."""
 
-import asyncio
 import logging
 
-from ace_platform.core.workspace_backups import backup_hosted_personal_workspaces
-from ace_platform.db.session import async_session_factory
 from ace_platform.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
+MOVED_MESSAGE = (
+    "Hosted personal workspace backups moved to ace-private. "
+    "Run the canonical worker task from the private repo instead of this public shim."
+)
 
 
 @celery_app.task(
@@ -18,18 +19,14 @@ logger = logging.getLogger(__name__)
     retry_kwargs={"max_retries": 3},
 )
 def backup_hosted_personal_workspaces_task(self) -> dict:
-    """Run the scheduled hosted-personal workspace backup sweep."""
+    """Return a compatibility redirect for the hosted/private task."""
 
-    async def _run() -> dict:
-        async with async_session_factory() as db:
-            return await backup_hosted_personal_workspaces(db)
-
-    result = asyncio.run(_run())
+    del self
     logger.info(
-        "Hosted personal workspace backup sweep completed",
-        extra=result,
+        "Hosted personal workspace backup task called from public repo shim",
+        extra={"redirect_message": MOVED_MESSAGE},
     )
     return {
-        "status": "success",
-        **result,
+        "status": "moved",
+        "message": MOVED_MESSAGE,
     }

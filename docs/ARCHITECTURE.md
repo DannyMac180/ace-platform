@@ -350,7 +350,7 @@ ace-platform/
 ├── docs/
 ├── docker-compose.yml
 ├── Dockerfile
-└── fly.toml
+└── fly.toml                    # historical hosted deploy config; canonical home moved to ace-private
 ```
 
 ## Deployment Architecture

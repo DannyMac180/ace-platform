@@ -66,11 +66,12 @@ class TestCeleryAppConfiguration:
         assert "default" in queues
         assert "evolution" in queues
 
-    def test_workspace_backup_schedule_registered(self):
-        """Test hosted personal workspace backups are scheduled."""
+    def test_workspace_backup_schedule_removed_from_public_repo(self):
+        """Test hosted personal workspace backups are no longer scheduled publicly."""
         from ace_platform.workers import celery_app
 
-        assert "backup-hosted-personal-workspaces" in celery_app.conf.beat_schedule
+        assert "backup-hosted-personal-workspaces" not in celery_app.conf.beat_schedule
+        assert "snapshot-hosted-personal-workspaces" not in celery_app.conf.beat_schedule
 
     def test_result_expires_set(self):
         """Test result expiration is configured."""

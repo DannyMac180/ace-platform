@@ -523,7 +523,7 @@ POST /billing/webhook         - Stripe webhook handler
 - [ ] Set up test database for CI
 
 ### 4.7 Deployment
-**Files:** `Dockerfile`, `docker-compose.yml`, `fly.toml`
+**Files:** `Dockerfile`, `docker-compose.yml`, `fly.toml` (historical; hosted deploy config now lives in `ace-private`)
 
 **Tasks:**
 - [ ] Create production Dockerfile (multi-stage build)
@@ -649,7 +649,7 @@ ace-platform/
 ├── pyproject.toml
 ├── Dockerfile
 ├── docker-compose.yml
-├── fly.toml
+├── fly.toml                    # historical hosted deploy config; canonical home moved to ace-private
 └── README.md
 ```
 
