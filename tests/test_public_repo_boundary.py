@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import pytest
 
 import scripts.migrate_hosted_solo_users_to_personal_workspaces as migration_shim
 from ace_platform.workers.workspace_backups_task import (
@@ -18,11 +21,15 @@ def test_hosted_workspace_migration_script_redirects_to_private_repo(capsys) -> 
     assert "public shim" in captured.err
 
 
-def test_hosted_workspace_backup_task_redirects_to_private_repo() -> None:
+def test_hosted_workspace_backup_task_redirects_to_private_repo(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="ace_platform.workers.workspace_backups_task")
     result = backup_hosted_personal_workspaces_task.run()
 
     assert result["status"] == "moved"
     assert "ace-private" in result["message"]
+    assert "public repo shim" in caplog.text
 
 
 def test_public_docs_point_hosted_implementation_to_private_repo() -> None:

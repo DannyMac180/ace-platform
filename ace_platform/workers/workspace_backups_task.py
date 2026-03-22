@@ -24,7 +24,7 @@ def backup_hosted_personal_workspaces_task(self) -> dict:
     del self
     logger.info(
         "Hosted personal workspace backup task called from public repo shim",
-        extra={"message": MOVED_MESSAGE},
+        extra={"redirect_message": MOVED_MESSAGE},
     )
     return {
         "status": "moved",
