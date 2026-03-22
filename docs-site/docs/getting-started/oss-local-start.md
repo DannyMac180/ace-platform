@@ -14,15 +14,14 @@ Choose the starting point that matches how much infrastructure you want to run y
 
 ### Local Runtime And OSS Overview
 
-Use these docs if you want the ACE engine, local runtime, or a lightweight self-managed setup:
+Use these docs-site guides if you want the ACE engine, local runtime, or a lightweight self-managed setup:
 
-- [ACE OSS overview](https://github.com/DannyMac180/ace-platform/blob/main/docs/oss-overview.md)
-- [Local quickstart](https://github.com/DannyMac180/ace-platform/blob/main/docs/local-quickstart.md)
-- [Repository README](https://github.com/DannyMac180/ace-platform#ace-oss-and-self-managed-start)
+- [OSS Overview](/docs/getting-started/oss-overview)
+- [Local Quickstart](/docs/getting-started/local-quickstart)
 
 ### Full Self-Hosted Platform Deployment
 
-Use this if you want to run the full ACE platform stack on your own infrastructure:
+Use this only if you want to run the full ACE platform stack on your own infrastructure beyond the local runtime:
 
 - [Self-hosted deployment guide](https://github.com/DannyMac180/ace-platform/blob/main/docs/SELF_HOSTED_DEPLOYMENT.md)
 

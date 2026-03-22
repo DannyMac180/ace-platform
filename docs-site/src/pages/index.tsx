@@ -125,7 +125,7 @@ function HomepageQuickLinks() {
           <div className="col col--6">
             <Link to="/docs/getting-started/oss-local-start" className={styles.linkCard}>
               <h3>ACE OSS & Local Start</h3>
-              <p>Find the local runtime, OSS overview, and self-hosted entry points</p>
+              <p>Choose between the OSS package, local runtime, and advanced self-hosted paths</p>
             </Link>
           </div>
           <div className="col col--6">
