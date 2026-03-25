@@ -18,8 +18,18 @@ from ace_platform.core.limits import (
 )
 from ace_platform.core.metering import UsageCounterSummary, get_usage_counter_summary
 from ace_platform.core.subscription_service import get_subscription_tier_for_plan_code
-from ace_platform.core.workspaces import DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT
-from ace_platform.db.models import SubscriptionStatus, User, Workspace
+from ace_platform.core.workspaces import (
+    DEFAULT_TEAM_WORKSPACE_SEAT_LIMIT,
+    get_workspace_plan_defaults,
+)
+from ace_platform.db.models import (
+    SubscriptionStatus,
+    User,
+    Workspace,
+)
+from ace_platform.db.models import (
+    WorkspacePlan as WorkspacePlanModel,
+)
 
 WorkspacePlan = Literal["personal", "team", "enterprise"]
 UsageCounterStatus = Literal["ok", "warning", "blocked"]
@@ -250,21 +260,12 @@ def get_plan_entitlements(
 ) -> WorkspaceFeatureAccess:
     """Return feature access flags for the normalized workspace plan."""
 
-    collaboration_enabled = plan in {"team", "enterprise"}
-    governance_enabled = plan == "enterprise"
-    convenience_enabled = feature_access_enabled
-
+    plan_defaults = get_workspace_plan_defaults(WorkspacePlanModel(plan)).entitlements.to_dict()
     return WorkspaceFeatureAccess(
-        cloud_sync=convenience_enabled,
-        hosted_backups=convenience_enabled,
-        managed_inference=convenience_enabled,
-        hosted_evals=convenience_enabled,
-        invite_members=feature_access_enabled and collaboration_enabled,
-        shared_workspace=feature_access_enabled and collaboration_enabled,
-        approvals=feature_access_enabled and collaboration_enabled,
-        rbac=feature_access_enabled and governance_enabled,
-        sso=feature_access_enabled and governance_enabled,
-        audit_logs=feature_access_enabled and governance_enabled,
+        **{
+            feature_name: feature_access_enabled and feature_enabled
+            for feature_name, feature_enabled in plan_defaults.items()
+        }
     )
 
 
