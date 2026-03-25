@@ -26,6 +26,7 @@ from ace_platform.core.limits import (
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.core.playbook_reviews import build_review_event
+from ace_platform.core.workspaces import resolve_workspace_permissions
 from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
@@ -301,11 +302,7 @@ async def list_shared_workspace_playbooks(
     page: int = 1,
     page_size: int = 20,
 ) -> tuple[list[Playbook], int]:
-    """List approved shared playbooks visible inside one workspace.
-
-    Until explicit review states land, active playbooks act as the approved
-    catalog entries for the shared registry.
-    """
+    """List approved shared playbooks visible inside one workspace."""
 
     if workspace.plan == WorkspacePlan.PERSONAL:
         return [], 0
@@ -316,6 +313,7 @@ async def list_shared_workspace_playbooks(
         .where(
             WorkspaceMembership.workspace_id == workspace.id,
             Playbook.status == PlaybookStatus.ACTIVE,
+            Playbook.review_status == PlaybookReviewStatus.APPROVED,
         )
     )
 
@@ -444,6 +442,7 @@ async def _get_shared_workspace_playbook(
             WorkspaceMembership.workspace_id == workspace.id,
             Playbook.id == playbook_id,
             Playbook.status == PlaybookStatus.ACTIVE,
+            Playbook.review_status == PlaybookReviewStatus.APPROVED,
         )
         .options(
             selectinload(Playbook.user),
@@ -456,6 +455,48 @@ async def _get_shared_workspace_playbook(
     if not items:
         return None
     return items[0]
+
+
+async def get_playbook_with_review_access(
+    db: AsyncSession,
+    *,
+    playbook_id: UUID,
+    current_user: User,
+) -> Playbook | None:
+    """Return a playbook the caller can review as owner or shared-workspace approver."""
+
+    playbook_result = await db.execute(
+        select(Playbook)
+        .where(Playbook.id == playbook_id)
+        .options(selectinload(Playbook.current_version))
+    )
+    playbook = playbook_result.scalar_one_or_none()
+    if playbook is None:
+        return None
+
+    if playbook.user_id == current_user.id:
+        return playbook
+
+    membership_result = await db.execute(
+        select(Workspace, WorkspaceMembership.role)
+        .join(WorkspaceMembership, WorkspaceMembership.workspace_id == Workspace.id)
+        .where(
+            WorkspaceMembership.user_id == current_user.id,
+            Workspace.plan != WorkspacePlan.PERSONAL,
+            Workspace.id.in_(
+                select(WorkspaceMembership.workspace_id).where(
+                    WorkspaceMembership.user_id == playbook.user_id
+                )
+            ),
+        )
+        .options(selectinload(Workspace.entitlements))
+    )
+    for workspace, role in membership_result.all():
+        permissions = resolve_workspace_permissions(workspace, role)
+        if permissions.can_approve_playbooks:
+            return playbook
+
+    return None
 
 
 async def list_accessible_playbooks(
@@ -593,6 +634,7 @@ __all__ = [
     "PlaybookImportSummary",
     "PlaybookLimitError",
     "export_playbook_bundle",
+    "get_playbook_with_review_access",
     "get_accessible_playbook",
     "import_playbook_bundle",
     "list_accessible_playbooks",
