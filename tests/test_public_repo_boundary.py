@@ -55,3 +55,19 @@ def test_public_repo_no_longer_carries_hosted_deploy_workflows_or_fly_configs() 
 
     for path in removed_paths:
         assert not path.exists(), path
+
+
+def test_hosted_migration_docs_keep_private_repo_as_canonical_owner() -> None:
+    migration_runbook = (
+        REPO_ROOT / "docs" / "runbooks" / "hosted-personal-workspace-migration.md"
+    ).read_text(encoding="utf-8")
+    auth_cutover_runbook = (
+        REPO_ROOT / "docs" / "runbooks" / "hosted-auth-cutover-compatibility.md"
+    ).read_text(encoding="utf-8")
+
+    assert "Owner:" in migration_runbook
+    assert "Cleanup note:" in migration_runbook
+    assert "ace-private" in auth_cutover_runbook
+    assert "python scripts/migrate_hosted_solo_users_to_personal_workspaces.py" not in (
+        auth_cutover_runbook
+    )

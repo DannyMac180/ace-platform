@@ -6,6 +6,29 @@ Hosted/private deploy and operator-only scripts have moved to `ace-private`.
 If you need Fly deploy helpers, secret bootstrap, or hosted workspace migration
 automation, use the private repo instead of this public copy.
 
+## Admin entrypoints
+
+Use package-owned admin commands for supported operator workflows:
+
+```bash
+source venv/bin/activate && pip install -e .
+source venv/bin/activate && ace-admin promote-superuser <email>
+source venv/bin/activate && python -m ace_platform.admin promote-superuser <email>
+```
+
+Compatibility shims retained in this directory:
+
+- `scripts/promote_superuser.py` is a temporary wrapper around the package-owned
+  `ace-admin promote-superuser` entrypoint.
+  Owner: ACE Platform maintainers.
+  Cleanup note: remove it after local docs and operator habits stop invoking
+  the repo-local script path.
+- `scripts/migrate_hosted_solo_users_to_personal_workspaces.py` is a redirect-only
+  shim to `ace-private`.
+  Owner: `ace-private` hosted control-plane maintainers.
+  Cleanup note: remove it after all operator docs and automation call the
+  private canonical migration entrypoint directly.
+
 ## Symphony
 
 ### run-symphony.sh
