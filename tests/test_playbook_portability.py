@@ -23,7 +23,14 @@ from ace_platform.core.playbooks import (
     export_playbook_bundle,
     import_playbook_bundle,
 )
-from ace_platform.db.models import Outcome, OutcomeStatus, Playbook, PlaybookSource, PlaybookStatus
+from ace_platform.db.models import (
+    Outcome,
+    OutcomeStatus,
+    Playbook,
+    PlaybookReviewStatus,
+    PlaybookSource,
+    PlaybookStatus,
+)
 
 
 class _ScalarResult:
@@ -258,6 +265,42 @@ async def test_import_playbook_bundle_creates_imported_rows(
     assert playbooks[0].current_version_id is not None
     assert traces[0].outcome_status == OutcomeStatus.PARTIAL
     embedding_refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_import_playbook_bundle_derives_archived_review_status_when_metadata_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    embedding_refresh = AsyncMock()
+    monkeypatch.setattr("ace_platform.core.playbooks.refresh_playbook_embedding", embedding_refresh)
+
+    timestamp = datetime(2026, 3, 17, 15, 21, tzinfo=UTC)
+    bundle = PortablePlaybookBundle(
+        exported_at=timestamp,
+        playbooks=[
+            PortablePlaybook(
+                id="pb-archived",
+                name="Archived Playbook",
+                status="archived",
+                source="user_created",
+                versions=[],
+                traces=[],
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        ],
+    )
+
+    session = _ImportSession()
+    user = SimpleNamespace(
+        id=uuid4(), subscription_tier="starter", trial_ends_at=None, is_admin=False
+    )
+
+    await import_playbook_bundle(session, user, bundle)
+
+    playbook = next(obj for obj in session.added if isinstance(obj, Playbook))
+    assert playbook.status is PlaybookStatus.ARCHIVED
+    assert playbook.review_status is PlaybookReviewStatus.ARCHIVED
 
 
 @pytest.mark.asyncio

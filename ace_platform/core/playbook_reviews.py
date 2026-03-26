@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -38,6 +40,23 @@ def build_review_event(
         "actor_email": getattr(actor, "email", None) if actor is not None else None,
         "created_at": occurred_at.isoformat(),
     }
+
+
+def derive_review_status(
+    *,
+    metadata: Mapping[str, Any] | None,
+    lifecycle_status: PlaybookStatus | str | None,
+) -> PlaybookReviewStatus:
+    """Resolve review status from portable metadata, falling back to lifecycle state."""
+
+    explicit_status = (metadata or {}).get("review_status")
+    if explicit_status is not None:
+        return PlaybookReviewStatus(explicit_status)
+
+    if lifecycle_status in {PlaybookStatus.ARCHIVED, PlaybookStatus.ARCHIVED.value}:
+        return PlaybookReviewStatus.ARCHIVED
+
+    return PlaybookReviewStatus.DRAFT
 
 
 def get_review_history(playbook: Playbook, *, fallback_actor: User | None = None) -> list[dict]:

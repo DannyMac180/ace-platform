@@ -18,6 +18,7 @@ from ace_core.portability import (
     PortableTrace,
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
+from ace_platform.core.playbook_reviews import derive_review_status
 from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
@@ -366,13 +367,24 @@ def _portable_trace_fingerprint(trace: PortableTrace) -> dict[str, Any]:
     }
 
 
+def _portable_review_metadata_fingerprint(playbook: PortablePlaybook) -> dict[str, Any]:
+    metadata = playbook.metadata or {}
+    return {
+        "review_status": derive_review_status(
+            metadata=metadata,
+            lifecycle_status=playbook.status,
+        ).value,
+        "review_history": list(metadata.get("review_history") or []),
+    }
+
+
 def _portable_playbook_fingerprint(playbook: PortablePlaybook) -> dict[str, Any]:
     return {
         "id": playbook.id,
         "name": playbook.name,
         "description": playbook.description,
         "status": playbook.status,
-        "metadata": playbook.metadata,
+        "metadata": _portable_review_metadata_fingerprint(playbook),
         "current_version_number": playbook.current_version_number,
         "versions": [
             _portable_version_fingerprint(version)
@@ -511,6 +523,7 @@ async def apply_playbook_sync_upsert(
         db, owner_user_id=owner_user_id, playbook_id=playbook_id
     )
     playbook_was_created = playbook is None
+    lifecycle_status = PlaybookStatus(payload.status)
     review_metadata = payload.metadata or {}
     incoming_review_status = review_metadata.get("review_status")
     incoming_review_history = review_metadata.get("review_history")
@@ -521,9 +534,10 @@ async def apply_playbook_sync_upsert(
             "user_id": owner_user_id,
             "name": payload.name,
             "description": payload.description,
-            "status": PlaybookStatus(payload.status),
-            "review_status": PlaybookReviewStatus(
-                incoming_review_status or PlaybookReviewStatus.DRAFT.value
+            "status": lifecycle_status,
+            "review_status": derive_review_status(
+                metadata=review_metadata,
+                lifecycle_status=lifecycle_status,
             ),
             "review_history": list(incoming_review_history or []),
             "source": PlaybookSource(payload.source or PlaybookSource.USER_CREATED.value),
@@ -540,7 +554,7 @@ async def apply_playbook_sync_upsert(
     else:
         playbook.name = payload.name
         playbook.description = payload.description
-        playbook.status = PlaybookStatus(payload.status)
+        playbook.status = lifecycle_status
         if incoming_review_status is not None:
             playbook.review_status = PlaybookReviewStatus(incoming_review_status)
         if incoming_review_history is not None:
