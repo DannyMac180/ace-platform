@@ -25,8 +25,7 @@ from ace_platform.core.limits import (
     is_user_trialing,
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
-from ace_platform.core.playbook_reviews import build_review_event
-from ace_platform.core.workspaces import resolve_workspace_permissions
+from ace_platform.core.playbook_reviews import build_review_event, derive_review_status
 from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
@@ -179,8 +178,10 @@ async def import_playbook_bundle(
 
     for portable_playbook in bundle.playbooks:
         metadata = portable_playbook.metadata or {}
-        review_status = PlaybookReviewStatus(
-            metadata.get("review_status", PlaybookReviewStatus.DRAFT.value)
+        lifecycle_status = PlaybookStatus(portable_playbook.status)
+        review_status = derive_review_status(
+            metadata=metadata,
+            lifecycle_status=lifecycle_status,
         )
         review_status_updated_at = metadata.get("review_status_updated_at")
         review_history = list(metadata.get("review_history") or [])
@@ -199,7 +200,7 @@ async def import_playbook_bundle(
             "user_id": user.id,
             "name": portable_playbook.name,
             "description": portable_playbook.description,
-            "status": PlaybookStatus(portable_playbook.status),
+            "status": lifecycle_status,
             "review_status": review_status,
             "review_history": review_history,
             "source": PlaybookSource.IMPORTED,

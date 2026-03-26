@@ -51,10 +51,9 @@ introducing a new token or API-key format:
 2. Backfill or repair hosted personal workspace rows before relying on
    workspace-scoped behavior:
 
-```bash
-source venv/bin/activate && python scripts/migrate_hosted_solo_users_to_personal_workspaces.py migrate --dry-run
-source venv/bin/activate && python scripts/migrate_hosted_solo_users_to_personal_workspaces.py validate
-```
+Run the canonical migration dry-run and validation commands from `ace-private`
+as documented in
+[`docs/runbooks/hosted-personal-workspace-migration.md`](hosted-personal-workspace-migration.md).
 
 3. Keep legacy user-level billing/auth rows available during the compatibility
    window. Do not remove or repurpose old auth/session/API-key fields during the
@@ -82,9 +81,9 @@ source venv/bin/activate && python -m pytest \
   tests/test_auth_middleware.py -q
 ```
 
-```bash
-source venv/bin/activate && python scripts/migrate_hosted_solo_users_to_personal_workspaces.py validate
-```
+Run the canonical hosted personal workspace validation command from
+`ace-private` as documented in
+[`docs/runbooks/hosted-personal-workspace-migration.md`](hosted-personal-workspace-migration.md).
 
 Manual hosted checks:
 
@@ -127,9 +126,9 @@ must be explicitly assigned before the cutover window starts.
    immediate response.
 4. Re-run hosted personal workspace validation:
 
-```bash
-source venv/bin/activate && python scripts/migrate_hosted_solo_users_to_personal_workspaces.py validate
-```
+Re-run the canonical hosted personal workspace validation command from
+`ace-private` as documented in
+[`docs/runbooks/hosted-personal-workspace-migration.md`](hosted-personal-workspace-migration.md).
 
 5. Verify that legacy user-level auth and billing state is still intact on the
    previous stack:

@@ -2,6 +2,8 @@
 """Tests for hosted workspace sync routes."""
 
 import os
+from datetime import UTC, datetime
+from uuid import uuid4
 
 DEFAULT_TEST_DATABASE_URL_SYNC = "postgresql://postgres:postgres@localhost:5432/ace_platform_test"
 
@@ -36,8 +38,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from ace_core.portability import PortablePlaybook, PortablePlaybookVersion
 from ace_platform.api.deps import get_db
 from ace_platform.core.security import create_access_token, hash_password
+from ace_platform.core.workspace_sync import HostedSyncEvent, is_retry_of_current_playbook_state
 from ace_platform.db.models import Base, SubscriptionStatus, User
 
 RUN_INTEGRATION_TESTS = os.environ.get("RUN_WORKSPACE_INTEGRATION_TESTS") == "1"
@@ -45,6 +49,94 @@ RUN_INTEGRATION_TESTS = os.environ.get("RUN_WORKSPACE_INTEGRATION_TESTS") == "1"
 
 async def _no_rate_limit(*args, **kwargs) -> None:
     """Disable rate limiting in sync integration tests."""
+
+
+def test_retry_detection_tolerates_server_enriched_review_metadata() -> None:
+    now = datetime(2026, 3, 25, 20, 10, tzinfo=UTC)
+    current_payload = PortablePlaybook(
+        id="pb-1",
+        name="Promoted",
+        description="desc",
+        status="active",
+        source="imported",
+        current_version_number=1,
+        versions=[PortablePlaybookVersion(version_number=1, content="v1", bullet_count=1)],
+        traces=[],
+        metadata={
+            "workspace_id": "ws-1",
+            "review_status": "draft",
+            "review_status_updated_at": now.isoformat(),
+            "review_history": [],
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    incoming_payload = PortablePlaybook(
+        id="pb-1",
+        name="Promoted",
+        description="desc",
+        status="active",
+        source="imported",
+        current_version_number=1,
+        versions=[PortablePlaybookVersion(version_number=1, content="v1", bullet_count=1)],
+        traces=[],
+        created_at=now,
+        updated_at=now,
+    )
+    current_event = HostedSyncEvent(
+        id="evt-1",
+        entity_type="playbook",
+        entity_id="pb-1",
+        operation="upsert",
+        occurred_at=now,
+        payload=current_payload,
+    )
+
+    assert is_retry_of_current_playbook_state(current_event, incoming_payload) is True
+
+
+def test_retry_detection_still_rejects_changed_review_state() -> None:
+    now = datetime(2026, 3, 25, 20, 12, tzinfo=UTC)
+    current_payload = PortablePlaybook(
+        id="pb-1",
+        name="Promoted",
+        description="desc",
+        status="active",
+        source="imported",
+        current_version_number=1,
+        versions=[PortablePlaybookVersion(version_number=1, content="v1", bullet_count=1)],
+        traces=[],
+        metadata={
+            "workspace_id": "ws-1",
+            "review_status": "approved",
+            "review_status_updated_at": now.isoformat(),
+            "review_history": [{"id": "hist-1", "to_review_status": "approved"}],
+        },
+        created_at=now,
+        updated_at=now,
+    )
+    incoming_payload = PortablePlaybook(
+        id="pb-1",
+        name="Promoted",
+        description="desc",
+        status="active",
+        source="imported",
+        current_version_number=1,
+        versions=[PortablePlaybookVersion(version_number=1, content="v1", bullet_count=1)],
+        traces=[],
+        created_at=now,
+        updated_at=now,
+    )
+    current_event = HostedSyncEvent(
+        id="evt-2",
+        entity_type="playbook",
+        entity_id="pb-1",
+        operation="upsert",
+        occurred_at=now,
+        payload=current_payload,
+    )
+
+    assert is_retry_of_current_playbook_state(current_event, incoming_payload) is False
 
 
 class TestWorkspaceSyncRoutesUnit:
@@ -84,20 +176,44 @@ class TestWorkspaceSyncRoutesIntegration:
 
     @pytest.fixture(scope="function")
     async def async_engine(self):
-        engine = create_async_engine(
+        schema_name = f"workspace_sync_{uuid4().hex}"
+        admin_engine = create_async_engine(
             TEST_DATABASE_URL_ASYNC,
             echo=False,
             poolclass=NullPool,
         )
 
+        async with admin_engine.begin() as conn:
+            await conn.execute(text(f'CREATE SCHEMA "{schema_name}"'))
+
+        await admin_engine.dispose()
+
+        engine = create_async_engine(
+            TEST_DATABASE_URL_ASYNC,
+            echo=False,
+            poolclass=NullPool,
+            # Use a per-test schema so workspace integration runs cannot clobber
+            # each other through the shared `public` schema.
+            connect_args={"server_settings": {"search_path": schema_name}},
+        )
+
         async with engine.begin() as conn:
-            await conn.execute(text("DROP SCHEMA public CASCADE"))
-            await conn.execute(text("CREATE SCHEMA public"))
             await conn.run_sync(Base.metadata.create_all)
 
         yield engine
 
         await engine.dispose()
+
+        cleanup_engine = create_async_engine(
+            TEST_DATABASE_URL_ASYNC,
+            echo=False,
+            poolclass=NullPool,
+        )
+
+        async with cleanup_engine.begin() as conn:
+            await conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema_name}" CASCADE'))
+
+        await cleanup_engine.dispose()
 
     @pytest.fixture
     async def async_session_maker(self, async_engine):

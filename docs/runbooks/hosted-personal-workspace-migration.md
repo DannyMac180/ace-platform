@@ -14,3 +14,10 @@ Use the private repo for:
 The public script at
 `scripts/migrate_hosted_solo_users_to_personal_workspaces.py` is intentionally
 kept only as a compatibility shim that points operators at `ace-private`.
+
+## Compatibility shim lifecycle
+
+- Owner: `ace-private` hosted control-plane maintainers.
+- Cleanup note: delete the public shim after all operator docs and automation
+  have been updated to call the private canonical migration entrypoint
+  directly.
