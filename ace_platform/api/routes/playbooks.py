@@ -48,6 +48,7 @@ from ace_platform.core.playbook_reviews import (
 )
 from ace_platform.core.playbooks import (
     PlaybookImportLimitError,
+    get_playbook_with_review_access,
 )
 from ace_platform.core.playbooks import (
     export_playbook_bundle as build_portable_playbook_bundle,
@@ -734,21 +735,22 @@ async def run_playbook_review_action(
     playbook_id: UUID,
     data: PlaybookReviewActionRequest,
 ) -> PlaybookResponse:
-    """Apply a promoted-playbook review action and persist the activity entry."""
+    """Apply a review action as the owner or a shared-workspace approver."""
 
-    query = (
-        select(Playbook)
-        .where(Playbook.id == playbook_id, Playbook.user_id == current_user.id)
-        .options(selectinload(Playbook.current_version))
+    playbook = await get_playbook_with_review_access(
+        db,
+        playbook_id=playbook_id,
+        current_user=current_user,
     )
-
-    result = await db.execute(query)
-    playbook = result.scalar_one_or_none()
-
-    if not playbook:
+    if playbook is None:
+        if await db.get(Playbook, playbook_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Playbook not found",
+            )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Playbook not found",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to run review actions for this playbook.",
         )
 
     apply_review_action(playbook, action=data.action, actor=current_user)
@@ -771,13 +773,22 @@ async def list_playbook_review_activity(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
 ) -> PaginatedPlaybookReviewActivityResponse:
-    """List promoted-playbook review activity history."""
+    """List review activity for the owner or a shared-workspace approver."""
 
-    playbook = await db.get(Playbook, playbook_id)
-    if not playbook or playbook.user_id != current_user.id:
+    playbook = await get_playbook_with_review_access(
+        db,
+        playbook_id=playbook_id,
+        current_user=current_user,
+    )
+    if playbook is None:
+        if await db.get(Playbook, playbook_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Playbook not found",
+            )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Playbook not found",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to view review activity for this playbook.",
         )
 
     history = sorted(
