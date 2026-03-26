@@ -26,6 +26,7 @@ from ace_platform.core.limits import (
 )
 from ace_platform.core.playbook_matching import refresh_playbook_embedding
 from ace_platform.core.playbook_reviews import build_review_event, derive_review_status
+from ace_platform.core.workspaces import resolve_workspace_permissions
 from ace_platform.db.models import (
     Outcome,
     OutcomeStatus,
