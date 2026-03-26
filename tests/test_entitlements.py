@@ -140,6 +140,39 @@ async def test_trial_user_keeps_features_but_uses_free_limits(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_paid_team_workspace_gets_team_governance_features(monkeypatch):
+    user = _make_user(
+        subscription_tier="starter",
+        subscription_status=SubscriptionStatus.NONE,
+    )
+    workspace = SimpleNamespace(
+        id=uuid4(),
+        plan=SimpleNamespace(value="team"),
+        seat_limit=5,
+        deployment_mode=SimpleNamespace(value="cloud"),
+        subscription=SimpleNamespace(status=SimpleNamespace(value="active"), plan_code="team-v1"),
+        usage_limits={},
+    )
+    monkeypatch.setattr(
+        "ace_platform.core.entitlements.get_user_usage_status",
+        AsyncMock(return_value=_make_usage_status(SubscriptionTier.STARTER)),
+    )
+
+    snapshot = await resolve_workspace_entitlements(object(), user, workspace=workspace)
+
+    assert snapshot.plan == "team"
+    assert snapshot.seat_limit == 5
+    assert snapshot.access.subscription_tier == SubscriptionTier.STARTER
+    assert snapshot.access.has_feature_access is True
+    assert snapshot.entitlements.invite_members is True
+    assert snapshot.entitlements.shared_workspace is True
+    assert snapshot.entitlements.approvals is True
+    assert snapshot.entitlements.rbac is True
+    assert snapshot.entitlements.sso is False
+    assert snapshot.entitlements.audit_logs is True
+
+
+@pytest.mark.asyncio
 async def test_enterprise_user_gets_governance_features(monkeypatch):
     user = _make_user(
         subscription_tier="enterprise",
