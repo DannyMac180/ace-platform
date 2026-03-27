@@ -19,8 +19,10 @@ from fastapi.testclient import TestClient
 from ace_platform.api.main import create_app
 from ace_platform.api.routes.account import (
     DeleteAccountRequest,
+    QuickStartOnboardingUpdateRequest,
     delete_account,
     export_account_data,
+    update_quick_start_onboarding,
 )
 from ace_platform.db.models import (
     AuditEventType,
@@ -50,6 +52,7 @@ def test_account_routes_registered():
     assert "/account" in routes
     assert "/account/export" in routes
     assert "/account/audit-logs" in routes
+    assert "/account/onboarding" in routes
 
 
 def test_account_export_requires_auth():
@@ -67,6 +70,12 @@ def test_account_delete_requires_auth():
 def test_account_audit_logs_requires_auth():
     client = TestClient(create_app())
     resp = client.get("/account/audit-logs")
+    assert resp.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_account_onboarding_requires_auth():
+    client = TestClient(create_app())
+    resp = client.patch("/account/onboarding", json={"status": "minimized"})
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
 
@@ -216,3 +225,30 @@ async def test_delete_account_requires_confirm_phrase():
         )
 
     assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_update_quick_start_onboarding_persists_state():
+    db = AsyncMock()
+    current_user = MagicMock()
+    current_user.onboarding_state = {}
+
+    response = await update_quick_start_onboarding(
+        QuickStartOnboardingUpdateRequest(
+            status="minimized",
+            last_seen_at=datetime(2026, 3, 27, 15, 0, tzinfo=UTC),
+            minimized_at=datetime(2026, 3, 27, 15, 1, tzinfo=UTC),
+        ),
+        db,
+        current_user,
+    )
+
+    assert current_user.onboarding_state == {
+        "status": "minimized",
+        "last_seen_at": "2026-03-27T15:00:00Z",
+        "minimized_at": "2026-03-27T15:01:00Z",
+    }
+    db.commit.assert_awaited_once()
+    assert response.state.status == "minimized"
+    assert response.state.minimized_at == datetime(2026, 3, 27, 15, 1, tzinfo=UTC)
+    assert response.config.video_embed_url.startswith("https://www.youtube-nocookie.com/embed/")
