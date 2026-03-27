@@ -54,6 +54,11 @@ async def test_get_current_user_includes_rollout_metadata():
         subscription_status=SubscriptionStatus.ACTIVE,
         has_used_trial=False,
         has_payment_method=False,
+        onboarding_state={
+            "status": "minimized",
+            "last_seen_at": now,
+            "minimized_at": now,
+        },
         created_at=now,
         updated_at=now,
     )
@@ -76,6 +81,12 @@ async def test_get_current_user_includes_rollout_metadata():
         "managed_inference": True,
         "shared_workspace": False,
     }
+    assert response.quick_start_onboarding is not None
+    assert response.quick_start_onboarding.state.status == "minimized"
+    assert response.quick_start_onboarding.state.minimized_at == now
+    assert response.quick_start_onboarding.config.video_embed_url.startswith(
+        "https://www.youtube-nocookie.com/embed/"
+    )
 
 
 class TestHostedAuthRouteFlow:

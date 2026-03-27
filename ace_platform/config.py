@@ -189,6 +189,18 @@ class Settings(BaseSettings):
         default="https://docs.aceagent.io",
         description="Documentation site URL for landing page links",
     )
+    quick_start_video_id: str = Field(
+        default="GsiZrW5QlQ4",
+        description="Quick-start onboarding YouTube video ID used to build the default embed URL.",
+    )
+    quick_start_video_embed_url: str = Field(
+        default="",
+        description="Optional raw embed URL override for the quick-start onboarding video.",
+    )
+    quick_start_video_url: str = Field(
+        default="/landing-hero-video.mp4",
+        description="Fallback MP4 URL for the quick-start onboarding video.",
+    )
     acquisition_tracking_enabled: bool = Field(
         default=True,
         description="Enable first-party acquisition attribution and event tracking",

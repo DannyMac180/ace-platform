@@ -21,6 +21,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import AuthenticationError, RequiredUser, VerifiedPaidUser
 from ace_platform.api.deps import get_db
+from ace_platform.api.schemas.onboarding import (
+    QuickStartOnboardingPayload,
+    build_quick_start_payload,
+)
 from ace_platform.config import get_settings
 from ace_platform.core.acquisition import parse_signup_attribution
 from ace_platform.core.api_keys import (
@@ -150,6 +154,7 @@ class UserResponse(BaseModel):
     has_payment_method: bool = False
     available_plans: dict[str, bool] = Field(default_factory=dict)
     capabilities: dict[str, bool] = Field(default_factory=dict)
+    quick_start_onboarding: QuickStartOnboardingPayload | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -574,11 +579,13 @@ async def refresh_token(
 )
 async def get_current_user(user: RequiredUser) -> UserResponse:
     """Get the current authenticated user's information."""
+    settings = get_settings()
     response = UserResponse.model_validate(user)
     return response.model_copy(
         update={
             "available_plans": get_available_plans(user),
             "capabilities": get_user_capabilities(user),
+            "quick_start_onboarding": build_quick_start_payload(user.onboarding_state, settings),
         }
     )
 

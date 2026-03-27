@@ -20,6 +20,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ace_platform.api.auth import RequiredUser
 from ace_platform.api.deps import get_db
+from ace_platform.api.schemas.onboarding import (
+    QuickStartOnboardingPayload,
+    QuickStartOnboardingState,
+    build_quick_start_payload,
+    normalize_quick_start_state,
+)
 from ace_platform.config import get_settings
 from ace_platform.core.account_exports import build_account_export_payload, json_default
 from ace_platform.core.audit import audit_account_deleted, audit_data_exported
@@ -69,6 +75,10 @@ class PaginatedAuditLogResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class QuickStartOnboardingUpdateRequest(QuickStartOnboardingState):
+    """Persisted onboarding state update from the authenticated dashboard."""
 
 
 @router.delete("", response_model=MessageResponse)
@@ -223,3 +233,18 @@ async def list_audit_logs(
         page_size=page_size,
         total_pages=total_pages,
     )
+
+
+@router.patch("/onboarding", response_model=QuickStartOnboardingPayload)
+async def update_quick_start_onboarding(
+    body: QuickStartOnboardingUpdateRequest,
+    db: DbSession,
+    current_user: CurrentUser,
+) -> QuickStartOnboardingPayload:
+    """Persist the authenticated user's quick-start onboarding state."""
+
+    normalized_state = normalize_quick_start_state(body.model_dump(exclude_none=True))
+    current_user.onboarding_state = normalized_state.model_dump(mode="json", exclude_none=True)
+    await db.commit()
+
+    return build_quick_start_payload(current_user.onboarding_state, get_settings())
